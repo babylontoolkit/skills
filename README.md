@@ -26,7 +26,6 @@ Where each tool looks for local project skills:
 |------|------------------|
 | Claude Code | `.claude/skills/` *(also read by Copilot)* |
 | Codex CLI | `.codex/skills/` |
-| GitHub Copilot | `.copilot/skills/`, `.claude/skills/`, or `.agents/skills/` |
 
 Where each tool looks for global (all) project skills:
 
@@ -34,9 +33,8 @@ Where each tool looks for global (all) project skills:
 |------|------------------|
 | Claude Code | `~/.claude/skills/` *(also read by Copilot)* |
 | Codex CLI | `~/.codex/skills/` |
-| GitHub Copilot | `~/.copilot/skills/`, `~/.claude/skills/`, or `~/.agents/skills/` |
 
-> **Note:** the file must be named exactly `SKILL.md` — Codex silently skips `SKILL.MD`.
+> **Note:** Install skills into **BOTH** Claude Code and Codex locations for maximum coverage.
 
 ## Native Claude Code Installation
 
@@ -46,6 +44,11 @@ To install from marketplace:
 /plugin install agent-skills@babylon-toolkit
 ```
 
-OR
+To update marketplace plugin: 
+```
+/plugin marketplace update babylon-toolkit.
+```
 
-Simply ask the `Babylon Toolkit Agent` to install the **agent skills** for you.
+## Babylon Toolkit Agent Persona
+
+Simply ask the `Babylon Toolkit Agent` to **install the agent skills** for you.
