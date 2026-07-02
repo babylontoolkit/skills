@@ -8,19 +8,19 @@ unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
 
 | Skill | Command | What it does |
 |-------|---------|--------------|
-| [`convert`](skills/convert/SKILL.md) | `/convert` | Convert Unity C# scripts to Babylon Toolkit TypeScript. |
 | [`spec`](skills/spec/SKILL.md) | `/spec` | Turn a short idea into a feature spec file on a new git branch. |
 | [`plan`](skills/plan/SKILL.md) | `/plan` | Produce a detailed, task-checklist technical plan from a spec. |
 | [`execute`](skills/execute/SKILL.md) | `/execute` | Implement one task (or all remaining tasks) from a plan/spec. |
-
-## How it works
+| [`convert`](skills/convert/SKILL.md) | `/convert` | Convert Unity C# scripts to Babylon Toolkit TypeScript. |
 
 Every tool derives the slash-command from the **folder name** (`spec/` → `/spec`) and reads
 the frontmatter `name` + `description` to decide when the skill applies. The `allowed-tools`
 line is honored by Claude Code (auto-approves those tools) and safely ignored by Codex and
 Copilot.
 
-Where each tool looks for local (all-projects) skills:
+## Installation
+
+Where each tool looks for local project skills:
 
 | Tool | Skills directory |
 |------|------------------|
@@ -28,7 +28,7 @@ Where each tool looks for local (all-projects) skills:
 | Codex CLI | `.codex/skills/` |
 | GitHub Copilot | `.copilot/skills/`, `.claude/skills/`, or `.agents/skills/` |
 
-Where each tool looks for global (all-projects) skills:
+Where each tool looks for global (all) project skills:
 
 | Tool | Skills directory |
 |------|------------------|
@@ -38,9 +38,9 @@ Where each tool looks for global (all-projects) skills:
 
 > **Note:** the file must be named exactly `SKILL.md` — Codex silently skips `SKILL.MD`.
 
-## Installation
+## Claude Code Native Plugin
 
-Native `Claude Code` global install:
+To install as a native plugin:
 ```
 /plugin marketplace add babylontoolkit/skills
 /plugin install agent-skills@babylon-toolkit
