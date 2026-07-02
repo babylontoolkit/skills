@@ -1,4 +1,4 @@
-# Babylon Toolki Skills
+# Babylon Toolkit Agent Skills
 
 Universal [Agent Skills](https://agentskills.io) for the Babylon Toolkit SPEC → PLAN →
 EXECUTE workflow. Each `SKILL.md` follows the open standard, so the **same file works
