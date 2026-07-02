@@ -18,7 +18,7 @@ the frontmatter `name` + `description` to decide when the skill applies. The `al
 line is honored by Claude Code (auto-approves those tools) and safely ignored by Codex and
 Copilot.
 
-## Installation
+## Installation Locations
 
 Where each tool looks for local project skills:
 
@@ -38,9 +38,9 @@ Where each tool looks for global (all) project skills:
 
 > **Note:** the file must be named exactly `SKILL.md` — Codex silently skips `SKILL.MD`.
 
-## Claude Code Native Plugin
+## Native Claude Code Installation
 
-To install as a native plugin:
+To install from marketplace:
 ```
 /plugin marketplace add babylontoolkit/skills
 /plugin install agent-skills@babylon-toolkit
