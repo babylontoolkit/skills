@@ -1,0 +1,83 @@
+---
+name: plan
+description: Create the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec.
+allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com)
+---
+
+Create a detailed technical implmentation plan for the specified feature spec and save in the _specs folder as `<feature-name>_plan.md`. Always generate implmentation tasks or steps (prefer to call them tasks).
+
+Use the user’s message after the skill name as the `arguments`.
+
+---
+
+## ⚠️ Required Reading Before Any Babylon Work
+
+For any task involving Babylon, BabylonJS, or the Babylon Toolkit, first ensure you have already fetched and read the Babylon Toolkit Agent Reference in the current remembered session/context:
+
+https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md
+
+If you have not read it in this session/context, or you no longer remember it due to context loss/compaction, fetch and read it before scaffolding or writing code.
+
+Do not refetch the Agent Reference repeatedly during the same remembered session/context, including across spec, plan, and execute phases, if you are still aware of its contents.
+
+Treat the Agent Reference as the authority for conventions, API, and patterns. It routes to deeper docs. Fetch linked subpages only when they are relevant to the task, and do not refetch a subpage in the same remembered session/context unless you no longer remember it.
+
+If a required fetch fails, STOP and tell me. Do not guess at the API.
+
+---
+
+## Planning mode — do not implement
+
+This command runs in PLANNING MODE. Research read-only and produce ONLY the technical plan document. Do NOT implement the feature, edit any existing application/source files, or run build, test, or other shell commands. The only file you may create is the plan markdown in `_specs/`, named `<feature-name>_plan.md`.
+
+## Step 0. Confirm planning mode
+
+A trustworthy plan requires a thorough, read-only investigation of the codebase before any plan is written.
+
+- This skill is intended to run as a read-only planning pass. If you have been invoked in a mode that would modify source, begin your response with a short visible warning that you will only produce the plan document, then continue.
+- Either way, you MUST still perform the comprehensive analysis in Step 1 with full rigor. Never skip it.
+
+## Step 1. Comprehensive project analysis (REQUIRED before any plan)
+
+Before writing a single implementation step, investigate the actual codebase read-only. This is mandatory — do NOT generate any plan content until this analysis is complete. Read and search the repo to discover, not assume:
+
+1. Read the referenced feature spec in full (from `_specs/` or the file named in `arguments`).
+2. Map the project: top-level structure, entry points, how the app is built and run (build scripts, test runner, package manifests).
+3. Identify the conventions actually used in this repo: naming, file/folder organization, state management, styling, error handling, testing patterns.
+4. Find the closest existing feature(s) or modules to the one being planned and study how they are implemented — the plan should follow these patterns.
+5. List the concrete integration points the feature will touch: files, modules, APIs, data models, routes, config.
+6. Note relevant dependencies already available (and their versions) versus anything new that would be required.
+7. Capture any constraints from the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) and the feature spec.
+
+If the spec or codebase is too ambiguous to analyze responsibly, stop and ask the user rather than guessing.
+
+## Step 2. Write the plan
+
+Only after Step 1 is complete, write the plan markdown to `_specs/` as `<feature-name>_plan.md`. The document MUST open with a `## Codebase Analysis` section that summarizes the findings from Step 1 (cite the real files/modules you inspected) — this is the evidence that the analysis happened. A plan without a grounded analysis section is invalid; do not produce one.
+
+Then write the implementation as an ordered checklist of discrete tasks. Use GitHub-style checkboxes so progress can be tracked directly in the file — one task per line, numbered T1, T2, T3 … in dependency order, each small enough to be implemented and verified on its own:
+
+```markdown
+## Tasks
+
+- [ ] **T1** — <short task title>
+  - Files: `path/one`, `path/two`
+  - Details: <what to do>
+  - Acceptance: <how to know it is done>
+- [ ] **T2** — <short task title>
+  - Files: `...`
+  - Details: <...>
+  - Acceptance: <...>
+```
+
+Finally, include this exact `## How to execute this plan` section verbatim in the document so the plan is self-describing no matter how it is later run:
+
+```markdown
+## How to execute this plan
+
+Each task above is a checkbox. To implement:
+- Run a single task with the execute command (e.g. `execute <this-file> T<n>`), run every remaining task in order with `execute <this-file> ALL` (resumable — it skips tasks already checked), or implement the whole plan from a prompt like "implement the plan at <this-file>".
+- Work the tasks top to bottom unless a task notes a different dependency order.
+- When a task is fully implemented and its **Acceptance** criteria are met, mark it complete by editing this file and changing that task's `- [ ]` to `- [x]`.
+- Stop and report if a task cannot be completed. Do NOT check a box for partial, skipped, or unverified work.
+```
