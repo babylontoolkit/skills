@@ -56,8 +56,7 @@ To update marketplace plugin:
 
 Simply ask the `Babylon Toolkit Agent` to **install the agent skills** for you.
 
-
-## Baylon Toolkit Default Spec Template
+## Baylon Toolkit Feature Spec Template
 
 The default spec driven workflow template:
 ```
