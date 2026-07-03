@@ -54,3 +54,38 @@ To update marketplace plugin:
 ## Babylon Toolkit Agent Persona
 
 Simply ask the `Babylon Toolkit Agent` to **install the agent skills** for you.
+
+
+## Baylon Toolkit Default Spec Template
+
+The default spec driven workflow template:
+```
+# Spec for <feature-name>
+
+branch: project/feature/<feature-name>
+design_system: DESIGN.md
+
+## Summary
+...
+
+## Functional Requirements
+- ...
+
+## Design System Reference (from DESIGN.md, only if the feature has UI)
+- DESIGN.md tokens/components this feature uses: ...
+- Layout / spacing / typography notes: ...
+- Key visual constraints: ...
+
+## Possible Edge Cases
+- ...
+
+## Acceptance Criteria
+- ...
+
+## Open Questions
+- ...
+
+## Testing Guidelines
+Create a test file(s) in the ./tests folder for the new feature, and create meaningful tests for the following cases, without going too heavy:
+- ...
+```
