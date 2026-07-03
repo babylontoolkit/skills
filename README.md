@@ -18,16 +18,16 @@ the frontmatter `name` + `description` to decide when the skill applies. The `al
 line is honored by Claude Code (auto-approves those tools) and safely ignored by Codex and
 Copilot.
 
-## Installation Locations
+## Universal Installations
 
-Where each tool looks for local project skills:
+Where each tool looks for local project skills (Default Installation):
 
 | Tool | Skills directory |
 |------|------------------|
 | Claude Code | `.claude/skills/` *(also read by Copilot)* |
 | Codex CLI | `.codex/skills/` |
 
-Where each tool looks for global (all) project skills:
+Where each tool looks for all global project skills:
 
 | Tool | Skills directory |
 |------|------------------|
@@ -37,6 +37,8 @@ Where each tool looks for global (all) project skills:
 > **Note:** Install skills into **BOTH** Claude Code and Codex locations for maximum coverage.
 
 ## Native Claude Code Installation
+
+- Always prefer the `Default Universal Installation` unless instructed to install the `Native Claude Code Agent Skills`
 
 To install from marketplace:
 ```
