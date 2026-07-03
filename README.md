@@ -11,7 +11,7 @@ unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
 | [`spec`](skills/spec/SKILL.md) | `/spec` | Turn a short idea into a feature spec file on a new git branch. |
 | [`plan`](skills/plan/SKILL.md) | `/plan` | Produce a detailed, task-checklist technical plan from a spec. |
 | [`execute`](skills/execute/SKILL.md) | `/execute` | Implement one task (or all remaining tasks) from a plan/spec. |
-| [`design`](skills/design/SKILL.md) | `/design` | Implement high quality frontend designs. |
+| [`design`](skills/design/SKILL.md) | `/design` | Implement high quality frontend and in-game designs. |
 | [`convert`](skills/convert/SKILL.md) | `/convert` | Convert Unity C# scripts to Babylon Toolkit TypeScript. |
 
 Every tool derives the slash-command from the **folder name** (`spec/` → `/spec`) and reads
