@@ -1,6 +1,6 @@
 ---
-name: execute
-description: Execute one task — or all remaining tasks — from a feature plan or spec file. Use when asked to run a task (e.g. "execute T1") or all tasks (e.g. "execute ALL").
+name: bt-execute
+description: The Babylon Toolkit Execute Skill executes one task — or all remaining tasks — from a feature plan or spec file. Use when asked to run a task (e.g. "bt-execute @plan T1") or all tasks (e.g. "bt-execute @plan ALL").
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch(domain:raw.githubusercontent.com)
 ---
 

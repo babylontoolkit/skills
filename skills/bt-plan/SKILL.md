@@ -1,6 +1,6 @@
 ---
-name: plan
-description: Create the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec.
+name: bt-plan
+description: The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec.
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com)
 ---
 
@@ -76,7 +76,7 @@ Finally, include this exact `## How to execute this plan` section verbatim in th
 ## How to execute this plan
 
 Each task above is a checkbox. To implement:
-- Run a single task with the execute command (e.g. `execute <this-file> T<n>`), run every remaining task in order with `execute <this-file> ALL` (resumable — it skips tasks already checked), or implement the whole plan from a prompt like "implement the plan at <this-file>".
+- Run a single task with the bt-execute command (e.g. `bt-execute <this-file> T<n>`), run every remaining task in order with `bt-execute <this-file> ALL` (resumable — it skips tasks already checked), or implement the whole plan from a prompt like "implement the plan at <this-file>".
 - Work the tasks top to bottom unless a task notes a different dependency order.
 - When a task is fully implemented and its **Acceptance** criteria are met, mark it complete by editing this file and changing that task's `- [ ]` to `- [x]`.
 - Stop and report if a task cannot be completed. Do NOT check a box for partial, skipped, or unverified work.

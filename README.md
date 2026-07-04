@@ -8,13 +8,14 @@ unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
 
 | Skill | Command | What it does |
 |-------|---------|--------------|
-| [`spec`](skills/spec/SKILL.md) | `/spec` | Turn a short idea into a feature spec file on a new git branch. |
-| [`plan`](skills/plan/SKILL.md) | `/plan` | Produce a detailed, task-checklist technical plan from a spec. |
-| [`execute`](skills/execute/SKILL.md) | `/execute` | Implement one task (or all remaining tasks) from a plan/spec. |
-| [`design`](skills/design/SKILL.md) | `/design` | Implement high quality frontend and in-game designs. |
-| [`convert`](skills/convert/SKILL.md) | `/convert` | Convert Unity C# scripts to Babylon Toolkit TypeScript. |
+| [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. |
+| [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. |
+| [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec. |
+| [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert Unity C# scripts to Babylon Toolkit TypeScript. |
+| [`bt-design`](skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. |
+| [`bt-atlas`](skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. |
 
-Every tool derives the slash-command from the **folder name** (`spec/` → `/spec`) and reads
+Every tool derives the slash-command from the **folder name** (`bt-spec/` → `/bt-spec`) and reads
 the frontmatter `name` + `description` to decide when the skill applies. The `allowed-tools`
 line is honored by Claude Code (auto-approves those tools) and safely ignored by Codex and
 Copilot.
