@@ -1,7 +1,7 @@
 ---
 name: bt-execute
 description: The Babylon Toolkit Execute Skill executes one task — or all remaining tasks — from a feature plan or spec file. Use when asked to run a task (e.g. "bt-execute @plan T1") or all tasks (e.g. "bt-execute @plan ALL").
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch(domain:raw.githubusercontent.com)
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch(domain:raw.githubusercontent.com), Task
 ---
 
 Execute work from the referenced feature plan or spec file — either a single task, or every remaining task in order. Always adhere to any rules or requirements set out in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) when responding.
@@ -33,6 +33,10 @@ From `arguments`, extract:
 1. `source_file` — the plan or spec file reference to read tasks from (e.g. `_specs/new-heist-form_plan.md` or `_specs/new-heist-form_spec.md`).
 2. `task_id` — either the identifier of a single task to execute (e.g. `T1`, `T2`, `T3.1`), or the literal word `NEXT` (case-insensitive, they are synonyms) to execute just the next remaining task, or the literal word `ALL` (case-insensitive) to execute every remaining task in order. If none is provided, list the available task ids and their checked/unchecked status from `source_file` and ask the user what to run. DO NOT guess or pick one yourself.
 
+## Verifying a task before checking its box
+
+Before changing any task's `- [ ]` to `- [x]` (this applies to every mode below), verify its **Acceptance** criteria are genuinely met. At the start of the run, **emit one visible status line** so the user sees which verification path is in effect — either `🔍 [bt-execute] subagent tool detected — using an independent verifier before each checkbox` or `🔍 [bt-execute] no subagent tool — self-verifying before each checkbox` — and when you report each task, note whether it was `verified (independent subagent)` or `verified (self)`. If a subagent-spawning tool is available to you (e.g. Claude Code's `Task`, Lovable's subagent tool, or your host's equivalent — check the tools you actually have), launch an **independent verifier subagent**: give it the task's Details + Acceptance and the changes just made, and instruct it to adversarially confirm the criteria — actively look for a reason they are NOT met, inspecting files and running the relevant build/test/commands as needed — then return PASS/FAIL with evidence. Flip the checkbox only on PASS. On FAIL, leave it `- [ ]`, do not touch later tasks, and report what failed. If no subagent tool is available (or you are unsure), self-verify the Acceptance the same way before flipping — never call a subagent tool you do not have. The verifier need not re-read the Agent Reference. Never check a box for partial, skipped, or unverified work.
+
 ## Step 2. Single-task mode (`task_id` is a specific id)
 
 Read `source_file` and find the task whose id matches `task_id`. If it cannot be found, print the list of available task ids from the file and STOP without implementing anything.
@@ -43,7 +47,7 @@ Then implement ONLY that single task. This is a hard rule:
 - Stay within the scope described by the task. If the task is ambiguous or blocked by an unfinished prerequisite task, stop and tell the user instead of expanding scope.
 - Follow all project rules in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) and any referenced spec/plan conventions.
 
-When the task's acceptance criteria are met, mark ONLY this task complete: edit its line and change `- [ ]` to `- [x]` (leave every other task untouched). Never check the box for partial or unverified work.
+When the task is implemented, **verify its Acceptance per _Verifying a task before checking its box_ above**; only on PASS mark ONLY this task complete: edit its line and change `- [ ]` to `- [x]` (leave every other task untouched). Never check the box for partial or unverified work.
 
 Then report: the task id and what it required, the files you changed, any tests/build you ran and their result, and the next task id (for reference only — do NOT start it). Do not continue to the next task.
 
@@ -54,7 +58,7 @@ Then report: the task id and what it required, the files you changed, any tests/
 Read `source_file` and collect the task checklist in order. Find the FIRST task still marked `- [ ]` (skip every task already marked `- [x]`). That task becomes the one to execute.
 
 - If there is no unchecked task, report that the plan is already fully complete and STOP without changing anything.
-- Otherwise, execute ONLY that single task, following the exact same scope discipline, project conventions, and completion rules as single-task mode (Step 2): implement only that task, then change its `- [ ]` to `- [x]` when its acceptance criteria are met, and leave every other task untouched.
+- Otherwise, execute ONLY that single task, following the exact same scope discipline, project conventions, and completion rules as single-task mode (Step 2): implement only that task, then **verify its Acceptance (see _Verifying a task before checking its box_)** and only on PASS change its `- [ ]` to `- [x]`, leaving every other task untouched.
 
 Then report: the task id you just ran and what it required, the files you changed, any tests/build you ran and their result, and the next remaining task id (for reference only — do NOT start it). Do not continue to the next task; the user will run `NEXT` again to advance.
 
@@ -66,7 +70,7 @@ Execute every remaining task in the plan, in order, resuming wherever it was lef
 2. Treat tasks already marked `- [x]` as DONE — skip them. The remaining `- [ ]` tasks are the work queue. (This is what makes `ALL` resumable across interruptions and even brand new conversations.)
 3. For each unchecked task, in order, one at a time:
    a. Implement ONLY that task, following the same scope discipline and project conventions as single-task mode.
-   b. As soon as its acceptance criteria are met, immediately edit `source_file` to change that task's `- [ ]` to `- [x]` BEFORE starting the next task. Persisting progress after each task is what lets a later run of the execute skill with `ALL` safely continue.
+   b. Once it is implemented, **verify its Acceptance (see _Verifying a task before checking its box_)**; only on PASS immediately edit `source_file` to change that task's `- [ ]` to `- [x]` BEFORE starting the next task. Persisting progress after each task is what lets a later run of the execute skill with `ALL` safely continue.
    c. If a task cannot be completed, is blocked, or its acceptance criteria are not met, STOP: leave it unchecked, do not touch any later task, and report which task failed and why.
 4. When all tasks are checked (or you stopped early), report a summary: which tasks you completed this run, the current completed/total count, and whether the plan is now fully done.
 
