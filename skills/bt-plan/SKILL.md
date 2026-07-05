@@ -43,7 +43,7 @@ This analysis can be **fanned out**. First check whether you actually have a sub
 
 Before writing a single implementation step, investigate the actual codebase read-only. This is mandatory — do NOT generate any plan content until this analysis is complete. Read and search the repo to discover, not assume:
 
-1. Read the referenced feature spec in full (from `_specs/` or the file named in `arguments`).
+1. Read the referenced feature spec in full (from `_specs/` or the file named in `arguments`), **and read the project `SPEC.md` at the repository root in full.** SPEC.md is the source of truth for the durable architecture, systems, conventions, and decisions — the plan MUST conform to it. Note the feature spec's `spec_impact` field and its `Project Spec Alignment` section. If the plan you are about to write would conflict with SPEC.md (contradict a decision, cross a system boundary, break a convention), STOP and flag the conflict to the user before writing the plan; do not silently override the project spec.
 2. Map the project: top-level structure, entry points, how the app is built and run (build scripts, test runner, package manifests).
 3. Identify the conventions actually used in this repo: naming, file/folder organization, state management, styling, error handling, testing patterns.
 4. Find the closest existing feature(s) or modules to the one being planned and study how they are implemented — the plan should follow these patterns.
@@ -55,7 +55,7 @@ If the spec or codebase is too ambiguous to analyze responsibly, stop and ask th
 
 ## Step 2. Write the plan
 
-Only after Step 1 is complete, write the plan markdown to `_specs/` as `<feature-name>_plan.md`. The document MUST open with a `## Codebase Analysis` section that summarizes the findings from Step 1 (cite the real files/modules you inspected) — this is the evidence that the analysis happened. A plan without a grounded analysis section is invalid; do not produce one.
+Only after Step 1 is complete, write the plan markdown to `_specs/` as `<feature-name>_plan.md`. The document MUST open with a `## Codebase Analysis` section that summarizes the findings from Step 1 (cite the real files/modules you inspected) — this is the evidence that the analysis happened. This section MUST include a short **SPEC.md alignment** note: which SPEC.md sections the plan conforms to, and whether the feature is spec-impacting (carry over the feature spec's `spec_impact`). A plan without a grounded analysis section is invalid; do not produce one.
 
 Then write the implementation as an ordered checklist of discrete tasks. Use GitHub-style checkboxes so progress can be tracked directly in the file — one task per line, numbered T1, T2, T3 … in dependency order, each small enough to be implemented and verified on its own:
 
@@ -71,6 +71,19 @@ Then write the implementation as an ordered checklist of discrete tasks. Use Git
   - Details: <...>
   - Acceptance: <...>
 ```
+
+### SPEC.md write-back task (required when the feature is spec-impacting)
+
+If the feature is spec-impacting (`spec_impact: yes`, or your analysis found it adds/changes a system, convention, dependency, or architectural decision), the plan MUST end with an explicit final task that updates the project spec, so the write-back is tracked and independently verified like any other task — never left as a soft afterthought:
+
+```markdown
+- [ ] **T<n>** — Update SPEC.md to match what was built
+  - Files: `SPEC.md`
+  - Details: Update the specific SPEC.md section(s) named in the feature spec's Project Spec Alignment — e.g. add/modify the affected Game System, record the new Convention or Decision (with rationale), and add any new Dependency + version. Follow SPEC.md's "How to update this spec" contract: **replace/merge** the current-state sections (Architecture, Game Systems, Conventions, Dependencies) — removing seed placeholders on first real content — and **append** to the Decisions log (never delete; supersede with a newer entry).
+  - Acceptance: SPEC.md accurately describes the architecture/systems/conventions/dependencies as actually implemented by the tasks above; no section contradicts the shipped code; new dependencies are listed.
+```
+
+Make this the LAST task so it captures the true final state. If the feature is genuinely not spec-impacting (`spec_impact: no`), omit this task, but state in the Codebase Analysis that no SPEC.md change is required.
 
 Finally, include this exact `## How to execute this plan` section verbatim in the document so the plan is self-describing no matter how it is later run:
 

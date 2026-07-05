@@ -26,6 +26,20 @@ If a required fetch fails, STOP and tell me. Do not guess at the API.
 
 ---
 
+## ⚠️ The Project Specification (SPEC.md) — read before executing
+
+The project's **SPEC.md** at the repository root is the source of truth for the durable architecture, systems, conventions, and decisions. **Read it before executing any task**, and follow it while implementing (it constrains how you build, not just what).
+
+- Implement in a way that conforms to SPEC.md's architecture, systems, and conventions.
+- **If reality diverges from SPEC.md during execution** — the code as it actually exists contradicts the spec, or the task can only be done by breaking a documented decision/convention — STOP and flag it to the user. Do not let the spec and the code silently drift apart.
+- **This is the write-up half of the spec-driven loop.** When a task changes the architecture, a system, a convention, or a dependency, SPEC.md must end up matching what was built. A well-formed plan makes this an explicit final `Update SPEC.md` task (see below); if you are executing a plan that changes architecture but has no such task, flag the gap and update SPEC.md as part of completing the work rather than leaving it stale.
+- Record any new dependency in SPEC.md's Dependencies section as part of the task that introduces it.
+- When writing back, follow SPEC.md's **"How to update this spec"** contract, keyed off each section's heading tag: **replace/merge** the current-state sections (Architecture, Game Systems, Conventions, Dependencies), removing seed placeholders on first real content and keeping the text matching the shipped code; **append** to the Decisions log (newest last), superseding rather than deleting.
+
+The `Update SPEC.md` task is a task like any other: it goes through the same acceptance verification below before its checkbox is flipped — the spec write-back is verified, not assumed.
+
+---
+
 ## Step 1. Parse the arguments
 
 From `arguments`, extract:

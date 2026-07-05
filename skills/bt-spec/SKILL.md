@@ -26,6 +26,17 @@ If a required fetch fails, STOP and tell me. Do not guess at the API.
 
 ---
 
+## ⚠️ The Project Specification (SPEC.md) — read before drafting
+
+The project's **SPEC.md** at the repository root is the source of truth for the project: it defines the durable architecture, game systems, conventions, and decisions. **Read it before drafting any feature spec.**
+
+- Align the feature idea to the existing architecture, systems, and conventions in SPEC.md. The feature spec you produce must be derived from and constrained by SPEC.md.
+- **If the feature idea conflicts with SPEC.md** (contradicts an architectural decision, a system boundary, or a convention), STOP and flag the conflict to the user before writing the spec. Do not silently override the project spec.
+- **Classify the feature's `spec_impact`:** it is `yes` if implementing the feature would add or change a game system, a convention, a dependency, or an architectural decision recorded in SPEC.md — otherwise `no`. This drives whether the plan will include a SPEC.md write-back task, so classify honestly.
+- If SPEC.md is missing or is still a stub with no real content, record that in the feature spec (`"No project SPEC.md content yet — following existing codebase conventions."`) and continue.
+
+---
+
 ## Planning mode — do not implement
 
 This command runs in PLANNING MODE. Research read-only and produce ONLY the spec document and its git branch. Do NOT implement the feature, edit any existing application/source files, or run build, test, or other shell commands. The only file you may create is the spec markdown described below.
@@ -93,15 +104,32 @@ Before making any content, switch to a new Git branch using the `branch_name` de
 
 ## Step 4. Draft the spec content
 
-Create a markdown spec document that Plan mode can use directly and save it in the _specs folder as `<feature_slug>_spec.md`. Use the exact structure as defined in the feature spec template file @FEATURE.md located at the project root. Do not add technical implementation details such as code examples. If the feature spec template file is missing, create a new feature spec file with the following sections:
+Create a markdown spec document that Plan mode can use directly and save it in the _specs folder as `<feature_slug>_spec.md`. Use the exact structure as defined in the feature spec template file @FEATURE.md located at the project root. The template includes a required `spec_impact` header field and a `Project Spec Alignment` section — fill both in from your SPEC.md read above (cite the SPEC.md sections the feature relies on, describe how it fits the architecture, and for `spec_impact: yes` state exactly what will change in SPEC.md and in which section). Do not add technical implementation details such as code examples. If the feature spec template file is missing, create a new feature spec file with the following sections:
 ```
+# Feature Spec Template
+
+> This is the template bt-spec uses to author `_specs/<feature_slug>_spec.md`.
+> Copy this structure verbatim. A feature spec is derived **from** and constrained
+> **by** the project [SPEC.md](SPEC.md) — the `Project Spec Alignment` section and
+> the `spec_impact` header field are required, not optional.
+
+---
+
 # Spec for <feature-name>
 
 branch: project/feature/<feature-name>
 design_system: DESIGN.md
+spec_impact: <yes|no>   # yes if this feature adds/changes a system, convention, dependency, or architectural decision in SPEC.md
 
 ## Summary
-...
+<one-paragraph description of the feature>
+
+## Project Spec Alignment (from SPEC.md — REQUIRED)
+- SPEC.md sections this feature relies on or must conform to: <cite by name, e.g. "Game Systems › Inventory", "Conventions">
+- How this feature fits the existing architecture: <...>
+- **spec_impact = yes** → what will change in SPEC.md and which section(s): <architecture / system / convention / decision / dependency + the new state>
+- **spec_impact = no** → confirm this feature introduces no architectural, system, convention, or dependency change.
+- Conflicts with SPEC.md (if any): <describe; these must be resolved/flagged before planning>
 
 ## Functional Requirements
 - ...
@@ -123,7 +151,6 @@ design_system: DESIGN.md
 ## Testing Guidelines
 Create a test file(s) in the ./tests folder for the new feature, and create meaningful tests for the following cases, without going too heavy:
 - ...
-
 ```
 
 ## Step 5. Final output to the user
