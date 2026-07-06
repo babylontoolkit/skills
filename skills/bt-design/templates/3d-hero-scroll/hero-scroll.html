@@ -1,0 +1,72 @@
+<!-- ═══════════════════════════════════════════════════════════════════
+  3D-HERO-SCROLL — markup skeleton
+  Replaces a placeholder 100vh hero. Every block marked OPTIONAL can be
+  deleted; the engine activates features by element presence only.
+  Set --hs-* tokens (hero-scroll.css) to the host brand before shipping.
+  ═══════════════════════════════════════════════════════════════════ -->
+
+<!-- OPTIONAL · preload gate (scroll is locked until footage is ready) -->
+<div id="hs-loader" role="status" aria-label="Loading">
+  <div class="hs-loader-mark"><!-- host wordmark/logo --></div>
+  <div class="hs-loader-bar"><span id="hs-loader-fill"></span></div>
+  <span id="hs-loader-pct">000</span>
+</div>
+
+<!-- OPTIONAL · film-speed autoplay. data-idle / data-busy set the labels -->
+<button id="hs-play" aria-pressed="false" title="Play — cinematic auto-scroll">
+  <span class="hs-play-icon" aria-hidden="true"></span>
+  <span class="hs-play-label" data-idle="PLAY THE RUN" data-busy="STOP">PLAY THE RUN</span>
+</button>
+
+<!-- OPTIONAL · veiled jump nav -->
+<nav id="hs-jump-nav" aria-label="Quick navigation">
+  <button id="hs-top" title="Go to top"><span class="hs-arrow" aria-hidden="true">↑</span><span>TOP</span></button>
+  <button id="hs-end" title="Skip to the end"><span class="hs-arrow" aria-hidden="true">↓</span><span>END</span></button>
+</nav>
+
+<!-- OPTIONAL · telemetry HUD (value curve configured in HS_CONFIG) -->
+<aside id="hs-hud" aria-label="Telemetry">
+  <div><span id="hs-hud-value">0</span> <span class="hs-hud-unit">MPH</span></div>
+  <div class="hs-hud-bar"><span id="hs-hud-progress"></span></div>
+  <div class="hs-hud-meta"><span id="hs-hud-seg"></span><span id="hs-hud-pct">000%</span></div>
+</aside>
+
+<!-- REQUIRED · the journey. height = scroll length: ~15–20vh per second
+     of footage (e.g. 32s film → 560–640vh). Poster = FIRST frame of the
+     scrub file, not a glamour still, or the load-in will jump-cut. -->
+<div id="hs-journey" style="height: 640vh">
+  <div class="hs-stage">
+    <video id="hs-video" muted playsinline preload="none" poster="media/poster.jpg"></video>
+    <div class="hs-stage-shade" aria-hidden="true"></div>
+
+    <!-- OPTIONAL · choreographed overlays. data-from/data-to are journey
+         progress (0–1). Add .hs-scrim for left-anchored copy over bright
+         footage. [data-hs-depth] children parallax; [data-hs-count]
+         numbers count up when the overlay activates. -->
+    <section class="hs-ovl" data-from="0" data-to="0.115">
+      <!-- hero wordmark / tagline / scroll cue -->
+    </section>
+
+    <section class="hs-ovl hs-scrim" data-from="0.26" data-to="0.46">
+      <!-- e.g. stats: <span data-hs-count data-target="1200" data-group="1">0</span> -->
+    </section>
+  </div>
+</div>
+
+<!-- The rest of the host page (below) becomes the autoplay "tail". -->
+
+<script>
+  window.HS_CONFIG = {
+    video: "media/journey-scrub.mp4", // ALL-INTRA (-g 1) scrub encode
+    reach: "page",   // "page": PLAY/END traverse the whole landing page;
+                     // "hero": they stop at the journey's end (retrofit mode)
+    telemetry: {
+      max: 250,        // HUD value at endP
+      startP: 0.286,   // CALIBRATE: first frame of real subject motion
+      endP: 0.95,
+      exponent: 0.45,  // <1 = hard launch
+      segments: [[0, "SEG 01"], [0.25, "SEG 02"], [0.5, "SEG 03"], [0.75, "SEG 04"]],
+    },
+  };
+</script>
+<script src="hero-scroll.js"></script>

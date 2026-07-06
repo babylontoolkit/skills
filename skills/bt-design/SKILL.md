@@ -1,6 +1,6 @@
 ---
 name: bt-design
-description: The Babylon Toolkit Design Skill helps create distinctive, production-grade frontend and in-game BabylonJS user interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, BabylonJS GUIs, HUDs, Menus, Popups and Overlays, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics.
+description: The Babylon Toolkit Design Skill helps create distinctive, production-grade frontend and in-game BabylonJS user interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, BabylonJS GUIs, HUDs, Menus, Popups and Overlays, or when styling/beautifying any web UI). Also handles 3D scrolling hero sections / scroll-scrubbed cinematic video heroes with optional HUD, autoplay, and jump controls. Generates creative, polished code and UI design that avoids generic AI aesthetics.
 ---
 
 This skill guides creation of distinctive, production-grade frontend and in-game BabylonJS user interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
@@ -39,3 +39,27 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 **IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
 
 Remember: You are capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+
+## 3D Scrolling Hero Sections (3D-Hero-Scroll)
+
+**MANDATORY ROUTE:** When the request involves a scroll-scrubbed / "3D
+scrolling" hero — the product moving through real terrain as the user scrolls,
+a video timeline driven by scroll position, "Scout Motors style", "redesign
+the hero with 3D scrolling", cinematic scroll with speed/telemetry HUDs,
+auto-play "play the run" controls, or veiled jump cuts — you MUST read
+`references/3d-hero-scroll.md` in this skill directory BEFORE writing any
+code, and copy the drop-in templates from `templates/3d-hero-scroll/`
+(`hero-scroll.html`, `hero-scroll.css`, `hero-scroll.js`) rather than
+re-implementing the engine from memory.
+
+The reference defines the deterministic protocol: intake checklist (footage
+source, brand-token mapping, which optional controls), the KIE footage
+pipeline (hero anchor image → start/end-frame chained clips → concat →
+**all-intra `-g 1` scrub encode**), calibration rules (telemetry launch point
+measured from actual footage frames, film-speed autoplay, veiled cuts), the
+in-browser verification protocol, and the known pitfalls the templates
+already solve. All engine features are optional and presence-gated — a bare
+scrub hero is just the journey block; HUD, PLAY, and TOP/END jump controls
+are each one HTML block away. Style everything through the `--hs-*` tokens
+mapped to the host site's design system — never ship the template's
+placeholder brand.

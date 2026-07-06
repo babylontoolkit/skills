@@ -1,0 +1,268 @@
+/* ═══════════════════════════════════════════════════════════════════
+   3D-HERO-SCROLL — structural + control styles
+   Brand-agnostic: every color/font flows through --hs-* tokens.
+   MAP THESE TO THE HOST SITE'S DESIGN SYSTEM — do not ship defaults
+   unless the host has no tokens of its own.
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  --hs-bg: #060607;            /* page/veil background            */
+  --hs-ink: #e8ecee;           /* primary text                    */
+  --hs-dim: #878e93;           /* secondary text                  */
+  --hs-accent: #35e9ff;        /* the ONE accent — light-bar/HUD  */
+  --hs-accent-soft: rgba(53, 233, 255, 0.35);
+  --hs-accent-ghost: rgba(53, 233, 255, 0.08);
+  --hs-display: inherit;       /* host display font               */
+  --hs-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+/* ── loading gate: no scrolling until footage is ready ─────────── */
+
+body[data-hs-state="loading"] { overflow: hidden; }
+
+/* ── journey stage ──────────────────────────────────────────────── */
+
+#hs-journey { position: relative; /* height set inline or by host, e.g. 640vh */ }
+
+#hs-journey .hs-stage {
+  position: sticky; top: 0;
+  height: 100vh; width: 100%;
+  overflow: hidden;
+  background: var(--hs-bg);
+}
+
+#hs-video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  will-change: filter;
+}
+
+body.hs-no-video #hs-video { display: none; }
+body.hs-no-video .hs-stage {
+  background: var(--hs-poster, var(--hs-bg)) center/cover no-repeat;
+}
+
+.hs-stage-shade {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, transparent 30%,
+              transparent 62%, rgba(0,0,0,0.55) 100%);
+}
+
+/* ── overlays (choreographed by the engine) ─────────────────────── */
+
+.hs-ovl {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 0 clamp(24px, 7vw, 120px);
+  opacity: 0; visibility: hidden;
+  pointer-events: none;
+  will-change: opacity, transform, filter;
+}
+
+/* directional scrim so copy survives bright footage behind it.
+   Add .hs-scrim to any overlay with left-anchored text. */
+.hs-ovl.hs-scrim::before {
+  content: "";
+  position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(100deg, rgba(0, 0, 0, 0.82) 0%,
+              rgba(0, 0, 0, 0.5) 38%, rgba(0, 0, 0, 0.08) 68%, transparent 82%);
+}
+
+/* ── rewind veil (injected by the engine) ───────────────────────── */
+
+#hs-veil {
+  position: fixed; inset: 0; z-index: 150;
+  background: var(--hs-bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease;
+}
+
+#hs-veil.hs-on { opacity: 1; pointer-events: auto; }
+
+/* light-bar sweep while on black — the run re-arming */
+#hs-veil::after {
+  content: "";
+  position: absolute; left: 22%; right: 22%; top: 50%; height: 1px;
+  background: var(--hs-accent);
+  box-shadow: 0 0 12px var(--hs-accent), 0 0 44px var(--hs-accent-soft);
+  transform: scaleX(0);
+  opacity: 0;
+  transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.25s,
+              opacity 0.2s ease 0.25s;
+}
+
+#hs-veil.hs-on::after { transform: scaleX(1); opacity: 1; }
+
+/* ── loader (optional) ──────────────────────────────────────────── */
+
+#hs-loader {
+  position: fixed; inset: 0; z-index: 200;
+  background: var(--hs-bg);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 22px;
+  transition: opacity 0.9s ease 0.35s, visibility 0.9s ease 0.35s;
+}
+
+body[data-hs-state="ready"] #hs-loader { opacity: 0; visibility: hidden; }
+
+.hs-loader-bar {
+  width: min(420px, 70vw); height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+#hs-loader-fill {
+  display: block; height: 100%; width: 0%;
+  background: var(--hs-accent);
+  box-shadow: 0 0 12px var(--hs-accent), 0 0 32px var(--hs-accent-soft);
+  transition: width 0.25s ease;
+}
+
+/* ── telemetry HUD (optional) ───────────────────────────────────── */
+
+#hs-hud {
+  position: fixed; right: clamp(18px, 3vw, 44px); bottom: clamp(18px, 3vw, 40px);
+  z-index: 100;
+  width: 200px;
+  padding: 14px 16px 12px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 2px solid var(--hs-accent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+body[data-hs-state="ready"] #hs-hud { opacity: 1; transform: none; }
+body[data-hs-state="ready"] #hs-hud.hs-hud-off {
+  opacity: 0; transform: translateY(12px); pointer-events: none;
+}
+
+#hs-hud-value {
+  font: 700 52px/0.9 var(--hs-display);
+  color: var(--hs-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.hs-hud-unit { font: 600 11px var(--hs-mono); letter-spacing: 0.3em; color: var(--hs-accent); }
+
+.hs-hud-bar { margin: 12px 0 8px; height: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
+
+#hs-hud-progress {
+  display: block; height: 100%; width: 100%;
+  background: var(--hs-accent);
+  box-shadow: 0 0 10px var(--hs-accent-soft);
+  transform: scaleX(0); transform-origin: left center;
+}
+
+.hs-hud-meta {
+  display: flex; justify-content: space-between;
+  font: 400 9px var(--hs-mono); letter-spacing: 0.14em; color: var(--hs-dim);
+}
+
+/* ── play button (optional) ─────────────────────────────────────── */
+
+#hs-play {
+  position: fixed; top: clamp(18px, 3vh, 30px); left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  z-index: 110;
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 26px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--hs-accent-soft);
+  border-radius: 999px;
+  color: var(--hs-accent);
+  font: 600 10px var(--hs-mono);
+  letter-spacing: 0.32em;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease, transform 0.6s ease, background 0.35s ease,
+              border-color 0.35s ease, box-shadow 0.35s ease, color 0.35s ease;
+  animation: hs-breathe 3.2s ease-in-out infinite;
+}
+
+body[data-hs-state="ready"] #hs-play {
+  opacity: 1; pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+@keyframes hs-breathe {
+  0%, 100% { box-shadow: 0 0 0 rgba(0, 0, 0, 0); }
+  50% { box-shadow: 0 0 22px var(--hs-accent-soft), 0 0 60px var(--hs-accent-ghost); }
+}
+
+#hs-play:hover {
+  background: var(--hs-accent-ghost);
+  border-color: var(--hs-accent);
+  box-shadow: 0 0 26px var(--hs-accent-soft);
+}
+
+.hs-play-icon {
+  width: 0; height: 0;
+  border-left: 9px solid var(--hs-accent);
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+}
+
+#hs-play.hs-playing {
+  animation: none;
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--hs-dim);
+}
+
+#hs-play.hs-playing .hs-play-icon {
+  border: none;
+  width: 9px; height: 9px;
+  background: var(--hs-dim);
+}
+
+/* ── jump nav (optional) ────────────────────────────────────────── */
+
+#hs-jump-nav {
+  position: fixed; left: clamp(18px, 3vw, 44px); bottom: clamp(18px, 3vw, 40px);
+  z-index: 100;
+  display: flex; gap: 10px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+body[data-hs-state="ready"] #hs-jump-nav { opacity: 1; transform: none; }
+
+#hs-jump-nav button {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 18px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--hs-dim);
+  font: 600 9px var(--hs-mono);
+  letter-spacing: 0.28em;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: border-color 0.3s ease, color 0.3s ease,
+              box-shadow 0.3s ease, opacity 0.3s ease;
+}
+
+#hs-jump-nav .hs-arrow { color: var(--hs-accent); font-size: 11px; }
+
+#hs-jump-nav button:hover {
+  border-color: var(--hs-accent);
+  color: var(--hs-ink);
+  box-shadow: 0 0 18px var(--hs-accent-ghost);
+}
+
+#hs-jump-nav button.hs-nav-dim { opacity: 0.3; pointer-events: none; }
+
+/* ── reduced motion ─────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  #hs-play { animation: none; }
+}
