@@ -46,7 +46,7 @@ user exactly which input failed and why, and ask for a corrected path/URL.
 ## Tools
 - **Image generation**: use whichever image-generation tool is available by
   default on the current platform (an MCP image-generation server such as
-  `kie-image`, a built-in model image-generation capability, or any other
+  `kie-image-mcp`, a built-in model image-generation capability, or any other
   configured image tool) — don't assume one specific provider. If the user
   names a particular tool or model in their request (e.g. "use nano-banana-2",
   "use Flux", "use imagen4"), use that one instead of the default. Whichever

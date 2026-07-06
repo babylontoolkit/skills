@@ -1,4 +1,5 @@
-# Use 3D-Hero-Scroll — For Dummies (developer edition)
+# Use 3D-Hero-Scroll — Developer Docs
+
 
 **TL;DR: the prompt is a config file written in prose.** Every named field maps
 1:1 to code the skill generates. You already know the output (the VANTA site) —
@@ -28,7 +29,7 @@ HANDOFF. Omit any field → documented default (defaults in the playbook §6).
 ## 1 · FOOTAGE — "the beats" are literally the video clips
 
 Each numbered beat in the prompt = **one ~8s generated clip**. Four beats =
-four Kling calls = a 32s film. That's the entire relationship.
+four video-generation calls = a 32s film. That's the entire relationship.
 
 ```
 PROMPT                                          CODE
@@ -56,6 +57,16 @@ all beats                                 ffmpeg concat → journey.mp4
                                                         │
                                           HS_CONFIG.video = "media/journey-scrub.mp4"
 ```
+
+**Which tool backs `generate_image` / `generate_video`?** These are generic
+calls, not a specific vendor. The skill routes them to whatever image/video
+generation is configured in your environment — KIE MCP servers (e.g.
+`kie-image-mcp` and `kie-video-mcp`), Higgsfield MCP, the model's own built-in
+image/video generation, or any other configured image/video tool. The prompt
+just says "generate the footage"; the wiring picks the backend. `image_paths` /
+`reference_paths` below are the KIE/Kling parameter names — the equivalent
+first-frame/last-frame and reference-image inputs exist on the other backends
+under their own names.
 
 **"Chain last-frame-to-first-frame" decoded:** Kling's `image_paths[0]` pins a
 clip's FIRST frame. The pipeline extracts clip N's LAST frame with ffmpeg and
@@ -222,7 +233,7 @@ toward the host page's background color. No JS involved.
 Redesign this starter template as a cinematic "3D scroll" website for AERIE —
 a two-seat electric VTOL aircraft. (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE (Kling 3, 16:9, ~8s clips). Hero anchor first:
+FOOTAGE — generate the footage (16:9, ~8s clips). Hero anchor first:
 bone-white fuselage, glass canopy, six rotors, cliff-edge helipad at dawn.
 Chain:
 1. Morning fog rolls off the pad to reveal AERIE motionless; nav lights blink on.
@@ -281,7 +292,7 @@ hero-scroll.css  → --hs-bg:#f4f2ed; --hs-ink:#1c1e21; --hs-accent:#ffb400; …
 Redesign the hero section with 3D scrolling. (bt-design → 3D-Hero-Scroll,
 reach: hero) Do not touch anything below the hero; match existing tokens.
 
-FOOTAGE — generate via KIE: hero anchor first (KOA TRAIL 2, burnt-orange knit,
+FOOTAGE — generate the footage: hero anchor first (KOA TRAIL 2, burnt-orange knit,
 studded outsole, on granite at first light), then chain:
 1. Dust kicks as the shoe plants on a switchback and launches uphill.
 2. Low tracking shot along a ridgeline at speed, scree spraying.
@@ -326,7 +337,7 @@ beat 3's text ends "...warm sand-toned light floods the frame"  ← HANDOFF
 ```
 Redesign this starter template as a cinematic "3D scroll" website for <NAME> —
 <one-liner>. (bt-design → 3D-Hero-Scroll, reach: page)
-FOOTAGE — generate via KIE (Kling 3, 16:9, ~8s clips). Hero anchor first:
+FOOTAGE — generate the footage (16:9, ~8s clips). Hero anchor first:
 <product look>. Chain: 1. <reveal> 2. <motion> 3. <terrain change> 4. <finale>
 CONTROLS — HUD: <METRIC> 0→<MAX> <UNIT>, segments <A/B/C/D> · PLAY ("<label>")
 · TOP/END.
@@ -340,7 +351,7 @@ Launch on localhost and run the skill's verification protocol.
 ```
 Redesign the hero section with 3D scrolling. (bt-design → 3D-Hero-Scroll,
 reach: hero) Do not touch anything below the hero; match existing tokens.
-FOOTAGE — <existing file at <path> | generate via KIE: anchor + beats 1..3>
+FOOTAGE — <existing file at <path> | generate the footage: anchor + beats 1..3>
 CONTROLS — <HUD: METRIC 0→MAX UNIT | no HUD> · <PLAY ("<label>") | + TOP/END>.
 OVERLAYS — <headline> → <stats/copy mid-run>.
 HANDOFF — grade the final frame toward <tone> for the existing <next section>.
@@ -349,7 +360,7 @@ Verify scrub sync and controls per the skill's protocol.
 
 ---
 
-## 10 · Real Examples (copy-paste) — all 10, both modes
+## 10 · AI Workshop Examples (copy-paste) — all 10, both modes
 
 Adapted from the "One-Prompt Website Pack" (Zubair Trabzada · AI Workshop),
 rewritten into this skill's grammar. Everything the pack had to spell out —
@@ -398,7 +409,7 @@ Redesign this starter template as a cinematic "3D scroll" website for
 AURUM & NOIR — a fictional Swiss luxury watch brand launching its tourbillon
 chronograph, the "Eclipse." (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE. Hero anchor first: brushed black titanium case,
+FOOTAGE — generate the footage. Hero anchor first: brushed black titanium case,
 gold tourbillon visible through sapphire glass, floating in a black void,
 dramatic rim lighting. Chain:
 1. A slow, perfectly smooth 360° turntable of the watch in the void, faint
@@ -428,7 +439,7 @@ product page — a Swiss tourbillon chronograph.
 (bt-design → 3D-Hero-Scroll, reach: hero) The product details, specs, and
 buy module below stay; match existing tokens.
 
-FOOTAGE — generate via KIE. Hero anchor first: brushed black titanium case,
+FOOTAGE — generate the footage. Hero anchor first: brushed black titanium case,
 gold tourbillon through sapphire glass, floating in a black void. Chain:
 1. A slow 360° turntable of the watch in the void, faint gold dust drifting.
 2. The camera dives to macro across the dial — the tourbillon cage spinning,
@@ -457,7 +468,7 @@ Redesign this starter template as a cinematic "3D scroll" website for ABYSSAL
 the ocean floor aboard its submersible, the EREBUS.
 (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE. Hero anchor first: sleek deep-black hull, glowing
+FOOTAGE — generate the footage. Hero anchor first: sleek deep-black hull, glowing
 cyan viewport ring, twin floodlights. Chain:
 1. Aerial dawn over open ocean; the EREBUS slips beneath the waves, ending
    fully submerged in sunlit blue.
@@ -489,7 +500,7 @@ expedition company (submersible: EREBUS).
 (bt-design → 3D-Hero-Scroll, reach: hero) The itinerary, pricing, and booking
 sections below stay; match existing tokens.
 
-FOOTAGE — generate via KIE. Hero anchor first: sleek deep-black hull, glowing
+FOOTAGE — generate the footage. Hero anchor first: sleek deep-black hull, glowing
 cyan viewport ring, twin floodlights. Chain:
 1. Aerial dawn; the EREBUS slips beneath the waves into sunlit blue.
 2. Descent through god rays, the blue deepening, a whale gliding past.
@@ -518,7 +529,7 @@ website for me — [YOUR NAME]. The central element is ME.
 (bt-design → 3D-Hero-Scroll, reach: page) My attached photo is the identity
 anchor; keep my wardrobe identical throughout [black t-shirt, dark overshirt].
 
-FOOTAGE — generate via KIE, my photo referenced on every generation. Chain:
+FOOTAGE — generate the footage, my photo referenced on every generation. Chain:
 1. I stand confident, arms crossed, in a black-void studio with [emerald]
    rim lighting; the camera does one slow 360° orbit around me.
 2. The camera settles as I sit at a dark desk surrounded by floating
@@ -546,7 +557,7 @@ Redesign the hero section with 3D scrolling for my portfolio — [YOUR NAME].
 contact sections below stay; match existing tokens. My attached photo is the
 identity anchor; wardrobe [black t-shirt, dark overshirt] consistent.
 
-FOOTAGE — generate via KIE, my photo referenced on every generation. Chain:
+FOOTAGE — generate the footage, my photo referenced on every generation. Chain:
 1. I stand arms crossed in a black-void studio with [emerald] rim lighting;
    the camera does one slow 360° orbit around me.
 2. I turn and walk toward camera down a dark gallery of glowing screens,
@@ -574,7 +585,7 @@ Redesign this starter template as a cinematic single-property "3D scroll"
 website for THE MERIDIAN — a fictional $12.5M penthouse on the 60th floor
 in [CITY]. (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE. Hero anchor first: the glass tower at dusk. Chain:
+FOOTAGE — generate the footage. Hero anchor first: the glass tower at dusk. Chain:
 1. Aerial drone shot curving around the tower, city lights igniting below.
 2. The camera glides from the private elevator into a vast living room —
    floor-to-ceiling windows, Italian marble, a fireplace flickering on.
@@ -603,7 +614,7 @@ Redesign the hero section with 3D scrolling for THE MERIDIAN — a $12.5M
 (bt-design → 3D-Hero-Scroll, reach: hero) The photo gallery, facts table, and
 showing-request form below stay; match existing tokens.
 
-FOOTAGE — generate via KIE. Hero anchor first: the glass tower at dusk. Chain:
+FOOTAGE — generate the footage. Hero anchor first: the glass tower at dusk. Chain:
 1. Aerial drone curving around the tower, city lights igniting below.
 2. The camera glides from the private elevator into the living room —
    floor-to-ceiling windows, marble, a fireplace flickering on — settling
@@ -632,7 +643,7 @@ Redesign this starter template as a cinematic "3D scroll" website for VANTA —
 a fictional 1,200 hp electric hypercar. Model it on the Scout Motors
 Site-of-the-Year style. (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE. Hero anchor first: low, wide, matte obsidian body,
+FOOTAGE — generate the footage. Hero anchor first: low, wide, matte obsidian body,
 thin cyan light-bar face. Chain:
 1. REVEAL — dust settles in a white-sand desert at dawn to reveal the VANTA
    motionless; light-bar ignites.
@@ -662,7 +673,7 @@ Redesign the hero section with 3D scrolling for VANTA — a 1,200 hp electric
 hypercar. (bt-design → 3D-Hero-Scroll, reach: hero) The specs, configurator,
 and reserve sections below stay; match existing tokens.
 
-FOOTAGE — generate via KIE. Hero anchor first: low, wide, matte obsidian body,
+FOOTAGE — generate the footage. Hero anchor first: low, wide, matte obsidian body,
 thin cyan light-bar. Chain:
 1. REVEAL — dust settles at dawn to reveal the VANTA motionless; light-bar
    ignites.
@@ -692,7 +703,7 @@ Redesign this starter template as a cinematic "3D scroll" e-commerce site for
 ONYX SUPPLY's "Midnight Drop" — a heavyweight hoodie, cargo pants, and a
 chrome-accent puffer. (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE. Lookbook anchor first: a model in the full fit —
+FOOTAGE — generate the footage. Lookbook anchor first: a model in the full fit —
 matte black garments, chrome zippers — on a foggy rooftop at night. Chain:
 1. The model walks slowly toward camera through rooftop fog, neon city glow
    behind, wind moving the fabric.
@@ -718,7 +729,7 @@ Redesign the hero section with 3D scrolling for ONYX SUPPLY's "Midnight Drop"
 store page. (bt-design → 3D-Hero-Scroll, reach: hero)
 Do not touch the store below; match its existing tokens.
 
-FOOTAGE — generate via KIE. Lookbook anchor first: a model in the full fit —
+FOOTAGE — generate the footage. Lookbook anchor first: a model in the full fit —
 matte black garments, chrome zippers — on a foggy rooftop at night. Chain:
 1. The model walks slowly toward camera through rooftop fog, neon glow behind,
    wind moving the fabric.
@@ -747,7 +758,7 @@ Redesign this starter template as a cinematic "3D scroll" website for
 EMBER & OAK — a wood-fire steakhouse in [CITY].
 (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE. Anchor first: a ribeye searing over open flame,
+FOOTAGE — generate the footage. Anchor first: a ribeye searing over open flame,
 embers rising into darkness, amber light. Chain:
 1. Slow-motion macro of the sear, embers lifting into black.
 2. The camera pulls back into the dining room at golden hour — leather booths,
@@ -772,7 +783,7 @@ Redesign the hero section with 3D scrolling for EMBER & OAK — a wood-fire
 steakhouse in [CITY]. (bt-design → 3D-Hero-Scroll, reach: hero)
 The story, menu, and reservation sections below stay; match existing tokens.
 
-FOOTAGE — generate via KIE. Anchor first: a ribeye searing over open flame,
+FOOTAGE — generate the footage. Anchor first: a ribeye searing over open flame,
 embers rising into darkness, amber light. Chain:
 1. Slow-motion macro of the sear, embers lifting into black.
 2. The camera pulls back through the ember drift into the dining room at
@@ -801,7 +812,7 @@ Redesign this starter template as a cinematic "3D scroll" landing page for
 PULSE — an AI analytics platform that predicts customer churn before it
 happens. (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE. Anchor first: a clean floating dashboard UI with a
+FOOTAGE — generate the footage. Anchor first: a clean floating dashboard UI with a
 rising, heartbeat-pulsing graph in a dark void. Chain:
 1. Thousands of glowing data particles swirl and assemble into the dashboard;
    the graph pulses alive as the build completes.
@@ -829,7 +840,7 @@ platform that predicts customer churn before it happens.
 (bt-design → 3D-Hero-Scroll, reach: hero) The feature blocks, pricing table,
 and FAQ below already exist; match their tokens.
 
-FOOTAGE — generate via KIE. Anchor first: a clean floating dashboard UI with a
+FOOTAGE — generate the footage. Anchor first: a clean floating dashboard UI with a
 rising, heartbeat-pulsing graph in a dark void. Chain:
 1. Data particles swirl and assemble into the dashboard; the graph pulses
    alive as the build completes.
@@ -860,7 +871,7 @@ Redesign this starter template as a cinematic "3D scroll" website for NOIR&CO
 — a creative studio that designs brands "for companies that refuse to be
 ignored." (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE. Anchor first: black ink mid-bloom in water,
+FOOTAGE — generate the footage. Anchor first: black ink mid-bloom in water,
 flashing into gold. Chain:
 1. Black ink blooms and morphs through water in slow motion, flashing gold.
 2. A dolly past oversized posters and screens with bold type on gallery walls.
@@ -886,7 +897,7 @@ Redesign the hero section with 3D scrolling for NOIR&CO — a creative studio.
 (bt-design → 3D-Hero-Scroll, reach: hero) The work grid, services, and footer
 below stay; match existing tokens.
 
-FOOTAGE — generate via KIE. Anchor first: black ink mid-bloom in water,
+FOOTAGE — generate the footage. Anchor first: black ink mid-bloom in water,
 flashing into gold. Chain:
 1. Black ink blooms and morphs through water in extreme slow motion, flashing
    gold.
@@ -915,7 +926,7 @@ Redesign this starter template as a cinematic "3D scroll" website for FORGE —
 a strength gym in [CITY], motto "Earn it."
 (bt-design → 3D-Hero-Scroll, reach: page)
 
-FOOTAGE — generate via KIE. Anchor first: an athlete mid-clap, chalk cloud
+FOOTAGE — generate the footage. Anchor first: an athlete mid-clap, chalk cloud
 blooming through a single overhead shaft of light in a dark gym. Chain:
 1. Slow motion — the chalked hands clap, the cloud blooms through the shaft.
 2. Macro tracking along a loaded barbell as hands grip it, knurling and chalk
@@ -944,7 +955,7 @@ Redesign the hero section with 3D scrolling for FORGE — a strength gym in
 [CITY], motto "Earn it." (bt-design → 3D-Hero-Scroll, reach: hero)
 Programs, coaches, pricing, and schedule below stay; match existing tokens.
 
-FOOTAGE — generate via KIE. Anchor first: an athlete mid-clap, chalk cloud
+FOOTAGE — generate the footage. Anchor first: an athlete mid-clap, chalk cloud
 blooming through a single overhead shaft of light in a dark gym. Chain:
 1. Slow motion — the chalked hands clap, the cloud blooms through the shaft.
 2. The camera pushes through the chalk cloud and lands on a loaded barbell as

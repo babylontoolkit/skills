@@ -7,7 +7,7 @@
     {
       "name": "agent-skills",
       "source": "./",
-      "description": "Babylon Toolkit Agent Skills — the SPEC → PLAN → EXECUTE workflow plus Unity C#-to-Babylon-Toolkit TypeScript conversion (/bt-spec, /bt-plan, /bt-execute, /bt-design, /bt-convert).",
+      "description": "Babylon Toolkit Agent Skills — (bt-spec | bt-plan | bt-execute | bt-convert | bt-copycat | bt-design | bt-atlas)",
       "version": "1.0.0",
       "author": {
         "name": "Mackey Kinard"

@@ -9,7 +9,7 @@ HUD, film-speed autoplay, veiled jump cuts.
 "redesign the hero with 3D scrolling", "the product drives/flies/moves as you
 scroll", "Scout Motors style".
 
-**Human quickstart:** `use-3d-scroll-skill-for-dummies.md` (this directory)
+**Human quickstart:** `3d-hero-docs.md` (this directory)
 maps every prompt field to the exact code it generates — hand it to developers
 writing invocation prompts.
 
@@ -25,7 +25,10 @@ Do NOT rewrite the engine from memory; copy the template and configure it.
 
 1. **Footage source** (pick one):
    - **(a) Provided video** — skip to §3 (still needs the scrub re-encode).
-   - **(b) Generate via KIE MCP servers** (Babylon Toolkit projects) — §2.
+   - **(b) Generate the footage** with whatever image/video generation is
+     configured — KIE MCP servers (`kie-image-mcp` / `kie-video-mcp`),
+     Higgsfield MCP, the model's own built-in image/video generation, or any
+     other configured image/video tool — §2.
    - **(c) No footage possible** — this pattern is wrong; use a static hero.
 2. **Brand tokens** — map `--hs-bg / --hs-ink / --hs-dim / --hs-accent /
    --hs-display / --hs-mono` to the host site's design system (DESIGN.md or
@@ -50,28 +53,39 @@ Do NOT rewrite the engine from memory; copy the template and configure it.
    existing page you should not drive through. Scrub smoothness is identical
    in both modes; reach only changes where autoplay/jumps consider "the end".
 
-## 2 · Footage pipeline (KIE generation path)
+## 2 · Footage pipeline (generation path)
 
-Fetch the Babylon Toolkit Agent Reference and its `web-kie-servers.md`
-sub-document first (per CLAUDE.md). Servers read the key from `.env` — a file
-named `env` is ignored.
+The generation backend is pluggable — the pipeline below is the same whatever
+produces the frames. Route the image/video calls to whatever is configured:
+KIE MCP servers (`kie-image-mcp` / `kie-video-mcp`), Higgsfield MCP, the model's
+own built-in image/video generation, or any other configured image/video tool.
+The parameter names below (`reference_paths`, `image_paths`) are KIE/Kling's;
+other backends expose the equivalent reference-image and first/last-frame inputs
+under their own names — map to whichever you're using.
 
-1. **One hero anchor image first** (image server, e.g. nano-banana-pro, 16:9,
-   2K). Every other asset references it (`reference_paths`) so it is the same
-   product everywhere.
-2. **Chain clips start→end frame** so the journey is continuous
-   (Kling `image_paths`: `[0]` = first frame, `[1]` = last frame):
+> **If using the KIE MCP servers** (Babylon Toolkit projects): fetch the
+> Babylon Toolkit Agent Reference and its `web-kie-servers.md` sub-document
+> first (per CLAUDE.md). Those servers read the key from `.env` — a file named
+> `env` is ignored.
+
+1. **One hero anchor image first** (image model, e.g. nano-banana-pro, 16:9,
+   2K). Every other asset references it (reference/anchor image input) so it is
+   the same product everywhere.
+2. **Chain clips start→end frame** so the journey is continuous (pin each
+   clip's first frame, and where supported its last frame — KIE/Kling exposes
+   this as `image_paths`: `[0]` = first frame, `[1]` = last frame):
    - Clip 1: first = a generated "concealed" variant (dust/fog/dark), last =
      the hero anchor → the reveal.
    - Clip N: first = **ffmpeg-extracted last frame of clip N-1**:
      `ffmpeg -y -sseof -0.1 -i clipN-1.mp4 -frames:v 1 -update 1 -q:v 2 last.jpg`
-   - Final clip: pin `image_paths[1]` to a generated destination still.
+   - Final clip: pin the last frame to a generated destination still.
    - Big lighting changes (day→night) must happen INSIDE a clip's prompt
      ("light dies to dusk as…"), never across a cut — chaining can't bridge a
      lighting jump.
-3. **Kling 3 facts:** `std` mode returns 1284×716 (not 1080p — use `pro` if
-   that matters); clips run ~8.04s for a requested 8s; ffprobe everything,
-   never assume durations.
+3. **Know your video model's real output** (example — KIE/Kling 3: `std` mode
+   returns 1284×716, not 1080p — use `pro` if that matters; clips run ~8.04s
+   for a requested 8s). Whatever the backend, ffprobe everything; never assume
+   resolutions or durations.
 4. **Concat + scrub encode** (the scrub encode is NON-NEGOTIABLE):
    ```
    ffmpeg -y -f concat -safe 0 -i list.txt -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -an journey.mp4
@@ -172,7 +186,7 @@ falls back to the defaults in parentheses:
 **Example — greenfield, full-page (VANTA-style):**
 > Redesign this starter template as a cinematic 3D-scroll site for VANTA — a
 > fictional 1,200 hp electric hypercar (bt-design → 3D-Hero-Scroll, reach:
-> page). FOOTAGE (KIE/Kling 3, 16:9, 8s clips) — hero anchor first: low,
+> page). FOOTAGE (generate, 16:9, 8s clips) — hero anchor first: low,
 > wide, matte obsidian, thin cyan light-bar; chain: ① REVEAL dust settles at
 > dawn ② THE RUN launches across the flats ③ THE CANYON threads red rock
 > ④ NIGHT MODE light trails under stars. CONTROLS — HUD: MPH 0→250,

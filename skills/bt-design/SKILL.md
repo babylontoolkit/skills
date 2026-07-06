@@ -53,7 +53,7 @@ code, and copy the drop-in templates from `templates/3d-hero-scroll/`
 re-implementing the engine from memory.
 
 The reference defines the deterministic protocol: intake checklist (footage
-source, brand-token mapping, which optional controls), the KIE footage
+source, brand-token mapping, which optional controls), the key footage
 pipeline (hero anchor image → start/end-frame chained clips → concat →
 **all-intra `-g 1` scrub encode**), calibration rules (telemetry launch point
 measured from actual footage frames, film-speed autoplay, veiled cuts), the
