@@ -20,7 +20,7 @@ Use the user’s message after the skill name as the `arguments`.
 
 Example:
 ```
-/bt-spec "Generate a detailed implementation plan for the new feature"
+/bt-spec → "Generate a detailed implementation plan for the new feature"
 ```
 
 ---

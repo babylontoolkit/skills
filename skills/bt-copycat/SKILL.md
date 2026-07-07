@@ -10,15 +10,21 @@ Your goal is to **reverse-engineer the reference website down to its DNA and reb
 # Invocation
 
 ```
-/bt-copycat <reference-url> <re-imagining brief>
+/bt-copycat [--copilot] <reference-url> <re-imagining brief>
 ```
 - **`<reference-url>`** — the site to study. This is the *blueprint*.
 - **`<re-imagining brief>`** — how to re-skin it. This is the *variable*.
-- If either is missing, ask for it before starting. Never guess a URL.
+- **`--copilot`** *(optional flag)* — force **Mode B (User-Driven / Co-Pilot)** from the very start: the agent launches the shared chrome-devtools browser, you drive the scroll, it snapshots each beat. Skip the headless attempt entirely. Aliases: `--copilot`, `--co-pilot`, `--mode-b`. You can also just say "use co-pilot mode" / "I'll drive" anywhere in the prompt and it means the same thing.
+- If either the URL or brief is missing, ask for it before starting. Never guess a URL.
+
+Example (co-pilot from the jump):
+```
+/bt-copycat --copilot → https://www.igloo.inc/ → <re-imagining brief>
+```
 
 Example:
 ```
-/bt-copycat → https://www.igloo.inc/ → Redesign this starter template to be the frontend for the prototype of a third person action adventure game called `Project Alpha`. Be sure to use the (bt-design → 3D-Hero-Scroll, reach: hero) sub skill to add smooth cinematic playback controls. You don't have to use the igloo object — pick an object of your choice that makes sense, but it needs that mystical winter, almost interstellar vibe: gorgeous, cinematic, otherworldly. The 3D scrolling cinematic should end with some engaging `Enter Game` user interface that launches the `Player Demo` to start the prototype.
+/bt-copycat --copilot → https://www.igloo.inc/ → Redesign this starter template to be the frontend for the prototype of a third person action adventure game called `Project Alpha`. Make sure there is `copy` on each phase of the hero stages. You don't have to use the igloo object — pick some sort of monolith or something that makes sense, but it needs that mystical winter, almost interstellar vibe: gorgeous, cinematic, otherworldly. The 3D scrolling cinematic should end with some engaging `Enter The Void` user interface that launches the `Player Demo` to start the prototype.
 ```
 
 ---
@@ -57,29 +63,35 @@ Prefer the **chrome-devtools** tools (a real headless browser — you can drive 
 Scroll-scrubbed 3D/video heroes (igloo.inc-class sites) are often **painfully slow or unreliable to drive headlessly** — the agent-driven scroll stutters, the WebGL timeline doesn't settle between frames, and a full teardown can stall out. When that happens, **do not keep grinding the headless scroll.** Switch to co-pilot mode. Pick the mode up front and tell the user which one you're using:
 
 - **Mode A — Agent-Driven (default).** You drive everything through chrome-devtools: navigate, scroll, screenshot, read the DOM, trace motion. Use this for standard sites and whenever headless scrolling is smooth.
-- **Mode B — User-Driven / Co-Pilot.** *The user drives the real browser on their own machine; you orchestrate and capture.* Use this when: the hero is a heavy scroll-scrubbed 3D/video timeline; headless scroll is janky, stalling, or not advancing the animation; the site blocks automation / needs a login or cookie wall; or the user simply asks to drive.
+- **Mode B — User-Driven / Co-Pilot.** *You launch and share the chrome-devtools browser; the user drives the scroll while you direct and snapshot.* Use this when: the hero is a heavy scroll-scrubbed 3D/video timeline; headless scroll is janky, stalling, or not advancing the animation; the site blocks automation / needs a login or cookie wall; or the user simply asks to drive.
 
-**Announce a switch:** if you start in Mode A and the scroll teardown is taking too long or not progressing after a couple of attempts, stop and say so — e.g. *"The headless scroll isn't keeping up with this 3D hero. Let's switch to co-pilot mode — you drive the scroll, I'll direct you and snapshot each beat (or ask you for the shot)."* — then follow the protocol below.
+**Start directly in Mode B when asked.** If the invocation includes the **`--copilot`** flag (or `--co-pilot` / `--mode-b`), or the user says anything like "use co-pilot mode" / "I'll drive" / "let me scroll", **begin in Mode B immediately — skip the headless Mode A attempt entirely** and go straight to the Mode B setup below.
+
+**Announce a switch:** if you start in Mode A and the scroll teardown is taking too long or not progressing after a couple of attempts, stop and say so — e.g. *"The headless scroll isn't keeping up with this 3D hero. Let's switch to co-pilot mode — I'll launch the browser, you drive the scroll, and I'll snapshot each beat."* — then follow the protocol below.
 
 ### Mode B — User-Driven Co-Pilot Protocol
 
 You become the director; the user is the hands. Give **one clear instruction at a time, wait for the user's signal, then capture, then advance.** Never fire a wall of steps at once.
 
-**Setup**
-1. Ask the user to open the reference URL in their own browser (or the chrome-devtools browser if we're sharing it), maximized, at desktop width, and to scroll fully back to the very top.
-2. Tell them the checkpoint cadence you'll use (default: **~10% of page height per step**, plus any moment where the motion visibly changes) and the signal words below.
+**Setup (agent launches the browser, user parks it at the top)**
+1. **You launch the browser.** Open the reference URL in the shared **chrome-devtools** browser, maximized at desktop width. Let it fully load, then **say you're ready** and hand control to the user — e.g. *"Chrome DevTools is up on the reference site and fully loaded. It's yours — scroll it all the way back to the very top, get it parked and holding still, then say 'ready' and I'll take the first snapshot."*
+2. **The user positions the page.** The user takes the shared browser, scrolls fully back to the very top of the experience, and lets it settle.
+3. **Tell them the cadence + signal words** up front: the default checkpoint cadence is **~10% of page height per step**, plus any moment where the motion visibly changes. From the top the user signals **"ready"**; after that they follow your lead — scroll the amount you ask, let it hold still, and say **"ok"** / **"next"** (or "ready for the next snapshot") for each beat.
+
+> **Shared browser is the default here.** Because *you* launched the chrome-devtools browser, *you* take every screenshot and read live values yourself (`evaluate_script`, `list_network_requests`) at each checkpoint — the user only drives the scroll. Only fall back to asking the user to paste screenshots/snippets if the browser can't be shared.
 
 **Signal words (tell the user these up front)**
-- **"ready"** — page is loaded and parked at the top; begin.
-- **"ok"** / **"next"** — user has completed the step you asked for and the frame is holding still; safe for you to capture.
+- **"ready"** — user has parked the page at the very top and it's holding still; you take the **first snapshot** now, then begin the loop.
+- **"ok"** / **"next"** — user has completed the scroll step you asked for and the frame is holding still; safe for you to capture the next beat.
 - **"done"** — user has reached the bottom / end of the sequence.
 - **"back"** — user needs you to re-describe or repeat the previous step.
 - **"stop"** — abort the capture.
 
 **The loop (repeat until "done")**
+0. **User:** signals **"ready"** at the top. **You:** take the first snapshot and read the load/first-paint values before asking for any scroll.
 1. **You:** give exactly one instruction — e.g. *"Scroll down slowly until the object is roughly centered and the text has just finished fading in, then hold still and say 'ok'."* Be specific about what beat to stop on, not just a pixel amount.
-2. **User:** performs it and replies **"ok"**.
-3. **You:** capture what you need at that checkpoint — take the screenshot (via chrome-devtools if we share the browser, otherwise ask the user to paste/attach a screenshot), and read any live values you can. Note the scroll depth, what entered/exited, and the apparent timing/easing of that beat.
+2. **User:** performs it and replies **"ok"** / **"next"**.
+3. **You:** capture the checkpoint yourself in the shared chrome-devtools browser — take the screenshot and read any live values you can. Note the scroll depth, what entered/exited, and the apparent timing/easing of that beat. (Only if the browser can't be shared, ask the user to paste/attach a screenshot.)
 4. **You:** confirm and advance — *"Got it, checkpoint 3 captured. Next: keep scrolling until the horizon tilts and a new panel pins — hold and say 'ok'."*
 5. Repeat. When the user says **"done"**, confirm you have top-to-bottom coverage; if a beat is missing, ask them to scroll back to it (**"back"**) and re-capture.
 

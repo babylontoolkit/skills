@@ -21,7 +21,7 @@ Use the user’s message after the skill name as the `arguments`.
 
 Example:
 ```
-/bt-plan @feature_spec.md "Generate a detailed implementation plan"
+/bt-plan → @feature_spec.md → "Generate a detailed implementation plan"
 ```
 
 ---

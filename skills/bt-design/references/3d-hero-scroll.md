@@ -43,16 +43,17 @@ Do NOT rewrite the engine from memory; copy the template and configure it.
    `max`, `unit` (in markup), and the curve in `HS_CONFIG.telemetry`.
 5. **Scroll length** — 15–20vh of journey height per second of footage
    (32s film → 560–640vh). Shorter feels rushed; longer feels sticky.
-6. **Reach** — the engine is hero-scoped by design, page-aware by option
+6. **Reach** — the engine is page-aware by default, hero-scoped by option
    (`HS_CONFIG.reach`). It only ever owns the journey block + fixed chrome;
-   it never touches the host page's DOM below the hero. `reach: "hero"`
-   (default): PLAY and END stop at the journey's end — you land on the
+   it never touches the host page's DOM below the hero. `reach: "page"`
+   (default): PLAY glides on through the rest of the page to the bottom and
+   END jumps there — the full cinematic ride, for when the whole landing
+   page shares the film's design system and should be swept through.
+   `reach: "hero"`: PLAY and END stop at the journey's end — you land on the
    regular HTML section right after the hero, exactly as a normal scroll
    would, the polite mode that never drives the user through the rest of
-   the page uninvited. `reach: "page"`: PLAY glides on through the rest of
-   the page to the bottom and END jumps there — the full cinematic ride;
-   opt into this explicitly in the prompt (or `HS_CONFIG`) when the whole
-   landing page shares the film's design system and should be swept through.
+   the page uninvited; opt into this explicitly in the prompt (or
+   `HS_CONFIG`) when only the hero should be owned.
    Scrub smoothness is identical in both modes; reach only changes where
    autoplay/jumps consider "the end".
 
@@ -175,10 +176,9 @@ falls back to the defaults in parentheses:
 
 - **Product + footage beats** — what moves through what terrain, per clip
   (or an existing video file path).
-- **Reach** — `page` or `hero` (default `hero`: PLAY/END stop at the
-  journey's end and the next HTML section follows normally; specify
-  `reach: page` explicitly to have PLAY/END sweep through to the document
-  bottom instead).
+- **Reach** — `page` or `hero` (default `page`: PLAY/END sweep through to the
+  document bottom; specify `reach: hero` explicitly to have PLAY/END stop at
+  the journey's end so the next HTML section follows normally instead).
 - **Controls** — which of HUD / PLAY / TOP+END to include (default: all
   three on `reach: page`, HUD + PLAY only on `reach: hero`).
 - **Telemetry metric** — value, unit, max, segment names (default: none —

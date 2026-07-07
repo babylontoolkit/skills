@@ -22,7 +22,7 @@ Use the user’s message after the skill name as the `arguments`.
 
 Example:
 ```
-/bt-execute @plan.md T1 "Implement the first task in the plan"
+/bt-execute → @plan.md → T1 → "Implement the first task in the plan"
 ```
 
 ---

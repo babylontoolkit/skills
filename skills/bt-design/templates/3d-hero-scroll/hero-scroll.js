@@ -20,14 +20,14 @@
          [0.25, "SEG 02"],
        ],
      },
-     reach: "hero",                    // "hero" (default): PLAY and END stop
-                                       //   at the journey's end — you land on
-                                       //   the regular HTML section right
-                                       //   after the hero, same as a normal
-                                       //   scroll; "page": PLAY glides on to
+     reach: "page",                    // "page" (default): PLAY glides on to
                                        //   the document bottom and END jumps
-                                       //   there instead (full cinematic ride,
-                                       //   opt in explicitly)
+                                       //   there (full cinematic ride);
+                                       //   "hero": PLAY and END stop at the
+                                       //   journey's end — you land on the
+                                       //   regular HTML section right after
+                                       //   the hero, same as a normal scroll
+                                       //   (opt in explicitly)
      tailRate: 0.5,                    // autoplay px/s after journey,
                                        //   as a fraction of innerHeight
                                        //   (reach: "page" only)
@@ -61,7 +61,7 @@
     motionBlur: true,
     fallbackClass: "hs-no-video",
     telemetry: null,
-    reach: "hero",
+    reach: "page",
     tailRate: 0.5,
     veilFadeMs: 480,
     veilHoldMs: 450,

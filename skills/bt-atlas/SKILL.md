@@ -15,7 +15,7 @@ description: The Babylon Toolkit Atlas Skill generates texture atlas skin variat
 
 Example:
 ```
-/bt-atlas base_texture.png uv_layout.png "Change clothing + face, keep the horse hide and the eye island"
+/bt-atlas → base_texture.png → uv_layout.png → "Change clothing + face, keep the horse hide and the eye island"
 ```
 
 ---

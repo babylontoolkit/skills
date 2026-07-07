@@ -22,7 +22,7 @@ Your goal is to convert source code to Babylon Toolkit based TypeScript. Always 
 
 Example:
 ```
-/bt-convert path/to/file.cs "Convert to Babylon Toolkit TypeScript"
+/bt-convert → path/to/file.cs → "Convert to Babylon Toolkit TypeScript"
 ```
 
 ---

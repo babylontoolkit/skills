@@ -22,7 +22,19 @@ Copilot.
 
 ## Universal Installations
 
-Where each tool looks for local project skills (Default Installation):
+Where each tool looks for GLOBAL skills (**Default Installation** — `~` = your home directory):
+
+| Tool | macOS / Linux | Windows |
+|------|---------------|---------|
+| Claude Code | `~/.claude/skills/` | `%USERPROFILE%\.claude\skills\` |
+| OpenAI Codex | `~/.agents/skills/` | `%USERPROFILE%\.agents\skills\` |
+| GitHub Copilot | `~/.agents/skills/` | `%USERPROFILE%\.agents\skills\` |
+| Gemini CLI / Antigravity | `~/.agents/skills/` | `%USERPROFILE%\.agents\skills\` |
+
+> On macOS `~` expands to `/Users/<user>/`, on Linux to `/home/<user>/`,
+> and on Windows `%USERPROFILE%` expands to `C:\Users\<user>\`.
+
+Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly requests a project install):
 
 | Tool | Project skills directory |
 |------|--------------------------|
@@ -31,22 +43,12 @@ Where each tool looks for local project skills (Default Installation):
 | GitHub Copilot | `.agents/skills/` |
 | Gemini CLI / Antigravity | `.agents/skills/` |
 
-Where each tool looks for global skills (`~` = your home directory):
-
-| Tool | macOS / Linux | Windows |
-|------|---------------|---------|
-| Claude Code | `~/.claude/skills/` | `%USERPROFILE%\.claude\skills\` |
-| OpenAI Codex | `~/.agents/skills/` | `%USERPROFILE%\.agents\skills\` |
-| GitHub Copilot | `~/.agents/skills/` | `%USERPROFILE%\.agents\skills\` |
-| Gemini CLI | `~/.agents/skills/` | `%USERPROFILE%\.agents\skills\` |
-
-> On macOS `~` expands to `/Users/<user>/`, on Linux to `/home/<user>/`,
-> and on Windows to `C:\Users\<user>\`.
-
 > **Note:** Install skills into **BOTH** the `.claude/skills/` and `.agents/skills/`
 > locations for maximum coverage — `.claude/skills/` for Claude Code, `.agents/skills/`
-> for everything else (Codex, Copilot, Gemini CLI, Antigravity). Copy **whole folders**
-> into each — the `bt-atlas/scripts/` assets must be present in every location.
+> for everything else (Codex, Copilot, Gemini CLI, Antigravity). By default use the
+> GLOBAL (per-user home) locations; use the project-local locations only when the user
+> explicitly asks for a project install. Copy **whole folders** into each — the
+> `bt-atlas/scripts/` assets must be present in every location.
 
 ## Native Claude Code Installation
 
@@ -66,4 +68,4 @@ To update marketplace plugin:
 
 ## Babylon Toolkit Agent Persona
 
-Simply ask the agent to install the `Babylon Toolkit Agent Skills` for you.
+Simply ask your agent to install the `Babylon Toolkit Agent Skills` for you.
