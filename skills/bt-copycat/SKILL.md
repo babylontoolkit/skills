@@ -18,9 +18,7 @@ Your goal is to **reverse-engineer the reference website down to its DNA and reb
 
 Example:
 ```
-/bt-copycat https://www.igloo.inc You don't have to use the igloo object — pick an
-object of your choice that makes sense, but it needs that mystical winter, almost
-Interstellar vibe: gorgeous, cinematic, otherworldly.
+/bt-copycat → https://www.igloo.inc/ → Redesign this starter template to be the frontend for the prototype of a third person action adventure game called `Project Alpha`. Be sure to use the (bt-design → 3D-Hero-Scroll, reach: hero) sub skill to add smooth cinematic playback controls. You don't have to use the igloo object — pick an object of your choice that makes sense, but it needs that mystical winter, almost interstellar vibe: gorgeous, cinematic, otherworldly. The 3D scrolling cinematic should end with some engaging `Enter Game` user interface that launches the `Player Demo` to start the prototype.
 ```
 
 ---
@@ -54,7 +52,42 @@ You cannot recreate what you have not studied frame by frame. **Never build from
 
 Prefer the **chrome-devtools** tools (a real headless browser — you can drive scroll, read the live DOM, capture the network, and profile motion). Fall back to **WebFetch** for raw HTML/CSS/JS only if a browser is unavailable, and **WebSearch** for "site of the year" write-ups, Awwwards case studies, and teardown articles that name the exact techniques used.
 
-Run this teardown against the reference:
+### Choosing a Capture Mode
+
+Scroll-scrubbed 3D/video heroes (igloo.inc-class sites) are often **painfully slow or unreliable to drive headlessly** — the agent-driven scroll stutters, the WebGL timeline doesn't settle between frames, and a full teardown can stall out. When that happens, **do not keep grinding the headless scroll.** Switch to co-pilot mode. Pick the mode up front and tell the user which one you're using:
+
+- **Mode A — Agent-Driven (default).** You drive everything through chrome-devtools: navigate, scroll, screenshot, read the DOM, trace motion. Use this for standard sites and whenever headless scrolling is smooth.
+- **Mode B — User-Driven / Co-Pilot.** *The user drives the real browser on their own machine; you orchestrate and capture.* Use this when: the hero is a heavy scroll-scrubbed 3D/video timeline; headless scroll is janky, stalling, or not advancing the animation; the site blocks automation / needs a login or cookie wall; or the user simply asks to drive.
+
+**Announce a switch:** if you start in Mode A and the scroll teardown is taking too long or not progressing after a couple of attempts, stop and say so — e.g. *"The headless scroll isn't keeping up with this 3D hero. Let's switch to co-pilot mode — you drive the scroll, I'll direct you and snapshot each beat (or ask you for the shot)."* — then follow the protocol below.
+
+### Mode B — User-Driven Co-Pilot Protocol
+
+You become the director; the user is the hands. Give **one clear instruction at a time, wait for the user's signal, then capture, then advance.** Never fire a wall of steps at once.
+
+**Setup**
+1. Ask the user to open the reference URL in their own browser (or the chrome-devtools browser if we're sharing it), maximized, at desktop width, and to scroll fully back to the very top.
+2. Tell them the checkpoint cadence you'll use (default: **~10% of page height per step**, plus any moment where the motion visibly changes) and the signal words below.
+
+**Signal words (tell the user these up front)**
+- **"ready"** — page is loaded and parked at the top; begin.
+- **"ok"** / **"next"** — user has completed the step you asked for and the frame is holding still; safe for you to capture.
+- **"done"** — user has reached the bottom / end of the sequence.
+- **"back"** — user needs you to re-describe or repeat the previous step.
+- **"stop"** — abort the capture.
+
+**The loop (repeat until "done")**
+1. **You:** give exactly one instruction — e.g. *"Scroll down slowly until the object is roughly centered and the text has just finished fading in, then hold still and say 'ok'."* Be specific about what beat to stop on, not just a pixel amount.
+2. **User:** performs it and replies **"ok"**.
+3. **You:** capture what you need at that checkpoint — take the screenshot (via chrome-devtools if we share the browser, otherwise ask the user to paste/attach a screenshot), and read any live values you can. Note the scroll depth, what entered/exited, and the apparent timing/easing of that beat.
+4. **You:** confirm and advance — *"Got it, checkpoint 3 captured. Next: keep scrolling until the horizon tilts and a new panel pins — hold and say 'ok'."*
+5. Repeat. When the user says **"done"**, confirm you have top-to-bottom coverage; if a beat is missing, ask them to scroll back to it (**"back"**) and re-capture.
+
+**What you still must extract in Mode B.** Manual scrolling replaces only the *screenshotting of the journey*. You still need the real numbers — design tokens, easings, asset/network inventory, scroll-distance ratios. If you share the chrome-devtools browser with the user, pull these yourself via `evaluate_script` / `list_network_requests` between checkpoints. If you cannot, ask the user to run small snippets (e.g. `getComputedStyle`, `document.body.scrollHeight`, the Network tab's asset list) and paste the results. **Screenshots alone are not enough — vibes fail Phase 5 verification.**
+
+**Reuse this loop in Phase 5.** When verifying the rebuild's fidelity, run the exact same co-pilot protocol against *our* site so the storyboards are captured identically and compared beat-for-beat.
+
+Run this teardown against the reference (in either mode):
 
 1. **Load & watch the entrance.** Navigate to the URL. Capture the loader/preloader, the first paint, and the opening reveal. Note the *sequence and timing* of everything that animates in on load — order, delay, duration, easing. The first 3 seconds define the site's whole personality.
 2. **Screenshot the full scroll journey.** Capture the viewport at many scroll depths (e.g. 0%, 10%, 20% … 100%) at desktop width. This is the storyboard you will rebuild. Also capture at a mobile width via `resize_page`/`emulate` — note what reflows, hides, or simplifies.
@@ -91,6 +124,13 @@ Hand the DNA Blueprint to the **bt-design** skill to build the actual frontend a
 - Generate the re-imagined video/image/3D assets (image & video generation) to fill the asset manifest under the new theme — as beautiful and cinematic as the original's.
 - Reproduce the load choreography, scroll behavior, and micro-interactions from the motion table.
 
+**Enforced build mandate (always apply):**
+- Make the new site **as cinematic and award-winning as the original**, and make it **feel like a real game prototype, not a generic template**.
+- **The user provides the prototype's own assets.** You may generate any *additional* cinematic imagery or video needed to fill out the storyboard — use image & video generation to create every necessary asset.
+- Make the new site **fully responsive** and working on all devices.
+- **Create a `DESIGN.md`** reflecting the new theme if it does not exist or is only an empty stub; otherwise update it.
+- **Update `SPEC.md`** with any significant architectural changes, if any.
+
 **Scroll-scrubbed / cinematic scroll heroes:** if the original's hero is scroll-driven (as igloo.inc is), this is a **3D-Hero-Scroll** job. Route through bt-design → `references/3d-hero-scroll.md` and copy the drop-in templates from `templates/3d-hero-scroll/` — do not re-implement the scrub engine from memory. Map the reference's real numbers (footage length, scroll-distance-per-second, telemetry, jump cuts) into `HS_CONFIG` and the `--hs-*` tokens.
 
 **ONLY IF** the user requests to add `3D scroll controls`, use the (bt-design → 3D-Hero-Scroll → playback controls) sub-skill with the requested reach (default: page) to add smooth cinematic playback controls.
@@ -114,4 +154,5 @@ Report any beat where fidelity is imperfect and fix it — do not paper over a m
 - **Numbers, not vibes.** Extract real colors, timings, and scroll ratios from the live site. "Roughly a fade" is not acceptable when you can read the exact `cubic-bezier`.
 - **Mechanics are copied; content is re-imagined.** Never invent a different scroll feel; never ship the original's subject/branding.
 - **Match the original's craft ceiling.** The reference is award-winning for a reason. The rebuild must be *as* beautiful — no generic AI-slop fallback (see bt-design's anti-slop guidance). If the original holds a held, breathing silence before a reveal, so does ours.
+- **Ship a prototype, not a template.** The result must feel like a real game prototype — cinematic and award-winning — fully responsive on all devices. The user supplies the prototype's assets; generate any additional cinematic imagery/video to complete the storyboard. Create `DESIGN.md` for the new theme (if missing or an empty stub) and update `SPEC.md` for any significant architectural changes.
 - **Verify against the source.** Done means the storyboards match.
