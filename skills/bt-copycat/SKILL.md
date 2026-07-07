@@ -5,11 +5,16 @@ description: The Babylon Toolkit Copycat Skill forensically studies a live refer
 
 Your goal is to **reverse-engineer the reference website down to its DNA and rebuild it, pixel-faithful in mechanics, re-imagined in subject.** Always adhere to any rules or requirements set out in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) when responding.
 
-## Invocation
+---
+
+# Invocation
 
 ```
 /bt-copycat <reference-url> <re-imagining brief>
 ```
+- **`<reference-url>`** — the site to study. This is the *blueprint*.
+- **`<re-imagining brief>`** — how to re-skin it. This is the *variable*.
+- If either is missing, ask for it before starting. Never guess a URL.
 
 Example:
 ```
@@ -18,11 +23,9 @@ object of your choice that makes sense, but it needs that mystical winter, almos
 Interstellar vibe: gorgeous, cinematic, otherworldly.
 ```
 
-- **`<reference-url>`** — the site to study. This is the *blueprint*.
-- **`<re-imagining brief>`** — how to re-skin it. This is the *variable*.
-- If either is missing, ask for it before starting. Never guess a URL.
+---
 
-## The Prime Directive
+# The Prime Directive
 
 **The mechanics are sacred. The skin is the variable.**
 

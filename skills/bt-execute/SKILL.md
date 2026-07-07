@@ -10,6 +10,23 @@ Use the user’s message after the skill name as the `arguments`.
 
 ---
 
+# Invocation
+
+```
+/bt-execute <plan> <task-id> <optional-brief>
+```
+- **`<plan>`** — the feature plan or spec file to execute tasks from. This is the *blueprint*.
+- **`<task-id>`** — the specific task to execute, or `NEXT` or `ALL` to execute all remaining tasks. This is the *variable*.
+- **`<optional-brief>`** — the brief or instructions for executing the task. This is the *variable*.
+- If either is missing, ask for it before starting. Never guess a file path or URL.
+
+Example:
+```
+/bt-execute @plan.md T1 "Implement the first task in the plan"
+```
+
+---
+
 ## ⚠️ Required Reading Before Any Babylon Work
 
 For any task involving Babylon, BabylonJS, or the Babylon Toolkit, first ensure you have already fetched and read the Babylon Toolkit Agent Reference in the current remembered session/context:

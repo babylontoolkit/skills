@@ -11,6 +11,22 @@ Your goal is to convert source code to Babylon Toolkit based TypeScript. Always 
 
 ---
 
+# Invocation
+
+```
+/bt-convert <source-code> <conversion-brief>
+```
+- **`<source-code>`** — the source code to convert. This is the *blueprint*.
+- **`<conversion-brief>`** — how to convert it. This is the *variable*.
+- If either is missing, ask for it before starting. Never guess a URL.
+
+Example:
+```
+/bt-convert path/to/file.cs "Convert to Babylon Toolkit TypeScript"
+```
+
+---
+
 **Use The Babylon Toolkit Agent Persona**
 
 ---

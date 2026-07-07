@@ -10,6 +10,22 @@ Use the user’s message after the skill name as the `arguments`.
 
 ---
 
+# Invocation
+
+```
+/bt-plan <feature-spec> <optional-brief>
+```
+- **`<feature-spec>`** — the feature spec file to create a plan for. This is the *blueprint*.
+- **`<optional-brief>`** — the brief or instructions for generating the plan. This is the *variable*.
+- If either is missing, ask for it before starting. Never guess a file path or URL.
+
+Example:
+```
+/bt-plan @feature_spec.md "Generate a detailed implementation plan"
+```
+
+---
+
 ## ⚠️ Required Reading Before Any Babylon Work
 
 For any task involving Babylon, BabylonJS, or the Babylon Toolkit, first ensure you have already fetched and read the Babylon Toolkit Agent Reference in the current remembered session/context:

@@ -3,6 +3,23 @@ name: bt-atlas
 description: The Babylon Toolkit Atlas Skill generates texture atlas skin variations for a UV-mapped 3D model that stay strictly inside the UV islands, so they are drop-in swaps for the same geometry. Use whenever the user wants new skins / texture variants (different colors, faces, materials, camo, liveries, etc.) from a base color texture and its UV layout. Works for any model — not specific to any one asset.
 ---
 
+# Invocation
+
+```
+/bt-atlas <base-texture> <uv-layout> <variation-brief>
+```
+- **`<base-texture>`** — the existing skin; defines overall look & feel.
+- **`<uv-layout>`** — the wireframe/island map for the same texture.
+- **`<variation-brief>`** — how to vary the texture while staying within the UV islands.
+- If any input is missing, ask for it before starting. Never guess a file path or URL.
+
+Example:
+```
+/bt-atlas base_texture.png uv_layout.png "Change clothing + face, keep the horse hide and the eye island"
+```
+
+---
+
 # Generate Texture Atlas (UV-safe atlas variations)
 
 Create N variations of a model's base color texture atlas using AI image

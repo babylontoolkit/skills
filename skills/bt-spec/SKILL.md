@@ -10,6 +10,21 @@ Use the user’s message after the skill name as the `arguments`.
 
 ---
 
+# Invocation
+
+```
+/bt-spec <feature-brief>
+```
+- **`<feature-brief>`** — the short idea or brief for the feature spec. This is the *variable*.
+- If missing, ask for it before starting. Never guess a file path or URL.
+
+Example:
+```
+/bt-spec "Generate a detailed implementation plan for the new feature"
+```
+
+---
+
 ## ⚠️ Required Reading Before Any Babylon Work
 
 For any task involving Babylon, BabylonJS, or the Babylon Toolkit, first ensure you have already fetched and read the Babylon Toolkit Agent Reference in the current remembered session/context:
