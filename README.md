@@ -66,4 +66,4 @@ To update marketplace plugin:
 
 ## Babylon Toolkit Agent Persona
 
-Simply ask the `Babylon Toolkit Agent` to **install the agent skills** for you.
+Simply ask the agent to install the `Babylon Toolkit Agent Skills` for you.
