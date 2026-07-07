@@ -46,7 +46,8 @@ Split everything you observe into two buckets:
 | Layout grid, alignment, spatial composition | Copywriting, headings, taglines |
 | Interaction patterns (hover, cursor, sticky, parallax) | Iconography & decorative motifs |
 | Pacing / "breathing" — where it holds and where it moves | Brand name, logo, product specifics |
-| Depth, layering, z-order, transitions between sections | |
+| Depth, layering, z-order, transitions between sections | Sound *design* content (the actual tracks/SFX & their theme) |
+| Audio behavior (ambient bed, scroll/hover SFX, mute UX, autoplay-gating) | |
 
 If in doubt about which bucket something belongs in: **feel-defining → COPY; content-defining → RE-IMAGINE.** A visitor should feel "this moves and breathes exactly like igloo.inc" while seeing something that is unmistakably *ours*.
 
@@ -108,6 +109,7 @@ Run this teardown against the reference (in either mode):
 5. **Time the motion.** Read `transition`/`animation` declarations and, where it matters, run a `performance_start_trace`/`stop_trace` across a scroll to see real durations and frame pacing. Capture easing curves (cubic-bezier values), stagger offsets, and loop timings.
 6. **Inventory the assets & tech.** Use `list_network_requests` to see what actually loads: video files (and their length/resolution — critical for a scrub hero), image formats, fonts, and the animation/3D libraries in play (GSAP/ScrollTrigger, Lenis/smooth-scroll, Three.js/Babylon, Lottie, WebGL shaders). Knowing the technique is how you reproduce the feel.
 7. **Map interactions.** Hover key elements, move through the nav, trigger the cursor — record custom cursors, magnetic buttons, hover distortions, link transitions, and any sound.
+8. **Check for audio (do not skip).** Determine whether the site has sound at all — many award-winning cinematic sites ship an ambient audio bed, scroll/hover SFX, or a reveal sting. Inspect the network inventory for audio files (`.mp3`/`.ogg`/`.wav`/`.m4a`) and the DOM/JS for `<audio>` elements, `AudioContext`/Web Audio, Howler.js, or muted-autoplay video used purely for sound. Record: is there an ambient loop, per-interaction SFX, or scroll-synced audio? How is playback gated (autoplay policy — first user gesture, an explicit sound toggle)? Is there a mute/unmute control, and where does it live? What is the default state (on/off)? If the site has **no audio**, note that explicitly so the rebuild doesn't invent it.
 
 **Deliverable of this phase:** enough captured evidence (screenshots + real numbers) that you could rebuild the site with the tab closed.
 
@@ -120,8 +122,9 @@ Before writing a single line of the new site, produce a written **DNA Blueprint*
 - **Section-by-section storyboard** — for each section: purpose, layout, what enters/exits, on what trigger, over what scroll distance, with what timing/easing.
 - **Scroll model** — scrub vs. reveal vs. pin vs. parallax; scroll-distance-to-motion ratios; smooth-scroll behavior.
 - **Motion table** — durations, easings (real cubic-beziers), stagger, delays for the key moments.
+- **Audio model** — whether the site has sound at all; if so, the ambient bed / per-interaction SFX / scroll-synced audio, the playback-gating mechanism (autoplay policy, first-gesture unlock), the mute/unmute control and its default state — plus the **re-imagined** audio direction chosen for the brief. If the original is silent, say so.
 - **Design tokens** — the real extracted values, then the **re-imagined** values chosen for the brief beside them.
-- **Asset manifest** — every video/image/3D asset the original uses, and what we will generate to replace it under the new theme.
+- **Asset manifest** — every video/image/3D/audio asset the original uses, and what we will generate to replace it under the new theme.
 - **Tech approach** — which libraries/techniques reproduce each mechanic.
 
 ## Phase 3 — Re-imagine to the Brief
@@ -135,6 +138,7 @@ Hand the DNA Blueprint to the **bt-design** skill to build the actual frontend a
 - Match the blueprint's mechanics and timing **exactly** — this is a fidelity job, not a fresh design. Where bt-design would normally improvise, here it executes the blueprint.
 - Generate the re-imagined video/image/3D assets (image & video generation) to fill the asset manifest under the new theme — as beautiful and cinematic as the original's.
 - Reproduce the load choreography, scroll behavior, and micro-interactions from the motion table.
+- **Reproduce the audio model from the blueprint** — if the original has sound, rebuild the equivalent behavior (ambient bed, interaction/scroll SFX, mute toggle, autoplay-gating on first user gesture per browser policy) and generate re-imagined audio assets that match the new theme. If the original is silent, do not add audio unless the brief asks for it.
 
 **Enforced build mandate (always apply):**
 - Make the new site **as cinematic and award-winning as the original**, and make it **feel like a real game prototype, not a generic template**.
@@ -154,6 +158,7 @@ A copycat that "feels off" has failed. Before declaring done, verify the rebuild
 - Open the rebuilt site in the browser and capture the **same scroll-depth storyboard** you captured in Phase 1. Compare side by side against the blueprint — does each beat land at the same scroll position with the same motion?
 - Check the load sequence, easings, and stagger match the motion table.
 - Confirm nothing is janky: smooth scrubbing, no layout shift, motion holds 60fps where the original does.
+- Confirm the audio behavior matches the blueprint: if the original had sound, ours has the equivalent ambient bed / SFX, a working mute toggle, and correct autoplay-gating; if the original was silent, ours is too (unless the brief asked otherwise).
 - Confirm the *skin* fully reads as the new brief, not a recolor of the original's content.
 
 Report any beat where fidelity is imperfect and fix it — do not paper over a mechanic you couldn't reproduce.
