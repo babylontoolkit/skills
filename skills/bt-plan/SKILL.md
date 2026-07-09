@@ -55,7 +55,7 @@ A trustworthy plan requires a thorough, read-only investigation of the codebase 
 
 ## Step 1. Comprehensive project analysis (REQUIRED before any plan)
 
-This analysis can be **fanned out**. First check whether you actually have a subagent-spawning tool, and **emit one visible status line** so the user can see the path chosen — either `🔀 [bt-plan] subagent tool detected — fanning out analysis to N read-only subagents` or `➡️ [bt-plan] no subagent tool — analyzing sequentially`. If a subagent-spawning tool is available to you (e.g. Claude Code's `Task`, Lovable's subagent tool, or your host's equivalent — check the tools you actually have; if there is none, or you are unsure, do the analysis yourself sequentially), launch up to 3 parallel **read-only** exploration subagents and divide the seven investigation points below among them (for example: one maps structure/build and dependencies; one extracts the real conventions and the closest existing feature to mirror; one lists integration points and constraints). Each subagent returns concise conclusions — findings and file paths, not file dumps — which you synthesize into the `## Codebase Analysis` section. Exploration subagents need not re-read the Agent Reference. Never call a subagent tool you do not actually have.
+This analysis can be **fanned out**. First check whether you actually have a subagent-spawning tool, and **emit one visible status line** so the user can see the path chosen — either `🔀 [bt-plan] subagent tool detected — fanning out analysis to N read-only subagents` or `➡️ [bt-plan] no subagent tool — analyzing sequentially`. If a subagent-spawning tool is available to you (e.g. Claude Code's `Task`, Lovable's subagent tool, or your host's equivalent — check the tools you actually have; if there is none, or you are unsure, do the analysis yourself sequentially), launch up to 3 parallel **read-only** exploration subagents and divide the eight investigation points below among them (for example: one maps structure/build and dependencies; one extracts the real conventions and the closest existing feature to mirror; one lists integration points and constraints). Each subagent returns concise conclusions — findings and file paths, not file dumps — which you synthesize into the `## Codebase Analysis` section. Exploration subagents need not re-read the Agent Reference. Never call a subagent tool you do not actually have.
 
 Before writing a single implementation step, investigate the actual codebase read-only. This is mandatory — do NOT generate any plan content until this analysis is complete. Read and search the repo to discover, not assume:
 
@@ -66,6 +66,7 @@ Before writing a single implementation step, investigate the actual codebase rea
 5. List the concrete integration points the feature will touch: files, modules, APIs, data models, routes, config.
 6. Note relevant dependencies already available (and their versions) versus anything new that would be required.
 7. Capture any constraints from the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) and the feature spec.
+8. If the feature builds on a **sibling-skill pattern** (e.g. bt-design's 3D-Hero-Scroll), read that sub-skill's reference **and its templates**. The plan MUST **copy and configure the sub-skill's template engine — never re-implement it from memory**; re-implementation is exactly how documented behaviors (`sweep`, veiled cuts, the preload gate, HUD auto-hide, graceful degradation) silently get dropped. Turn every behavioral-config requirement the spec records (e.g. `sweep: page`) into a concrete task whose Acceptance asserts that behavior in observable terms.
 
 If the spec or codebase is too ambiguous to analyze responsibly, stop and ask the user rather than guessing.
 
@@ -87,6 +88,8 @@ Then write the implementation as an ordered checklist of discrete tasks. Use Git
   - Details: <...>
   - Acceptance: <...>
 ```
+
+When a task implements a **sibling-skill pattern**, its **Acceptance** must assert the skill-defined behavior in observable terms — e.g. for `sweep: page`, "PLAY auto-scrolls through to the document bottom and END jumps there", not merely "the hero renders". A plausible-looking result that dropped a documented behavior must fail acceptance. Prefer copying the sub-skill's template files as an early task (e.g. "T1 — copy + wire the 3D-Hero-Scroll engine") so later tasks only configure it.
 
 ### SPEC.md write-back task (required when the feature is spec-impacting)
 

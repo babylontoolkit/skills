@@ -149,7 +149,7 @@ Hand the DNA Blueprint to the **bt-design** skill to build the actual frontend a
 
 **Scroll-scrubbed / cinematic scroll heroes:** if the original's hero is scroll-driven (as igloo.inc is), this is a **3D-Hero-Scroll** job. Route through bt-design → `references/3d-hero-scroll.md` and copy the drop-in templates from `templates/3d-hero-scroll/` — do not re-implement the scrub engine from memory. Map the reference's real numbers (footage length, scroll-distance-per-second, telemetry, jump cuts) into `HS_CONFIG` and the `--hs-*` tokens.
 
-**ONLY IF** the user requests to add `3D scroll controls`, use the (bt-design → 3D-Hero-Scroll → playback controls) sub-skill with the requested reach (default: page) to add smooth cinematic playback controls.
+**ONLY IF** the user requests to add `3D scroll controls`, use the (bt-design → 3D-Hero-Scroll → playback controls) sub-skill with the requested `sweep` (default: `page`) to add smooth cinematic playback controls.
 
 ## Phase 5 — Verify Fidelity Against the Original
 

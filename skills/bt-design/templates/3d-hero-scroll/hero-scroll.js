@@ -2,40 +2,47 @@
    3D-HERO-SCROLL — scroll-scrubbed cinematic hero engine
    Generic, brand-agnostic, config-driven. Pairs with hero-scroll.css.
 
-   Host page configures via window.HS_CONFIG (all keys optional):
+   FRAMEWORK-AGNOSTIC ESM. One engine, two hosts:
 
-   window.HS_CONFIG = {
-     video: "media/journey-scrub.mp4", // ALL-INTRA encoded (-g 1) mp4
-     smoothing: 0.16,                  // scrub low-pass factor (1 = none)
-     motionBlur: true,                 // scroll-velocity blur on footage
-     fallbackClass: "hs-no-video",     // body class when footage missing
-     telemetry: {                      // omit (null) to disable HUD math
-       max: 250,                       // value at endP
-       startP: 0.286,                  // progress where value leaves 0 —
-                                       //   CALIBRATE from footage frames!
-       endP: 0.95,                     // progress where value hits max
-       exponent: 0.45,                 // <1 = violent launch, 1 = linear
-       segments: [                     // [progressThreshold, label]
-         [0.0,  "SEG 01"],
-         [0.25, "SEG 02"],
-       ],
-     },
-     reach: "page",                    // "page" (default): PLAY glides on to
-                                       //   the document bottom and END jumps
-                                       //   there (full cinematic ride);
-                                       //   "hero": PLAY and END stop at the
-                                       //   journey's end — you land on the
-                                       //   regular HTML section right after
-                                       //   the hero, same as a normal scroll
-                                       //   (opt in explicitly)
-     tailRate: 0.5,                    // autoplay px/s after journey,
-                                       //   as a fraction of innerHeight
-                                       //   (reach: "page" only)
-     veilFadeMs: 480,                  // veiled-cut fade duration
-     veilHoldMs: 450,                  // hold on black (sweep plays here)
-   };
+   • Plain HTML — load as a module; it auto-boots against `document` when
+     `window.HS_CONFIG` is set and a `#hs-journey` exists:
+        <script type="module" src="hero-scroll.js"></script>
+   • React / Vue / any bundler — import and mount against your own root, then
+     tear down on unmount (see HeroScroll.tsx):
+        import { initHeroScroll } from "./hero-scroll";
+        const hs = initHeroScroll(rootEl, config);  // rootEl contains the markup
+        // ...later: hs.destroy();
 
-   Required markup (see hero-scroll.html):
+   Config (all keys optional; pass as `window.HS_CONFIG` or the 2nd arg):
+
+     {
+       video: "media/journey-scrub.mp4", // ALL-INTRA encoded (-g 1) mp4
+       smoothing: 0.16,                  // scrub low-pass factor (1 = none)
+       motionBlur: true,                 // scroll-velocity blur on footage
+       fallbackClass: "hs-no-video",     // body class when footage missing
+       telemetry: {                      // omit (null) to disable HUD math
+         max: 250, startP: 0.286, endP: 0.95, exponent: 0.45,
+         segments: [[0.0,"SEG 01"], [0.25,"SEG 02"]],
+       },
+       sweep: "page",                    // "page" (default): PLAY glides on to
+                                         //   the document bottom and END jumps
+                                         //   there (full cinematic ride);
+                                         //   "hero": PLAY and END stop at the
+                                         //   journey's end — you land on the
+                                         //   regular section right after the
+                                         //   hero, same as a normal scroll.
+                                         //   (Names where autoplay/jumps end;
+                                         //   deliberately NOT called "reach" so
+                                         //   it never collides with route/DOM
+                                         //   scope in a spec/plan.)
+       tailRate: 0.5,                    // autoplay px/s after journey,
+                                         //   as a fraction of the viewport
+                                         //   (sweep: "page" only)
+       veilFadeMs: 480,                  // veiled-cut fade duration
+       veilHoldMs: 450,                  // hold on black (sweep plays here)
+     }
+
+   Required markup (inside `root`; see hero-scroll.html / HeroScroll.tsx):
      #hs-journey > .hs-stage > #hs-video           the scrub stage
    Optional markup — each feature activates only if its element exists:
      #hs-loader (+ #hs-loader-fill, #hs-loader-pct) preload screen
@@ -46,29 +53,34 @@
      .hs-ovl[data-from][data-to]                    choreographed overlays
        [data-hs-depth] children                     parallax drift
        [data-hs-count][data-target][data-decimals]  count-up stats
-   The #hs-veil element is injected automatically.
+   The #hs-veil element is injected automatically (and removed on destroy).
 
-   Public API: window.HS = { veilTo(y), play(), stop(), progress() }
+   initHeroScroll(root, config) → { play, stop, veilTo, progress, destroy }
    ═══════════════════════════════════════════════════════════════════ */
 
-(() => {
-  "use strict";
+"use strict";
 
-  const USER = window.HS_CONFIG || {};
-  const CFG = {
-    video: "media/journey-scrub.mp4",
-    smoothing: 0.16,
-    motionBlur: true,
-    fallbackClass: "hs-no-video",
-    telemetry: null,
-    reach: "page",
-    tailRate: 0.5,
-    veilFadeMs: 480,
-    veilHoldMs: 450,
-    ...USER,
-  };
+const DEFAULTS = {
+  video: "media/journey-scrub.mp4",
+  smoothing: 0.16,
+  motionBlur: true,
+  fallbackClass: "hs-no-video",
+  telemetry: null,
+  sweep: "page",
+  tailRate: 0.5,
+  veilFadeMs: 480,
+  veilHoldMs: 450,
+};
 
-  const $ = (s) => document.querySelector(s);
+/**
+ * Mount the hero-scroll engine against a root element (or `document`).
+ * Returns a controller; call `.destroy()` to fully tear down (React unmount).
+ */
+export function initHeroScroll(root = document, userConfig = {}) {
+  const CFG = { ...DEFAULTS, ...userConfig };
+
+  const scope = root === document ? document : root;
+  const $ = (s) => scope.querySelector(s);
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const linear = (t) => t;
   const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
@@ -78,10 +90,9 @@
 
   const journey = $("#hs-journey");
   const video = $("#hs-video");
-  if (!journey || !video) return; // nothing to drive
+  if (!journey || !video) return { destroy() {} }; // nothing to drive
 
   // optional chrome — every feature is presence-gated
-  const loader = $("#hs-loader");
   const loaderFill = $("#hs-loader-fill");
   const loaderPct = $("#hs-loader-pct");
   const hud = $("#hs-hud");
@@ -102,10 +113,48 @@
 
   document.body.dataset.hsState = "loading";
 
+  /* ── scroll container resolution ───────────────────────────────────
+     CRITICAL for framework hosts: the page may scroll on `document.body`
+     or an overflow ancestor rather than the window (e.g. apps that set
+     `html, body { height: 100%; overflow-y: auto }`). Assuming the window
+     silently breaks scrubbing. Resolve the element that actually scrolls,
+     and read/write scroll through it. */
+
+  function resolveScroller(node) {
+    let el = node && node.parentElement;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const oy = getComputedStyle(el).overflowY;
+      if ((oy === "auto" || oy === "scroll") && el.scrollHeight > el.clientHeight)
+        return el;
+      el = el.parentElement;
+    }
+    if (
+      document.body.scrollHeight > document.body.clientHeight + 1 &&
+      getComputedStyle(document.body).overflowY !== "visible"
+    )
+      return document.body;
+    return document.scrollingElement || document.documentElement;
+  }
+
+  const scroller = resolveScroller(journey);
+  const isDocScroller =
+    scroller === document.scrollingElement ||
+    scroller === document.documentElement ||
+    scroller === document.body;
+
+  const getY = () => scroller.scrollTop;
+  const setY = (y) => {
+    scroller.scrollTop = y;
+  };
+  const viewportH = () => (isDocScroller ? innerHeight : scroller.clientHeight);
+  const maxY = () => scroller.scrollHeight - viewportH();
+
   /* ── preload the footage as a blob so seeking is instant ──────── */
 
   let videoReady = false;
   let duration = 0;
+  let objectUrl = null;
+  let alive = true;
 
   function setLoader(p) {
     const pct = Math.round(clamp(p, 0, 1) * 100);
@@ -124,16 +173,19 @@
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (!alive) return;
         chunks.push(value);
         received += value.length;
         setLoader(total ? received / total : 0.5);
       }
       setLoader(1);
-      video.src = URL.createObjectURL(new Blob(chunks, { type: "video/mp4" }));
+      objectUrl = URL.createObjectURL(new Blob(chunks, { type: "video/mp4" }));
+      video.src = objectUrl;
       await new Promise((ok, err) => {
         video.addEventListener("loadedmetadata", ok, { once: true });
         video.addEventListener("error", err, { once: true });
       });
+      if (!alive) return;
       duration = video.duration;
       video.currentTime = 0;
       videoReady = true;
@@ -141,12 +193,12 @@
       document.body.classList.add(CFG.fallbackClass); // poster still shows
       setLoader(1);
     }
-    document.body.dataset.hsState = "ready";
+    if (alive) document.body.dataset.hsState = "ready";
   }
 
   /* ── overlay windows ───────────────────────────────────────────── */
 
-  const overlays = [...document.querySelectorAll(".hs-ovl")].map((el) => ({
+  const overlays = [...scope.querySelectorAll(".hs-ovl")].map((el) => ({
     el,
     from: parseFloat(el.dataset.from),
     to: parseFloat(el.dataset.to),
@@ -164,6 +216,7 @@
     const t0 = performance.now();
     const DUR = reduced ? 0 : 1400;
     const tick = (now) => {
+      if (!alive || !o.counting) return;
       const k = DUR ? easeInOutCubic(clamp((now - t0) / DUR, 0, 1)) : 1;
       for (const c of o.counters) {
         const target = parseFloat(c.dataset.target);
@@ -172,7 +225,7 @@
         if (c.dataset.group) v = (+v).toLocaleString("en-US");
         c.textContent = v;
       }
-      if (k < 1 && o.counting) requestAnimationFrame(tick);
+      if (k < 1) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
   }
@@ -231,7 +284,8 @@
     if (!TEL || p <= TEL.startP) return 0;
     const span = Math.max(0.001, (TEL.endP ?? 0.95) - TEL.startP);
     return (
-      TEL.max * Math.pow(clamp((p - TEL.startP) / span, 0, 1), TEL.exponent ?? 0.45)
+      TEL.max *
+      Math.pow(clamp((p - TEL.startP) / span, 0, 1), TEL.exponent ?? 0.45)
     );
   }
 
@@ -241,24 +295,23 @@
   let lastP = 0;
   let journeyTop = 0;
   let journeyScroll = 1;
+  let frameRaf = null;
 
   function measure() {
-    journeyTop = journey.offsetTop;
-    journeyScroll = Math.max(1, journey.offsetHeight - innerHeight);
+    const sTop = isDocScroller ? 0 : scroller.getBoundingClientRect().top;
+    journeyTop = journey.getBoundingClientRect().top - sTop + getY();
+    journeyScroll = Math.max(1, journey.offsetHeight - viewportH());
   }
 
-  const docMax = () =>
-    document.documentElement.scrollHeight - innerHeight;
-
-  // where PLAY/END consider "the end": journey end (reach:"hero") or
-  // document bottom (reach:"page")
+  // where PLAY/END consider "the end": journey end (sweep:"hero") or
+  // document bottom (sweep:"page")
   const endY = () =>
-    CFG.reach === "hero"
-      ? journeyTop + journey.offsetHeight - innerHeight
-      : docMax();
+    CFG.sweep === "hero"
+      ? journeyTop + journey.offsetHeight - viewportH()
+      : maxY();
 
   function frame() {
-    const y = clamp(scrollY - journeyTop, 0, journeyScroll);
+    const y = clamp(getY() - journeyTop, 0, journeyScroll);
     const p = y / journeyScroll;
 
     smoothP += (p - smoothP) * (reduced ? 1 : CFG.smoothing);
@@ -289,16 +342,16 @@
       }
       hud.classList.toggle(
         "hs-hud-off",
-        scrollY > journeyTop + journey.offsetHeight - innerHeight * 0.55
+        getY() > journeyTop + journey.offsetHeight - viewportH() * 0.55
       );
     }
 
-    if (gotoTop) gotoTop.classList.toggle("hs-nav-dim", scrollY < 4);
-    if (gotoEnd) gotoEnd.classList.toggle("hs-nav-dim", scrollY >= endY() - 4);
+    if (gotoTop) gotoTop.classList.toggle("hs-nav-dim", getY() < 4);
+    if (gotoEnd) gotoEnd.classList.toggle("hs-nav-dim", getY() >= endY() - 4);
 
     for (const o of overlays) styleOverlay(o, smoothP);
 
-    requestAnimationFrame(frame);
+    if (alive) frameRaf = requestAnimationFrame(frame);
   }
 
   /* ── veiled cut + film-speed autoplay ──────────────────────────── */
@@ -306,6 +359,15 @@
   let autoActive = false;
   let autoRaf = null;
   let autoToken = 0; // invalidates in-flight timelines/veil callbacks
+  const timers = new Set();
+  const later = (fn, ms) => {
+    const id = setTimeout(() => {
+      timers.delete(id);
+      fn();
+    }, ms);
+    timers.add(id);
+    return id;
+  };
 
   function stopAuto() {
     autoToken += 1;
@@ -325,19 +387,19 @@
   function veilTo(targetY, done) {
     const token = ++autoToken;
     veil.classList.add("hs-on");
-    setTimeout(() => {
+    later(() => {
       if (token !== autoToken) return;
-      window.scrollTo(0, targetY);
+      setY(targetY);
       const p = clamp((targetY - journeyTop) / journeyScroll, 0, 1);
       smoothP = p; // snap the smoothed scrub — no reverse/fast-forward flash
       lastP = p;
       if (videoReady && duration)
         video.currentTime = p * Math.max(0, duration - 0.05);
-      setTimeout(() => {
+      later(() => {
         if (token !== autoToken) return;
         veil.classList.remove("hs-on");
         if (done)
-          setTimeout(() => {
+          later(() => {
             if (token === autoToken) done(token);
           }, 200); // continue as the veil lifts
       }, CFG.veilHoldMs);
@@ -346,13 +408,13 @@
 
   function runFrom(token) {
     if (token !== autoToken) return;
-    const max = docMax();
-    const journeyEnd = journeyTop + journey.offsetHeight - innerHeight;
+    const max = maxY();
+    const journeyEnd = journeyTop + journey.offsetHeight - viewportH();
     const filmRate = journeyScroll / (videoReady && duration ? duration : 30);
-    const tailRate = Math.max(420, innerHeight * CFG.tailRate);
+    const tailRate = Math.max(420, viewportH() * CFG.tailRate);
 
     const segs = [];
-    let from = scrollY;
+    let from = getY();
     if (from < journeyEnd)
       segs.push({
         from,
@@ -360,7 +422,7 @@
         dur: ((journeyEnd - from) / filmRate) * 1000, // real-time film speed
         ease: linear,
       });
-    if (CFG.reach !== "hero" && Math.max(from, journeyEnd) < max)
+    if (CFG.sweep !== "hero" && Math.max(from, journeyEnd) < max)
       segs.push({
         from: Math.max(from, journeyEnd),
         to: max,
@@ -378,7 +440,7 @@
       if (token !== autoToken) return;
       const s = segs[i];
       const k = s.dur > 0 ? clamp((now - t0) / s.dur, 0, 1) : 1;
-      window.scrollTo(0, s.from + (s.to - s.from) * s.ease(k));
+      setY(s.from + (s.to - s.from) * s.ease(k));
       if (k >= 1) {
         i += 1;
         t0 = now;
@@ -399,26 +461,30 @@
       playBtn.setAttribute("aria-pressed", "true");
       if (playLabel) playLabel.textContent = playLabel.dataset.busy || "STOP";
     }
-    if (scrollY >= endY() - 8) {
+    if (getY() >= endY() - 8) {
       veilTo(0, (token) => runFrom(token)); // replay: cut to black, re-arm
     } else {
       runFrom(++autoToken);
     }
   }
 
-  if (playBtn)
-    playBtn.addEventListener("click", () =>
-      autoActive ? stopAuto() : startAuto()
-    );
+  /* ── listeners (all tracked for teardown) ──────────────────────── */
 
+  const bound = [];
+  const on = (target, ev, fn, opts) => {
+    target.addEventListener(ev, fn, opts);
+    bound.push([target, ev, fn, opts]);
+  };
+
+  if (playBtn)
+    on(playBtn, "click", () => (autoActive ? stopAuto() : startAuto()));
   if (gotoTop)
-    gotoTop.addEventListener("click", () => {
+    on(gotoTop, "click", () => {
       stopAuto();
       veilTo(0);
     });
-
   if (gotoEnd)
-    gotoEnd.addEventListener("click", () => {
+    on(gotoEnd, "click", () => {
       stopAuto();
       veilTo(endY());
     });
@@ -437,19 +503,57 @@
     stopAuto();
   };
   for (const ev of ["wheel", "touchstart", "keydown"])
-    addEventListener(ev, cancelInput, { passive: true });
+    on(window, ev, cancelInput, { passive: true });
+
+  // scroll can happen on window or an overflow element — listen on both
+  // (element scroll doesn't bubble to window; capture on document catches it).
+  const onResize = () => measure();
+  on(window, "resize", onResize);
 
   /* ── go ────────────────────────────────────────────────────────── */
 
-  addEventListener("resize", measure);
   measure();
   preload();
-  requestAnimationFrame(frame);
+  frameRaf = requestAnimationFrame(frame);
 
-  window.HS = {
-    veilTo,
-    play: startAuto,
-    stop: stopAuto,
-    progress: () => smoothP,
+  /* ── teardown ──────────────────────────────────────────────────── */
+
+  function destroy() {
+    alive = false;
+    autoToken += 1;
+    if (frameRaf !== null) cancelAnimationFrame(frameRaf);
+    if (autoRaf !== null) cancelAnimationFrame(autoRaf);
+    for (const id of timers) clearTimeout(id);
+    timers.clear();
+    for (const [target, ev, fn, opts] of bound)
+      target.removeEventListener(ev, fn, opts);
+    if (veil.parentNode) veil.parentNode.removeChild(veil);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    delete document.body.dataset.hsState;
+    document.body.classList.remove(CFG.fallbackClass);
+  }
+
+  return { play: startAuto, stop: stopAuto, veilTo, progress: () => smoothP, destroy };
+}
+
+export default initHeroScroll;
+
+/* ── plain-HTML auto-boot ───────────────────────────────────────────
+   When loaded as a module in a plain HTML page that sets window.HS_CONFIG
+   and has a #hs-journey, boot automatically against the document. Bundler/
+   React hosts import initHeroScroll directly and never set HS_CONFIG, so
+   this stays dormant there. */
+if (
+  typeof window !== "undefined" &&
+  window.HS_CONFIG &&
+  typeof document !== "undefined" &&
+  document.getElementById &&
+  document.getElementById("hs-journey")
+) {
+  const boot = () => {
+    window.HS = initHeroScroll(document, window.HS_CONFIG);
   };
-})();
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+  else boot();
+}

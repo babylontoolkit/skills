@@ -26,7 +26,7 @@
 
 <!-- OPTIONAL · telemetry HUD (value curve configured in HS_CONFIG) -->
 <aside id="hs-hud" aria-label="Telemetry">
-  <div><span id="hs-hud-value">0</span> <span class="hs-hud-unit">MPH</span></div>
+  <div><span id="hs-hud-value">0</span> <span class="hs-hud-unit">UNIT</span></div>
   <div class="hs-hud-bar"><span id="hs-hud-progress"></span></div>
   <div class="hs-hud-meta"><span id="hs-hud-seg"></span><span id="hs-hud-pct">000%</span></div>
 </aside>
@@ -58,10 +58,11 @@
 <script>
   window.HS_CONFIG = {
     video: "media/journey-scrub.mp4", // ALL-INTRA (-g 1) scrub encode
-    reach: "page",   // "page" (default): PLAY/END traverse the whole landing
+    sweep: "page",   // "page" (default): PLAY/END traverse the whole landing
                      // page; "hero": PLAY/END stop at the journey's end — you
                      // land on the next regular HTML section, same as a
-                     // normal scroll (opt in explicitly)
+                     // normal scroll (opt in explicitly). Named `sweep`, not
+                     // `reach`, to avoid colliding with route/DOM-scope terms.
     telemetry: {
       max: 250,        // HUD value at endP
       startP: 0.286,   // CALIBRATE: first frame of real subject motion
@@ -71,4 +72,7 @@
     },
   };
 </script>
-<script src="hero-scroll.js"></script>
+<!-- ESM module: auto-boots against the document because HS_CONFIG is set above.
+     (React/bundler hosts import initHeroScroll from hero-scroll.js instead —
+     see HeroScroll.tsx — and never set window.HS_CONFIG.) -->
+<script type="module" src="hero-scroll.js"></script>

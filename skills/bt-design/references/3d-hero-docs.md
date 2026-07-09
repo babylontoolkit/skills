@@ -2,13 +2,16 @@
 
 
 **TL;DR: the prompt is a config file written in prose.** Every named field maps
-1:1 to code the skill generates. You already know the output (the VANTA site) —
-this doc shows which prompt line produced which file.
+1:1 to code the skill generates — this doc shows which prompt line produces
+which file. The skill is **product-agnostic**: examples use neutral placeholders
+and varied domains, and every visual is derived from the prompt's own subject.
+Never default to one look (a vehicle, a desert, cyan-on-black) regardless of
+what the subject actually is.
 
 ```
 PROMPT FIELD          →  WHAT IT BECOMES IN CODE
 ─────────────────────────────────────────────────────────────────────
-reach: page|hero      →  HS_CONFIG.reach
+sweep: page|hero      →  HS_CONFIG.sweep
 FOOTAGE (the beats)   →  media pipeline → journey-scrub.mp4 + poster.jpg
                          → HS_CONFIG.video
 CONTROLS              →  which optional HTML blocks exist (#hs-hud,
@@ -32,24 +35,24 @@ Each numbered beat in the prompt = **one ~8s generated clip**. Four beats =
 four video-generation calls = a 32s film. That's the entire relationship.
 
 ```
-PROMPT                                          CODE
+PROMPT (placeholders — fill from the subject)    CODE
 ──────────────────────────────────────────────────────────────────────
-"Hero anchor image first: low, wide,      generate_image({
- matte obsidian, thin cyan light-bar"       prompt: "...low wide matte obsidian...",
-                                            out_path: "media/hero.jpg" })
+"Hero anchor image first: <one clear        generate_image({
+ look of the product>"                        prompt: "<anchor look>",
+                                              out_path: "media/hero.jpg" })
 
-"1. REVEAL — dust settles to reveal       generate_video({
- the VANTA motionless"                      prompt: "<beat 1 text>",
-                                            image_paths: [dust.jpg, hero.jpg],
-                                            out_path: "clip1.mp4" })
+"1. <reveal beat — the subject appears>"    generate_video({
+                                              prompt: "<beat 1 text>",
+                                              image_paths: [concealed.jpg, hero.jpg],
+                                              out_path: "clip1.mp4" })
                                                         │
                                             ffmpeg -sseof -0.1 -i clip1.mp4
                                               -frames:v 1 clip1-last.jpg   ◄─ last frame
                                                         │
-"2. THE RUN — launches across             generate_video({
- the desert flats"                          prompt: "<beat 2 text>",
-                                            image_paths: [clip1-last.jpg],  ◄─ becomes
-                                            out_path: "clip2.mp4" })           first frame
+"2. <motion beat — the subject moves>"      generate_video({
+                                              prompt: "<beat 2 text>",
+                                              image_paths: [clip1-last.jpg],  ◄─ becomes
+                                              out_path: "clip2.mp4" })           first frame
                                             ... repeat for beats 3, 4 ...
                                                         │
 all beats                                 ffmpeg concat → journey.mp4
@@ -90,9 +93,9 @@ Each control is one HTML block. The engine (`hero-scroll.js`) activates
 features by element presence — delete the block, feature's gone. No flags.
 
 ```
-"CONTROLS — HUD: MPH 0→250, ..."     →  keep <aside id="hs-hud">…
-"· PLAY ('PLAY THE RUN')"            →  keep <button id="hs-play">… with
-                                          data-idle="PLAY THE RUN"
+"CONTROLS — HUD: <METRIC> 0→<MAX>, ..." →  keep <aside id="hs-hud">…
+"· PLAY ('<label>')"                 →  keep <button id="hs-play">… with
+                                          data-idle="<label>"
 "· TOP/END jump nav"                 →  keep <nav id="hs-jump-nav">…
 "no jump nav"                        →  delete that block. Done.
 ```
@@ -103,30 +106,32 @@ scroll through the film. Pick a quantity that plausibly *rises during the
 footage you described* — that's all the sentence means:
 
 ```js
-// VANTA (car accelerating)         // AERIE (aircraft climbing)
+// depth rising (submersible)       // a % rising (analytics dashboard)
 telemetry: {                        telemetry: {
-  max: 250,        // ← mph           max: 12000,      // ← feet
-  startP: 0.286,   // calibrated      startP: 0.14,    // when it lifts off
+  max: 3800,       // ← metres         max: 94,         // ← percent
+  startP: 0.10,    // when it dives     startP: 0.10,    // when it builds
   endP: 0.95,                         endP: 0.9,
-  exponent: 0.45,                     exponent: 0.7,
+  exponent: 0.6,                      exponent: 0.7,
   segments: [                         segments: [
-    [0.00, "SEG 01 · WHITE SANDS"],     [0.00, "PAD"],
-    [0.25, "SEG 02 · THE FLATS"],       [0.25, "FJORD"],
-    [0.50, "SEG 03 · RED CANYON"],      [0.50, "RIDGE"],
-    [0.75, "SEG 04 · NIGHT RUN"],       [0.75, "APPROACH"],
-  ],                                  ],
-}                                   }
+    [0.00, "SURFACE"],                  [0.00, "ASSEMBLY"],
+    [0.25, "SUNLIT"],                   [0.33, "THE CATCH"],
+    [0.50, "TWILIGHT"],                 [0.66, "THE CALM"],
+    [0.75, "THE FLOOR"],              ],
+  ],                                }
+}
 ```
+(The metric is whatever plausibly rises during *your* footage — depth, altitude,
+temperature, a percentage, a count. Don't reach for speed by default.)
 
 **"Segments are the beats renamed" decoded:** four equal clips means clip
 boundaries sit at progress 0.25 / 0.50 / 0.75. `segments` is just the label
 the HUD shows in each quarter — i.e. which clip you're currently scrubbing.
-Three clips → thresholds 0, 0.33, 0.66. The unit text ("MPH", "FT") is plain
-markup in the HUD block: `<span class="hs-hud-unit">MPH</span>`.
+Three clips → thresholds 0, 0.33, 0.66. The unit text ("M", "%", "FT", …) is
+plain markup in the HUD block: `<span class="hs-hud-unit">UNIT</span>`.
 
 `startP` is the one hand-tuned value: the progress where the number leaves 0
-(the frame the car actually launches, found by extracting frames around the
-clip boundary — the skill does this calibration; playbook §4).
+(the frame the subject actually starts moving/changing, found by extracting
+frames around the clip boundary — the skill does this calibration; playbook §4).
 
 ---
 
@@ -137,26 +142,26 @@ stage. You write normal HTML; two data attributes place it on the film's
 timeline (0 = film start, 1 = film end):
 
 ```
-PROMPT: "OVERLAYS — ultrawide wordmark → count-up stats (1.9s · 1,200 hp
-         · 520 mi) → design macros → night copy"
+PROMPT: "OVERLAYS — ultrawide wordmark → count-up stats (A · B · C) →
+         feature moment → closing line"
 
 CODE:
 <section class="hs-ovl" data-from="0" data-to="0.115">
-  <h1>VANTA</h1>                                   <!-- rides the reveal -->
+  <h1>WORDMARK</h1>                                <!-- rides beat 1 -->
 </section>
 
 <section class="hs-ovl hs-scrim" data-from="0.26" data-to="0.46">
-  <span data-hs-count data-target="1.9" data-decimals="1">0</span>s 0–60
-  <span data-hs-count data-target="1200" data-group="1">0</span> HP
-  <span data-hs-count data-target="520">0</span> MI    <!-- rides the run -->
+  <span data-hs-count data-target="1.9" data-decimals="1">0</span> STAT A
+  <span data-hs-count data-target="1200" data-group="1">0</span> STAT B
+  <span data-hs-count data-target="520">0</span> STAT C   <!-- rides beat 2 -->
 </section>
 
 <section class="hs-ovl hs-scrim" data-from="0.52" data-to="0.70">
-  <img src="media/macro-1.jpg" data-hs-depth="0.4" />  <!-- rides the canyon -->
+  <img src="media/macro-1.jpg" data-hs-depth="0.4" />  <!-- rides beat 3 -->
 </section>
 
 <section class="hs-ovl" data-from="0.78" data-to="0.96">
-  <h2>THE BODY DISAPPEARS.</h2>                    <!-- rides the night -->
+  <h2>CLOSING LINE.</h2>                           <!-- rides beat 4 -->
 </section>
 ```
 
@@ -180,7 +185,7 @@ Nothing magic. Everything after `</div><!-- #hs-journey -->` is regular page:
 <section id="reserve"> …normal HTML/CSS… </section>        ◄ the prompt
 ```
 
-With `reach: "page"`, PLAY glides through these to the bottom after the film
+With `sweep: "page"`, PLAY glides through these to the bottom after the film
 ends, and END jumps to the very bottom. That's the only relationship.
 
 ---
@@ -231,7 +236,7 @@ toward the host page's background color. No JS involved.
 
 ```
 Redesign this starter template as a cinematic "3D scroll" website for AERIE —
-a two-seat electric VTOL aircraft. (bt-design → 3D-Hero-Scroll, reach: page)
+a two-seat electric VTOL aircraft. (bt-design → 3D-Hero-Scroll, sweep: page)
 
 FOOTAGE — generate the footage (16:9, ~8s clips). Hero anchor first:
 bone-white fuselage, glass canopy, six rotors, cliff-edge helipad at dawn.
@@ -273,7 +278,7 @@ index.html
   #route-teaser, #waitlist                   ← BELOW THE JOURNEY
   window.HS_CONFIG = {
     video: "media/journey-scrub.mp4",
-    reach: "page",                           ← "(reach: page)"
+    sweep: "page",                           ← "(sweep: page)"
     telemetry: { max: 12000, startP: <calibrated>, endP: 0.9,
       segments: [[0,"PAD"],[0.25,"FJORD"],[0.5,"RIDGE"],[0.75,"APPROACH"]] },
   }
@@ -290,7 +295,7 @@ hero-scroll.css  → --hs-bg:#f4f2ed; --hs-ink:#1c1e21; --hs-accent:#ffb400; …
 
 ```
 Redesign the hero section with 3D scrolling. (bt-design → 3D-Hero-Scroll,
-reach: hero) Do not touch anything below the hero; match existing tokens.
+sweep: hero) Do not touch anything below the hero; match existing tokens.
 
 FOOTAGE — generate the footage: hero anchor first (KOA TRAIL 2, burnt-orange knit,
 studded outsole, on granite at first light), then chain:
@@ -319,7 +324,7 @@ index.html (existing site — only the old 100vh hero div is replaced)
     .hs-ovl data-from=0.4  data-to=0.62    ← three stats
   window.HS_CONFIG = {
     video: "media/ridge-scrub.mp4",
-    reach: "hero",                     ← PLAY/END stop when the film ends
+    sweep: "hero",                     ← PLAY/END stop when the film ends
     telemetry: { max: 2400, startP: <calibrated>, endP: 0.92,
       segments: [[0,"SWITCHBACK"],[0.33,"RIDGE"],[0.66,"SUMMIT"]] },
   }                                    ← 3 clips → thirds, not quarters
@@ -336,7 +341,7 @@ beat 3's text ends "...warm sand-toned light floods the frame"  ← HANDOFF
 **PAGE:**
 ```
 Redesign this starter template as a cinematic "3D scroll" website for <NAME> —
-<one-liner>. (bt-design → 3D-Hero-Scroll, reach: page)
+<one-liner>. (bt-design → 3D-Hero-Scroll, sweep: page)
 FOOTAGE — generate the footage (16:9, ~8s clips). Hero anchor first:
 <product look>. Chain: 1. <reveal> 2. <motion> 3. <terrain change> 4. <finale>
 CONTROLS — HUD: <METRIC> 0→<MAX> <UNIT>, segments <A/B/C/D> · PLAY ("<label>")
@@ -350,7 +355,7 @@ Launch on localhost and run the skill's verification protocol.
 **HERO:**
 ```
 Redesign the hero section with 3D scrolling. (bt-design → 3D-Hero-Scroll,
-reach: hero) Do not touch anything below the hero; match existing tokens.
+sweep: hero) Do not touch anything below the hero; match existing tokens.
 FOOTAGE — <existing file at <path> | generate the footage: anchor + beats 1..3>
 CONTROLS — <HUD: METRIC 0→MAX UNIT | no HUD> · <PLAY ("<label>") | + TOP/END>.
 OVERLAYS — <headline> → <stats/copy mid-run>.
@@ -381,8 +386,8 @@ creative brief.
   film ends. Usually a shorter chain (2–3 beats) and lighter controls.
 
 **The diff between the two columns, every time:** PAGE adds BELOW THE JOURNEY
-+ BRAND and gets `reach: page`; HERO swaps those for HANDOFF + "match
-existing tokens" and gets `reach: hero`. FOOTAGE and OVERLAYS stay
++ BRAND and gets `sweep: page`; HERO swaps those for HANDOFF + "match
+existing tokens" and gets `sweep: hero`. FOOTAGE and OVERLAYS stay
 recognizably the same product — the film doesn't change, only who owns the
 page around it.
 
@@ -392,7 +397,7 @@ page around it.
 | 2  | Deep-sea expedition  | DEPTH 0→3,800 M        | shorter descent, keep depth  |
 | 3  | Personal portfolio   | (no HUD)               | work grid stays as host page |
 | 4  | Penthouse listing    | FLOOR 0→60             | 2-room tour, keep floor HUD  |
-| 5  | Hypercar (VANTA)     | MPH 0→250              | reveal+run only              |
+| 5  | Fusion demo (IGNIS)  | OUTPUT 0→500 MW        | chamber+ignition only        |
 | 6  | Streetwear drop      | COUNTDOWN (timer)      | its native mode              |
 | 7  | Restaurant           | (no HUD)               | its native mode              |
 | 8  | AI SaaS              | SIGNAL 0→94 %          | its native mode              |
@@ -407,7 +412,7 @@ page around it.
 ```
 Redesign this starter template as a cinematic "3D scroll" website for
 AURUM & NOIR — a fictional Swiss luxury watch brand launching its tourbillon
-chronograph, the "Eclipse." (bt-design → 3D-Hero-Scroll, reach: page)
+chronograph, the "Eclipse." (bt-design → 3D-Hero-Scroll, sweep: page)
 
 FOOTAGE — generate the footage. Hero anchor first: brushed black titanium case,
 gold tourbillon visible through sapphire glass, floating in a black void,
@@ -436,7 +441,7 @@ Copy tone: quiet, expensive, very few words.
 ```
 Redesign the hero section with 3D scrolling for AURUM & NOIR's "Eclipse"
 product page — a Swiss tourbillon chronograph.
-(bt-design → 3D-Hero-Scroll, reach: hero) The product details, specs, and
+(bt-design → 3D-Hero-Scroll, sweep: hero) The product details, specs, and
 buy module below stay; match existing tokens.
 
 FOOTAGE — generate the footage. Hero anchor first: brushed black titanium case,
@@ -466,7 +471,7 @@ on a still the product page can continue from. Same watch, same anchor image.
 Redesign this starter template as a cinematic "3D scroll" website for ABYSSAL
 — a fictional deep-sea expedition company that takes 8 civilians per year to
 the ocean floor aboard its submersible, the EREBUS.
-(bt-design → 3D-Hero-Scroll, reach: page)
+(bt-design → 3D-Hero-Scroll, sweep: page)
 
 FOOTAGE — generate the footage. Hero anchor first: sleek deep-black hull, glowing
 cyan viewport ring, twin floodlights. Chain:
@@ -497,7 +502,7 @@ accent, thin technical sans with HUD micro-details.
 ```
 Redesign the hero section with 3D scrolling for ABYSSAL — a deep-sea
 expedition company (submersible: EREBUS).
-(bt-design → 3D-Hero-Scroll, reach: hero) The itinerary, pricing, and booking
+(bt-design → 3D-Hero-Scroll, sweep: hero) The itinerary, pricing, and booking
 sections below stay; match existing tokens.
 
 FOOTAGE — generate the footage. Hero anchor first: sleek deep-black hull, glowing
@@ -526,7 +531,7 @@ Join the Manifest" close is now the host page's job.
 ```
 Redesign this starter template as a cinematic "3D scroll" PERSONAL PORTFOLIO
 website for me — [YOUR NAME]. The central element is ME.
-(bt-design → 3D-Hero-Scroll, reach: page) My attached photo is the identity
+(bt-design → 3D-Hero-Scroll, sweep: page) My attached photo is the identity
 anchor; keep my wardrobe identical throughout [black t-shirt, dark overshirt].
 
 FOOTAGE — generate the footage, my photo referenced on every generation. Chain:
@@ -553,7 +558,7 @@ display font, kinetic type, subtle grain.
 **HERO** *(cinematic intro on top of an existing portfolio)*
 ```
 Redesign the hero section with 3D scrolling for my portfolio — [YOUR NAME].
-(bt-design → 3D-Hero-Scroll, reach: hero) My existing about, work grid, and
+(bt-design → 3D-Hero-Scroll, sweep: hero) My existing about, work grid, and
 contact sections below stay; match existing tokens. My attached photo is the
 identity anchor; wardrobe [black t-shirt, dark overshirt] consistent.
 
@@ -583,7 +588,7 @@ walk intro, letting your real portfolio below do the rest.
 ```
 Redesign this starter template as a cinematic single-property "3D scroll"
 website for THE MERIDIAN — a fictional $12.5M penthouse on the 60th floor
-in [CITY]. (bt-design → 3D-Hero-Scroll, reach: page)
+in [CITY]. (bt-design → 3D-Hero-Scroll, sweep: page)
 
 FOOTAGE — generate the footage. Hero anchor first: the glass tower at dusk. Chain:
 1. Aerial drone shot curving around the tower, city lights igniting below.
@@ -611,7 +616,7 @@ generous whitespace.
 ```
 Redesign the hero section with 3D scrolling for THE MERIDIAN — a $12.5M
 60th-floor penthouse in [CITY].
-(bt-design → 3D-Hero-Scroll, reach: hero) The photo gallery, facts table, and
+(bt-design → 3D-Hero-Scroll, sweep: hero) The photo gallery, facts table, and
 showing-request form below stay; match existing tokens.
 
 FOOTAGE — generate the footage. Hero anchor first: the glass tower at dusk. Chain:
@@ -634,64 +639,61 @@ existing listing page.
 
 ---
 
-### 10.5 · VANTA (hypercar)
+### 10.5 · IGNIS (fusion-energy demonstrator)
 
-**PAGE** — the canonical build. Full prompt in playbook §6; this repo's
-`site/` is the result.
+**PAGE**
 ```
-Redesign this starter template as a cinematic "3D scroll" website for VANTA —
-a fictional 1,200 hp electric hypercar. Model it on the Scout Motors
-Site-of-the-Year style. (bt-design → 3D-Hero-Scroll, reach: page)
+Redesign this starter template as a cinematic "3D scroll" website for IGNIS —
+a fictional fusion-energy demonstrator reaching net-positive output for the
+first time. (bt-design → 3D-Hero-Scroll, sweep: page)
 
-FOOTAGE — generate the footage. Hero anchor first: low, wide, matte obsidian body,
-thin cyan light-bar face. Chain:
-1. REVEAL — dust settles in a white-sand desert at dawn to reveal the VANTA
-   motionless; light-bar ignites.
-2. THE RUN — low tracking shot as it launches across the flats, sand
-   ribboning off the wheels.
-3. THE CANYON — it threads a red-rock canyon at speed, camera whipping around
-   a corner to follow.
-4. NIGHT MODE — full dark; only its light signature and taillight trails
-   carving through dunes under stars.
+FOOTAGE — generate the footage. Hero anchor first: the inside of a spherical
+tokamak chamber, dark, cold, dormant, precision-machined walls. Chain:
+1. The chamber reveal — sensors wake, the cold vessel powers up, a faint
+   magnetic shimmer forms in the vacuum.
+2. Ignition — a thread of plasma sparks and blooms into a caged sun, light
+   flooding the chamber.
+3. The burn sustains and brightens; the plasma ring steadies as instruments
+   race.
+4. Net gain — the control room lights shift from amber to green as output
+   crosses break-even; the plasma holds, serene.
 
-CONTROLS — HUD: MPH 0 → 250, segments WHITE SANDS / THE FLATS / RED CANYON /
-NIGHT RUN · PLAY ("PLAY THE RUN") · TOP/END.
+CONTROLS — HUD: OUTPUT 0 → 500 MW, segments CHAMBER / IGNITION / BURN /
+NET GAIN · PLAY ("BEGIN THE BURN") · TOP/END.
 
-OVERLAYS — "VANTA" ultrawide wordmark → count-up stats (0–60 in 1.9s ·
-1,200 hp · 520 mi) → design macros → night-mode copy.
+OVERLAYS — "IGNIS" wordmark → count-up stats (150,000,000 °C · Q > 10 ·
+500 MW) → a line on the confinement design → "Break-even, broken."
 
-BELOW THE JOURNEY — configurator teaser (3 paint options recolor a hero
-still) → "Reserve — $1,000 deposit" CTA.
+BELOW THE JOURNEY — how-it-works explainer → "Partner with us" CTA.
 
-BRAND — black on black, electric-cyan accent, ultrawide condensed type,
-subtle motion-blur transitions.
+BRAND — cold graphite grading to solar white-gold at ignition, one molten-amber
+accent, technical grotesk with fine mono readouts.
 ```
 
-**HERO** *(same film as a hero atop an existing VANTA marketing site)*
+**HERO** *(the ignition as a hero atop an existing program site)*
 ```
-Redesign the hero section with 3D scrolling for VANTA — a 1,200 hp electric
-hypercar. (bt-design → 3D-Hero-Scroll, reach: hero) The specs, configurator,
-and reserve sections below stay; match existing tokens.
+Redesign the hero section with 3D scrolling for IGNIS — a fusion-energy
+demonstrator. (bt-design → 3D-Hero-Scroll, sweep: hero) The technology,
+team, and partners sections below stay; match existing tokens.
 
-FOOTAGE — generate the footage. Hero anchor first: low, wide, matte obsidian body,
-thin cyan light-bar. Chain:
-1. REVEAL — dust settles at dawn to reveal the VANTA motionless; light-bar
-   ignites.
-2. THE RUN — low tracking shot as it launches across the desert flats, sand
-   ribboning off the wheels, ending in a hero stance.
+FOOTAGE — generate the footage. Hero anchor first: the dark, dormant tokamak
+chamber. Chain:
+1. The chamber wakes; a magnetic shimmer forms in the vacuum.
+2. Ignition — plasma sparks and blooms into a caged sun, settling into a
+   steady ring.
 
-CONTROLS — HUD: MPH 0 → 250 · PLAY ("PLAY THE RUN") · no jump nav.
+CONTROLS — HUD: OUTPUT 0 → 500 MW · PLAY ("BEGIN THE BURN") · no jump nav.
 
-OVERLAYS — "VANTA" ultrawide wordmark → "1,200 horsepower. Raised by the desert."
+OVERLAYS — "IGNIS" wordmark → "First light."
 
-HANDOFF — end the run frame on the dawn-lit flats; grade toward the site's
-dark body so it hands off into the existing specs section.
+HANDOFF — hold the final steady-plasma frame and grade its glow toward the
+site's dark background so it hands off into the existing technology section.
 ```
 
-*What changed:* PAGE runs the full reveal→run→canyon→night journey with the
-configurator + reserve built below; HERO keeps reveal + run (canyon/night are
-the back half of a long scroll) and lets the existing site own everything past
-the hero.
+*What changed:* PAGE runs the full chamber → ignition → burn → net-gain journey
+with the explainer + partner CTA built below; HERO keeps chamber + ignition
+(the two most iconic shots) and lets the existing site own everything past the
+hero. The metric is energy output, not speed — derived from the subject.
 
 ---
 
@@ -701,7 +703,7 @@ the hero.
 ```
 Redesign this starter template as a cinematic "3D scroll" e-commerce site for
 ONYX SUPPLY's "Midnight Drop" — a heavyweight hoodie, cargo pants, and a
-chrome-accent puffer. (bt-design → 3D-Hero-Scroll, reach: page)
+chrome-accent puffer. (bt-design → 3D-Hero-Scroll, sweep: page)
 
 FOOTAGE — generate the footage. Lookbook anchor first: a model in the full fit —
 matte black garments, chrome zippers — on a foggy rooftop at night. Chain:
@@ -726,7 +728,7 @@ condensed type.
 **HERO** *(scrub hero on top of an existing store — its native mode)*
 ```
 Redesign the hero section with 3D scrolling for ONYX SUPPLY's "Midnight Drop"
-store page. (bt-design → 3D-Hero-Scroll, reach: hero)
+store page. (bt-design → 3D-Hero-Scroll, sweep: hero)
 Do not touch the store below; match its existing tokens.
 
 FOOTAGE — generate the footage. Lookbook anchor first: a model in the full fit —
@@ -756,7 +758,7 @@ but HERO drops it for pure drama.
 ```
 Redesign this starter template as a cinematic "3D scroll" website for
 EMBER & OAK — a wood-fire steakhouse in [CITY].
-(bt-design → 3D-Hero-Scroll, reach: page)
+(bt-design → 3D-Hero-Scroll, sweep: page)
 
 FOOTAGE — generate the footage. Anchor first: a ribeye searing over open flame,
 embers rising into darkness, amber light. Chain:
@@ -780,7 +782,7 @@ parallax.
 **HERO** *(fire hero on top of an existing menu site — its native mode)*
 ```
 Redesign the hero section with 3D scrolling for EMBER & OAK — a wood-fire
-steakhouse in [CITY]. (bt-design → 3D-Hero-Scroll, reach: hero)
+steakhouse in [CITY]. (bt-design → 3D-Hero-Scroll, sweep: hero)
 The story, menu, and reservation sections below stay; match existing tokens.
 
 FOOTAGE — generate the footage. Anchor first: a ribeye searing over open flame,
@@ -810,7 +812,7 @@ the sear-into-room and lets the existing site carry the menu.
 ```
 Redesign this starter template as a cinematic "3D scroll" landing page for
 PULSE — an AI analytics platform that predicts customer churn before it
-happens. (bt-design → 3D-Hero-Scroll, reach: page)
+happens. (bt-design → 3D-Hero-Scroll, sweep: page)
 
 FOOTAGE — generate the footage. Anchor first: a clean floating dashboard UI with a
 rising, heartbeat-pulsing graph in a dark void. Chain:
@@ -837,7 +839,7 @@ geometric sans, glassmorphism cards.
 ```
 Redesign the hero section with 3D scrolling for PULSE — an AI analytics
 platform that predicts customer churn before it happens.
-(bt-design → 3D-Hero-Scroll, reach: hero) The feature blocks, pricing table,
+(bt-design → 3D-Hero-Scroll, sweep: hero) The feature blocks, pricing table,
 and FAQ below already exist; match their tokens.
 
 FOOTAGE — generate the footage. Anchor first: a clean floating dashboard UI with a
@@ -869,7 +871,7 @@ white — the textbook dark-film-over-light-page handoff.
 ```
 Redesign this starter template as a cinematic "3D scroll" website for NOIR&CO
 — a creative studio that designs brands "for companies that refuse to be
-ignored." (bt-design → 3D-Hero-Scroll, reach: page)
+ignored." (bt-design → 3D-Hero-Scroll, sweep: page)
 
 FOOTAGE — generate the footage. Anchor first: black ink mid-bloom in water,
 flashing into gold. Chain:
@@ -894,7 +896,7 @@ brutalist display + refined serif body.
 **HERO** *(the zero-controls variant — scrub only)*
 ```
 Redesign the hero section with 3D scrolling for NOIR&CO — a creative studio.
-(bt-design → 3D-Hero-Scroll, reach: hero) The work grid, services, and footer
+(bt-design → 3D-Hero-Scroll, sweep: hero) The work grid, services, and footer
 below stay; match existing tokens.
 
 FOOTAGE — generate the footage. Anchor first: black ink mid-bloom in water,
@@ -924,7 +926,7 @@ block and the engine is still a silky scrub with choreographed type.
 ```
 Redesign this starter template as a cinematic "3D scroll" website for FORGE —
 a strength gym in [CITY], motto "Earn it."
-(bt-design → 3D-Hero-Scroll, reach: page)
+(bt-design → 3D-Hero-Scroll, sweep: page)
 
 FOOTAGE — generate the footage. Anchor first: an athlete mid-clap, chalk cloud
 blooming through a single overhead shaft of light in a dark gym. Chain:
@@ -952,7 +954,7 @@ display, grain + vignette.
 **HERO** *(chalk-cloud hero on top of an existing gym site — its native mode)*
 ```
 Redesign the hero section with 3D scrolling for FORGE — a strength gym in
-[CITY], motto "Earn it." (bt-design → 3D-Hero-Scroll, reach: hero)
+[CITY], motto "Earn it." (bt-design → 3D-Hero-Scroll, sweep: hero)
 Programs, coaches, pricing, and schedule below stay; match existing tokens.
 
 FOOTAGE — generate the footage. Anchor first: an athlete mid-clap, chalk cloud

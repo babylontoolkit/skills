@@ -48,13 +48,15 @@ The project's **SPEC.md** at the repository root is the source of truth for the 
 - Align the feature idea to the existing architecture, systems, and conventions in SPEC.md. The feature spec you produce must be derived from and constrained by SPEC.md.
 - **If the feature idea conflicts with SPEC.md** (contradicts an architectural decision, a system boundary, or a convention), STOP and flag the conflict to the user before writing the spec. Do not silently override the project spec.
 - **Classify the feature's `spec_impact`:** it is `yes` if implementing the feature would add or change a game system, a convention, a dependency, or an architectural decision recorded in SPEC.md — otherwise `no`. This drives whether the plan will include a SPEC.md write-back task, so classify honestly.
-- If SPEC.md is missing or is still a stub with no real content, record that in the feature spec (`"No project SPEC.md content yet — following existing codebase conventions."`) and continue.
+- **If SPEC.md is missing or is still a stub with no real content, STOP and ask the user FIRST — before generating the feature spec — whether to create a default project `SPEC.md` from the fallback scaffold** (the scaffold is defined in *Validate The Project Spec* under Step 4). Do not draft the feature spec until they answer.
+  - **If the user says yes:** create `SPEC.md` at the repository root from the fallback scaffold, then continue — treat the newly written SPEC.md as the source of truth and align the feature spec to it (this is the normal path; the project now has a spec to grow).
+  - **If the user says no:** continue **without** a project-level SPEC.md, and record this note in the feature spec: `"No project SPEC.md content yet — following existing codebase conventions."`
 
 ---
 
 ## Planning mode — do not implement
 
-This command runs in PLANNING MODE. Research read-only and produce ONLY the spec document and its git branch. Do NOT implement the feature, edit any existing application/source files, or run build, test, or other shell commands. The only file you may create is the spec markdown described below.
+This command runs in PLANNING MODE. Research read-only and produce ONLY the spec document and its git branch. Do NOT implement the feature, edit any existing application/source files, or run build, test, or other shell commands. The only files you may create are the feature spec markdown described below and — **only if the user opts in** when the project `SPEC.md` is missing/stub (see *The Project Specification* above) — the project `SPEC.md` written from the fallback scaffold. Creating that `SPEC.md` from the scaffold is the sole exception to "do not edit other files", and only with the user's yes.
 
 ## High level behavior
 
@@ -113,6 +115,17 @@ If the feature has any UI or visual surface:
 
 If the feature is purely non-visual (no UI), note that no design system tokens apply and continue.
 
+## Step 2.6 Honor sibling-skill patterns (read the sub-skill's protocol)
+
+Some features are built on a deterministic pattern **owned by a sibling skill** — e.g. bt-design's **3D-Hero-Scroll** (scroll-scrubbed cinematic hero), bt-atlas texture variants, bt-convert conversions. When the feature matches such a pattern, that sub-skill — not your own paraphrase of the brief — is the authority for how the feature must behave. Skipping this step is how a documented behavior silently disappears from the spec.
+
+1. **Detect the pattern — or an explicitly named builder skill.** Decide whether the feature matches a sibling-skill pattern. If it does, **read that sub-skill's SKILL.md and the relevant reference BEFORE drafting Functional Requirements.** (For 3D-scroll / scroll-scrubbed / cinematic-hero features, read bt-design's `references/3d-hero-scroll.md`.) **If the brief explicitly names a sibling _builder_ skill** — e.g. "…**using bt-hero** to create …" or "…**using bt-prototype** --count:25 …" — read that skill's SKILL.md and run **its own intake step** (bt-hero Steps 1–2 → a hero brief; bt-prototype Steps 1–2 → the `_directions.md` manifest), then fold that output into this spec. The builder contributes intake only; this spec loop owns the build and verification. Resolve any of the builder's intake questions here, at spec time, so nothing prompts downstream.
+2. **Capture the required behavioral config verbatim.** Record the pattern's required config/behavior as explicit Functional Requirements, using the sub-skill's **own names and defaults, unchanged** — do not rename, omit, or invent defaults. Example (3D-Hero-Scroll): `sweep: page|hero`, default **`page`** — PLAY glides through to the document bottom and END jumps there, and the whole landing page is swept and must share the film's design system. If the sub-skill specifies a default, the spec inherits it unless the brief explicitly overrides it (state the override and why).
+3. ⚠️ **Never collapse a sub-skill's behavioral setting into a route/DOM-scope classifier.** A feature's *scope* (which route or surface it targets) is a **different axis** from a sub-skill's *behavioral options*. Keep them separate and name the behavior with the sub-skill's own term. Concretely: a 3D-hero's `sweep` is NOT "which page the feature lives on" — record `sweep` as its own requirement; do **not** fold it under a "reach / scope / routing" heading, where it will be lost or inverted.
+4. **List optional controls in/out.** Record which of the pattern's optional controls/features are included or omitted (with the sub-skill's defaults), so the plan and execute phases can verify them.
+
+If the feature matches no sibling-skill pattern, note that and continue.
+
 ## Step 3. Switch to a new Git branch
 
 Before making any content, switch to a new Git branch using the `branch_name` derived from the `arguments`. If the branch name is already taken, then append a version number to it: e.g. `project/feature/card-component-01`
@@ -148,11 +161,19 @@ spec_impact: <yes|no>   # yes if this feature adds/changes a system, convention,
 
 ## Functional Requirements
 - ...
+<!-- If this feature is built on a sibling-skill pattern (e.g. bt-design
+     3D-Hero-Scroll), record that pattern's REQUIRED behavioral config here as
+     explicit requirements, using the sub-skill's own names + defaults verbatim
+     (e.g. `sweep: page` — PLAY/END sweep to the document bottom). Keep such
+     behavior SEPARATE from the feature's route/DOM scope; never fold a
+     behavioral setting under a "reach/scope/routing" heading. (See bt-spec
+     Step 2.6.) -->
 
 ## Design System Reference (from DESIGN.md, only if the feature has UI)
 - DESIGN.md tokens/components this feature uses: ...
 - Layout / spacing / typography notes: ...
 - Key visual constraints: ...
+- Sibling-skill behavioral config (if any), e.g. 3D-Hero-Scroll `sweep`: ...
 
 ## Possible Edge Cases
 - ...
@@ -170,7 +191,7 @@ Create a test file(s) in the ./tests folder for the new feature, and create mean
 
 ### Validate The Project Spec
 
-If the project's **SPEC.md** is missing or is still a stub with no real content, **PROMPT** the user to create the file at the root with the default project spec:
+This is the **fallback scaffold** referenced by the prompt-first decision in *The Project Specification* (top of this skill). When the project's **SPEC.md** is missing or is still a stub and **the user answered yes**, write exactly this content to `SPEC.md` at the repository root *before* drafting the feature spec, then align the feature to it. If the user answered **no**, skip creating it and record the "No project SPEC.md content yet…" note in the feature spec instead. The default project spec scaffold:
 ```
 # Project Spec
 

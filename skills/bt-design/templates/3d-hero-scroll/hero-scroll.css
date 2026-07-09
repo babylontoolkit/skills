@@ -9,7 +9,7 @@
   --hs-bg: #060607;            /* page/veil background            */
   --hs-ink: #e8ecee;           /* primary text                    */
   --hs-dim: #878e93;           /* secondary text                  */
-  --hs-accent: #35e9ff;        /* the ONE accent — light-bar/HUD  */
+  --hs-accent: #35e9ff;        /* the ONE accent — HUD / highlights */
   --hs-accent-soft: rgba(53, 233, 255, 0.35);
   --hs-accent-ghost: rgba(53, 233, 255, 0.08);
   --hs-display: inherit;       /* host display font               */
@@ -81,7 +81,7 @@ body.hs-no-video .hs-stage {
 
 #hs-veil.hs-on { opacity: 1; pointer-events: auto; }
 
-/* light-bar sweep while on black — the run re-arming */
+/* accent sweep while on black — the journey re-arming */
 #hs-veil::after {
   content: "";
   position: absolute; left: 22%; right: 22%; top: 50%; height: 1px;

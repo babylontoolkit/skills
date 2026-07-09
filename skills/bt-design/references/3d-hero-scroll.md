@@ -13,11 +13,24 @@ scroll", "Scout Motors style".
 maps every prompt field to the exact code it generates — hand it to developers
 writing invocation prompts.
 
-**Templates (drop-in, in this skill):**
-`templates/3d-hero-scroll/hero-scroll.{html,css,js}` — copy into the host
-project, then adapt. The JS engine is config-driven (`window.HS_CONFIG`) and
-presence-gated: delete any optional element and its feature vanishes cleanly.
-Do NOT rewrite the engine from memory; copy the template and configure it.
+**Templates (drop-in, in this skill) — `templates/3d-hero-scroll/`:**
+`hero-scroll.js` is one framework-agnostic ESM engine shared by both hosts;
+copy the files that match the target:
+- **Non-React (plain HTML/static/Astro/Vue/plain JS):** `hero-scroll.html` +
+  `hero-scroll.css` + `hero-scroll.js`. The engine **auto-boots** against the
+  document when `window.HS_CONFIG` is set, loaded via
+  `<script type="module" src="hero-scroll.js">`.
+- **React / TypeScript:** `HeroScroll.tsx` + `hero-scroll.js` +
+  `hero-scroll.d.ts` + `hero-scroll.css`. `HeroScroll.tsx` renders the markup
+  as JSX and mounts the SAME engine via `initHeroScroll(rootEl, config)` in a
+  `useEffect` (destroy on unmount). Props gate the optional chrome; import the
+  scrub mp4 + poster as assets.
+
+The engine is config-driven (`HS_CONFIG` / the config arg) and presence-gated:
+delete an optional element (or omit a `HeroScroll` prop) and its feature
+vanishes cleanly. It resolves the real scroll container (window / `body` /
+overflow ancestor) so body-scroll apps work. Do NOT rewrite the engine from
+memory in any framework; copy it and configure it.
 
 ---
 
@@ -43,19 +56,20 @@ Do NOT rewrite the engine from memory; copy the template and configure it.
    `max`, `unit` (in markup), and the curve in `HS_CONFIG.telemetry`.
 5. **Scroll length** — 15–20vh of journey height per second of footage
    (32s film → 560–640vh). Shorter feels rushed; longer feels sticky.
-6. **Reach** — the engine is page-aware by default, hero-scoped by option
-   (`HS_CONFIG.reach`). It only ever owns the journey block + fixed chrome;
-   it never touches the host page's DOM below the hero. `reach: "page"`
+6. **Sweep** — the engine is page-aware by default, hero-scoped by option
+   (`HS_CONFIG.sweep`). It only ever owns the journey block + fixed chrome;
+   it never touches the host page's DOM below the hero. `sweep: "page"`
    (default): PLAY glides on through the rest of the page to the bottom and
    END jumps there — the full cinematic ride, for when the whole landing
    page shares the film's design system and should be swept through.
-   `reach: "hero"`: PLAY and END stop at the journey's end — you land on the
+   `sweep: "hero"`: PLAY and END stop at the journey's end — you land on the
    regular HTML section right after the hero, exactly as a normal scroll
    would, the polite mode that never drives the user through the rest of
    the page uninvited; opt into this explicitly in the prompt (or
    `HS_CONFIG`) when only the hero should be owned.
-   Scrub smoothness is identical in both modes; reach only changes where
-   autoplay/jumps consider "the end".
+   Scrub smoothness is identical in both modes; sweep only changes where
+   autoplay/jumps consider "the end". (Named `sweep`, never `reach`, so it
+   can't be confused with a spec/plan's route/DOM-scope terminology.)
 
 ## 2 · Footage pipeline (generation path)
 
@@ -105,26 +119,41 @@ under their own names — map to whichever you're using.
 
 ## 3 · Wire-up
 
-1. Copy the three template files; rename/prefix if the host has conflicts
-   (everything is `hs-` namespaced already).
-2. Replace the placeholder 100vh hero with the `#hs-journey` block; with
-   `reach: "page"` the rest of the page below it automatically becomes the
-   autoplay "tail". **Sticky constraint:** the journey block must sit in
-   plain document flow — ideally a direct child of `<body>`. Any ancestor
-   with `transform`, `filter`, `perspective`, or `overflow: hidden/auto`
-   breaks `position: sticky` and kills the entire effect. Check for this
-   FIRST when retrofitting.
+0. **Pick the host path (§ Templates above).** Non-React: copy
+   `hero-scroll.{html,css,js}`. React/TS: copy `HeroScroll.tsx` +
+   `hero-scroll.js` + `hero-scroll.d.ts` + `hero-scroll.css`, render
+   `<HeroScroll config={…} … />` where the hero goes, and import the scrub
+   mp4 + poster as assets. Either way the engine (`hero-scroll.js`) is
+   identical — do not fork it per framework. In React, `HeroScroll.tsx`
+   already handles mount (`initHeroScroll`) and unmount (`.destroy()`); under
+   StrictMode the init/destroy cycle runs twice in dev — that's fine, teardown
+   is complete.
+1. Copy the files; rename/prefix if the host has conflicts (everything is
+   `hs-` namespaced already).
+2. Replace the placeholder 100vh hero with the `#hs-journey` block (or the
+   `<HeroScroll>` element); with `sweep: "page"` the rest of the page below it
+   automatically becomes the autoplay "tail". **Sticky constraint:** the
+   journey block must sit in plain document flow — ideally a direct child of
+   `<body>` (in React, avoid wrapping it in transformed/overflow-clipped
+   layout containers). Any ancestor with `transform`, `filter`, `perspective`,
+   or `overflow: hidden/auto` breaks `position: sticky` and kills the entire
+   effect. Check for this FIRST when retrofitting. (The engine auto-resolves
+   whether the window or `document.body`/an overflow ancestor is the scroller,
+   so body-scroll apps scrub correctly without config.)
 3. **Handoff rule:** the first section below the journey must tonally
-   continue the film's final frame (VANTA: night run → black configurator).
+   continue the film's final frame (e.g. a film that ends dark must hand off
+   into a dark section, not a bright one).
    If the host page goes bright the pixel after the sticky stage releases,
    the cut is jarring and no engine work hides it. Either restyle that first
    section to match the film's exit tone, insert a short bridge section that
    grades from the film's last frame to the host palette, or use
-   `reach: "hero"` and let the user cross the seam themselves.
+   `sweep: "hero"` and let the user cross the seam themselves.
 4. Author overlays as `.hs-ovl` sections with `data-from`/`data-to` progress
    windows. Leave gaps between windows — moments of pure film are what make
    it cinematic. Overlay copy over bright footage gets `.hs-scrim`.
-5. Set `HS_CONFIG` in the page (video path, telemetry curve, segments, reach).
+5. Set the config: `window.HS_CONFIG` in the page (non-React) or the
+   `config` / control props on `<HeroScroll>` (React) — video path, telemetry
+   curve, segments, sweep.
 6. The engine blob-preloads the footage with a loading bar, locks scroll
    until ready (`body[data-hs-state]`), degrades to the poster if footage is
    missing, and honors `prefers-reduced-motion`.
@@ -176,11 +205,11 @@ falls back to the defaults in parentheses:
 
 - **Product + footage beats** — what moves through what terrain, per clip
   (or an existing video file path).
-- **Reach** — `page` or `hero` (default `page`: PLAY/END sweep through to the
-  document bottom; specify `reach: hero` explicitly to have PLAY/END stop at
+- **Sweep** — `page` or `hero` (default `page`: PLAY/END sweep through to the
+  document bottom; specify `sweep: hero` explicitly to have PLAY/END stop at
   the journey's end so the next HTML section follows normally instead).
 - **Controls** — which of HUD / PLAY / TOP+END to include (default: all
-  three on `reach: page`, HUD + PLAY only on `reach: hero`).
+  three on `sweep: page`, HUD + PLAY only on `sweep: hero`).
 - **Telemetry metric** — value, unit, max, segment names (default: none —
   omit the HUD rather than invent a metric that doesn't fit the product).
 - **Overlays** — the marketing copy and which film moment each block rides
@@ -188,23 +217,37 @@ falls back to the defaults in parentheses:
 - **Brand** — tokens/typography, mapped onto `--hs-*` (default: inherit the
   host site's design system; never ship the template placeholders).
 
-**Example — greenfield, full-page (VANTA-style):**
-> Redesign this starter template as a cinematic 3D-scroll site for VANTA — a
-> fictional 1,200 hp electric hypercar (bt-design → 3D-Hero-Scroll, reach:
-> page). FOOTAGE (generate, 16:9, 8s clips) — hero anchor first: low,
-> wide, matte obsidian, thin cyan light-bar; chain: ① REVEAL dust settles at
-> dawn ② THE RUN launches across the flats ③ THE CANYON threads red rock
-> ④ NIGHT MODE light trails under stars. CONTROLS — HUD: MPH 0→250,
-> segments WHITE SANDS/FLATS/CANYON/NIGHT · PLAY THE RUN · TOP/END.
-> OVERLAYS — ultrawide wordmark → count-up stats (1.9s · 1,200 hp · 520 mi)
-> → design macros → night copy. BELOW THE JOURNEY — configurator teaser →
-> Reserve CTA. BRAND — black-on-black, electric-cyan, ultrawide condensed.
+The subject is whatever the prompt names — the mechanics are identical for a
+watch, a submarine, a building, a person, a dashboard, a landscape. Do NOT
+default to any one look (a vehicle, a desert, cyan-on-black); derive every
+visual from the prompt's own subject. The skeletons below are product-agnostic.
 
-**Example — retrofit, hero only:**
-> Redesign the hero section with 3D scrolling (reach: hero). Footage:
-> media/flyover.mp4. HUD: ALTITUDE 0→12,000 FT. PLAY only, no jump nav. One
-> headline overlay at the start, three stats mid-run. Match our existing
-> design tokens; don't touch anything below the hero.
+> **Easy front door:** the sibling `bt-hero` skill automates this intake — it
+> takes an idea / image / partial answers in any combination, asks only the
+> unanswered questions, applies the defaults, writes a repeatable
+> `_hero-brief.md`, and builds in one shot (or contributes intake when named
+> inside a bt-spec brief). The skeletons below are the manual alternative.
+> Note the skeletons carry ONLY creative slots — pipeline facts (aspect, clip
+> duration, muting, encode, verification) are skill/backend-owned and never
+> belong in an invoking prompt.
+
+**Example — greenfield, full-page (skeleton):**
+> Redesign this starter template as a cinematic 3D-scroll site for `<PRODUCT>` —
+> `<one-line description>` (bt-design → 3D-Hero-Scroll, sweep: page).
+> FOOTAGE (generate) — hero anchor first: `<the product, one
+> clear look>`; chain: ① `<reveal beat>` ② `<motion beat>` ③ `<terrain/scene
+> change>` ④ `<finale beat>`. CONTROLS — HUD: `<METRIC> 0→<MAX> <UNIT>`,
+> segments `<A/B/C/D>` · PLAY (`"<label>"`) · TOP/END. OVERLAYS — `<wordmark>`
+> → count-up stats (`<A · B · C>`) → `<feature moment>` → `<closing line>`.
+> BELOW THE JOURNEY — `<sections>` → `<CTA>`. BRAND — `<palette>`, `<accent>`,
+> `<type>` (derived from the subject, not a fixed house style).
+
+**Example — retrofit, hero only (skeleton):**
+> Redesign the hero section with 3D scrolling (sweep: hero). Footage:
+> `<existing file | generate: anchor + beats 1..N>`. HUD: `<METRIC> 0→<MAX>
+> <UNIT>` (or none). PLAY only, no jump nav. One headline overlay at the start,
+> `<N>` stats mid-run. Match our existing design tokens; don't touch anything
+> below the hero.
 
 Anything below the journey (configurators, CTAs, footers) is ordinary
 bt-design work — this reference governs only the journey block, its

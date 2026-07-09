@@ -42,24 +42,63 @@ Remember: You are capable of extraordinary creative work. Don't hold back, show 
 
 ## 3D Scrolling Hero Sections (3D-Hero-Scroll)
 
+**Easy front door:** the sibling **bt-hero** skill (installed alongside this one
+in the same skills directory — `bt-hero/`) is the one-shot builder for this pattern — it takes an idea / image / partial
+answers in any combination, asks only what's missing, writes a repeatable
+`_hero-brief.md`, and builds via this skill immediately. It can also be named
+inside a bt-spec brief ("Use bt-hero to create …") to contribute intake to the
+spec loop. When a user is composing a long 3D-hero prompt by hand, point them
+at `/bt-hero` instead.
+
 **MANDATORY ROUTE:** When the request involves a scroll-scrubbed / "3D
 scrolling" hero — the product moving through real terrain as the user scrolls,
 a video timeline driven by scroll position, "Scout Motors style", "redesign
 the hero with 3D scrolling", cinematic scroll with speed/telemetry HUDs,
 auto-play "play the run" controls, or veiled jump cuts — you MUST read
 `references/3d-hero-scroll.md` in this skill directory BEFORE writing any
-code, and copy the drop-in templates from `templates/3d-hero-scroll/`
-(`hero-scroll.html`, `hero-scroll.css`, `hero-scroll.js`) rather than
-re-implementing the engine from memory.
+code, and copy the drop-in templates from `templates/3d-hero-scroll/` rather
+than re-implementing the engine from memory. **Re-implementing the engine
+from scratch is how features silently get dropped** (`sweep`, veiled cuts,
+blob-preload, HUD auto-hide) — copy and configure the proven engine instead.
+
+**One engine, both host types — copy the files that match the host:**
+- **Plain HTML / any non-React site** (static, Astro, Vue, plain JS): copy
+  `hero-scroll.html` + `hero-scroll.css` + `hero-scroll.js`. The JS is an ESM
+  module that **auto-boots** against the document when `window.HS_CONFIG` is
+  set (loaded via `<script type="module">`). Unchanged workflow.
+- **React / TypeScript starters** (the primary redesign target): copy
+  `HeroScroll.tsx` + `hero-scroll.js` + `hero-scroll.d.ts` + `hero-scroll.css`.
+  `HeroScroll.tsx` renders the `hs-` markup as JSX and mounts the SAME engine
+  via `initHeroScroll(rootEl, config)` in a `useEffect`, tearing down on
+  unmount. Import the scrub `.mp4` + poster as assets and pass through props.
+  Never hand-write the scrubbing/autoplay/veil logic in React.
+
+The engine resolves the **real scroll container** at runtime (window, or
+`document.body`, or an overflow ancestor) — so it works in apps whose scroll
+lives on `body` (e.g. `html, body { height:100%; overflow-y:auto }`), a common
+case that breaks any window-only implementation. **Sticky constraint:** no
+ancestor of the journey block may have `transform` / `filter` / `perspective`
+/ `overflow: hidden|auto` — it kills `position: sticky`. Check this first when
+retrofitting a React layout.
 
 The reference defines the deterministic protocol: intake checklist (footage
-source, brand-token mapping, which optional controls), the key footage
-pipeline (hero anchor image → start/end-frame chained clips → concat →
+source, brand-token mapping, which optional controls, **`sweep`**), the key
+footage pipeline (hero anchor image → start/end-frame chained clips → concat →
 **all-intra `-g 1` scrub encode**), calibration rules (telemetry launch point
 measured from actual footage frames, film-speed autoplay, veiled cuts), the
 in-browser verification protocol, and the known pitfalls the templates
 already solve. All engine features are optional and presence-gated — a bare
 scrub hero is just the journey block; HUD, PLAY, and TOP/END jump controls
-are each one HTML block away. Style everything through the `--hs-*` tokens
-mapped to the host site's design system — never ship the template's
-placeholder brand.
+are each one HTML block (or one `HeroScroll` prop) away. Style everything
+through the `--hs-*` tokens mapped to the host site's design system — never
+ship the template's placeholder brand.
+
+**`sweep` is a required, non-skippable decision (default `page`).** It sets
+where PLAY/END end and whether the ride sweeps the whole page: `page` (default)
+= PLAY glides through to the document bottom and END jumps there, so the
+below-journey content (CTAs, launch buttons, configurators) **must be designed
+to the film's brand and exit tone**, not a reskinned starter template; `hero`
+= PLAY/END stop at the journey's end. It is deliberately named `sweep`, **not
+`reach`**, so it never collides with a spec/plan's route/DOM-scope
+terminology — carry the *behavior* (PLAY-sweeps-to-bottom, END-to-bottom,
+`tailRate`) into any downstream spec explicitly; never reduce it to a scope word.
