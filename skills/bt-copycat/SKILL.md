@@ -1,6 +1,6 @@
 ---
 name: bt-copycat
-description: "The Babylon Toolkit Copycat Skill forensically studies a live reference website, extracts its full design + motion DNA, and rebuilds a pixel-faithful frontend re-imagined around a new theme/subject for use as our project's Home page. Use when the user gives a URL (often with a creative brief) and wants a site that copies the *mechanics and craft* of the original — scroll choreography, load sequence, animation timing, layout rhythm, the whole \"feel\" — while re-skinning the subject, palette, and copy to their prompt."
+description: "The Babylon Toolkit Copycat Skill forensically studies a live reference website, extracts its full design + motion DNA, and rebuilds a pixel-faithful frontend re-imagined around a new theme/subject for use as our project's Home page. Use when the user gives a URL (often with a creative brief) and wants a site that copies the *mechanics and craft* of the original — scroll choreography, load sequence, animation timing, layout rhythm, the whole `feel` — while re-skinning the subject, palette, and copy to their prompt."
 ---
 
 Your goal is to **reverse-engineer the reference website down to its DNA and rebuild it, pixel-faithful in mechanics, re-imagined in subject.** Always adhere to any rules or requirements set out in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) when responding.
