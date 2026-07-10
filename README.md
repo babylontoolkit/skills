@@ -12,7 +12,9 @@ Each `SKILL.md` follows the open standard, so the **same file works unchanged** 
 | [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec. |
 | [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. |
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
+| [`bt-prototype`](skills/bt-prototype/SKILL.md) | `/bt-prototype` | Create any number of award winning website prototypes. |
 | [`bt-design`](skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. |
+| [`bt-hero`](skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. |
 | [`bt-atlas`](skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. |
 
 Every tool derives the slash-command from the **folder name** (`bt-spec/` → `/bt-spec`) and reads
