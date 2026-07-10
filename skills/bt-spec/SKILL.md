@@ -1,6 +1,6 @@
 ---
 name: bt-spec
-description: The Babylon Toolkit Spec Skill creates a feature spec file and branch from a short idea. Use when asked to spec out, plan, or scaffold a new feature.
+description: "The Babylon Toolkit Spec Skill creates a feature spec file and branch from a short idea. Use when asked to spec out, plan, or scaffold a new feature."
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Bash(git switch:*)
 ---
 

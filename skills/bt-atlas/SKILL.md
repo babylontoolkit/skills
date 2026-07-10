@@ -1,6 +1,6 @@
 ---
 name: bt-atlas
-description: The Babylon Toolkit Atlas Skill generates texture atlas skin variations for a UV-mapped 3D model that stay strictly inside the UV islands, so they are drop-in swaps for the same geometry. Use whenever the user wants new skins / texture variants (different colors, faces, materials, camo, liveries, etc.) from a base color texture and its UV layout. Works for any model — not specific to any one asset.
+description: "The Babylon Toolkit Atlas Skill generates texture atlas skin variations for a UV-mapped 3D model that stay strictly inside the UV islands, so they are drop-in swaps for the same geometry. Use whenever the user wants new skins / texture variants (different colors, faces, materials, camo, liveries, etc.) from a base color texture and its UV layout. Works for any model — not specific to any one asset."
 ---
 
 # Invocation

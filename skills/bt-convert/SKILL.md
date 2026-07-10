@@ -1,6 +1,6 @@
 ---
 name: bt-convert
-description: The Babylon Toolkit Convert Skill converts source code to Babylon Toolkit TypeScript. Use when asked to convert source code or files to BabylonJS/Babylon Toolkit typescript.
+description: "The Babylon Toolkit Convert Skill converts source code to Babylon Toolkit TypeScript. Use when asked to convert source code or files to BabylonJS/Babylon Toolkit typescript."
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---
 Your goal is to convert source code to Babylon Toolkit based TypeScript. Always adhere to any rules or requirements set out in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) when responding.

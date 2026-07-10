@@ -1,6 +1,6 @@
 ---
 name: bt-plan
-description: The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec.
+description: "The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec."
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Task
 ---
 
