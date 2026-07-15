@@ -14,7 +14,6 @@ Each `SKILL.md` follows the open standard, so the **same file works unchanged** 
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
 | [`bt-prototype`](skills/bt-prototype/SKILL.md) | `/bt-prototype` | Create any number of award winning frontend prototypes. |
 | [`bt-design`](skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. |
-| [`bt-create`](skills/bt-create/SKILL.md) | `/bt-create` | Used to create new project via a guided tour. |
 | [`bt-hero`](skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. |
 | [`bt-atlas`](skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. |
 
