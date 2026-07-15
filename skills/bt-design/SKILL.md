@@ -7,6 +7,8 @@ This skill guides creation of distinctive, production-grade frontend and in-game
 
 The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
 
+**North star — this is game UI, not a website.** The primary goal is amazing **frontends and in-game GUIs** for 3D web games: home/landing screens, dashboards, menus, popups, overlays, and HUDs. Design them to feel like modern **console UI/UX — Xbox Series dashboard, PlayStation 5 home, AAA game main menus and pause screens** — adapted for the web (React, multi-view). Think cinematic, immersive, edge-to-edge, controller-navigable. Do NOT default to the look of a traditional marketing website with a centered content column.
+
 ## Design Thinking
 
 Before coding, understand the context and commit to a BOLD aesthetic direction:
@@ -29,7 +31,7 @@ Focus on:
 - **Typography**: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font.
 - **Color & Theme**: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
 - **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise.
-- **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density.
+- **Spatial Composition**: Default to **full-bleed, full-viewport layouts** — edge-to-edge like a console dashboard, with UI anchored to the viewport edges rather than trapped in a centered fixed-width column (see *Layout Philosophy* below). Within that full canvas: unexpected layouts, asymmetry, overlap, diagonal flow, grid-breaking elements, generous negative space OR controlled density.
 - **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays.
 
 NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
@@ -39,6 +41,32 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 **IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
 
 Remember: You are capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+
+## Layout Philosophy — Full-Bleed Console UI (DEFAULT)
+
+**Default to full page width. Design edge-to-edge, filling the entire viewport — like a game console dashboard, not a centered website column.** Fixed-width, centered content columns (the classic `max-width: 1100px; margin: 0 auto` marketing-site pattern) are the *exception*, reached for only when explicitly requested or when the specific content genuinely reads better contained (see the escape hatch below). Full-bleed is what makes these interfaces feel like a **game frontend** rather than a traditional web page.
+
+What "full page width" means here — build the console-UI feel, not just a wide box:
+- **Every view owns the whole viewport.** Each *composed screen* fills the viewport edge-to-edge — sized to `100vw × 100dvh` (use `100dvh`/`100svh`, not `100vh`, so mobile browser chrome doesn't clip it). "Full-bleed console" describes how each **view** is composed; it does **not** mean the page is locked to a single non-scrolling screen. **This is still a web application — scroll stays first-class.** Real console UIs scroll too (Xbox tile rows, PS5 home). What we avoid is a narrow centered column on empty margins, not scrolling itself.
+- **Full-bleed atmosphere.** Backgrounds, hero art, 3D canvases, gradients, and video run corner to corner behind everything. Content sits *on top of* the atmosphere, never inside a boxed card floating on a blank margin.
+- **Anchor to the edges with safe-area insets.** Instead of one centered column, place UI clusters against the viewport edges — a top bar / status strip, a left nav rail or tile grid, a right context/detail panel, a bottom action bar or button-prompt legend. Pad them off the edge with a consistent gutter and `env(safe-area-inset-*)`; this "TV safe area" gutter (not a `max-width`) is what keeps a full-bleed layout from feeling cramped.
+- **Multi-view, panel-based composition.** Favor split screens, master/detail, tile walls (Xbox-style content blocks of varied sizes), and carousels of large cards. Lean on CSS Grid areas that span the full width so panels can be resized and rearranged per view.
+- **Console-native interaction language.** Design clear **focus/selection** states (a highlighted, scaled, glowing "cursor" tile — as if navigated by a controller/D-pad), hover parallax, depth via layered shadows and blur, and an on-screen **button-prompt legend** (e.g. `▢ Back  ◯ Select`) along an edge where it fits the theme. These cues read as "console" instantly.
+- **Overlays sit above a live world.** Menus, popups, and pause/settings screens overlay the full-bleed scene with a scrim/backdrop-blur over the entire viewport — the game or background stays visible behind them. Popups themselves are usually centered *panels* floating over that full-bleed scrim; that centering is part of the overlay, not a return to a fixed-width page.
+- **Responsive by fluid scaling, not by a capped column.** Use `clamp()`, `min()`, `vw`/`dvh` units, `%`, `fr` tracks, and container queries so the layout breathes to fill any display — from an ultrawide monitor to a phone. The layout should look intentional at 3440px wide, never a narrow column stranded in a sea of empty background.
+
+**Scroll is the transport, not the enemy — how full-bleed views and scrolling coexist.** Full-bleed does not mean "kill the scroll." Scroll is how the experience *moves*, and it composes with the console aesthetic in three main ways:
+- **Scroll as cinematic transport (the 3D-Hero-Scroll handoff).** A scroll-scrubbed hero (the car driving through terrain as you scroll — see the *3D Scrolling Hero Sections* section below) plays as a full-bleed sequence, then **settles/resolves into the real home view at the end of the hero scroll — and that landed view is the full-bleed console UI** (tile wall, edge-anchored HUD/menu, focus states). The hero is the entrance; the console home is the destination. Design the seam so the film *lands into* the dashboard rather than abruptly stopping — this is exactly what `sweep: page` supports (PLAY/scroll glides through to the console content below). Style that below-the-journey content to the console home, never a reskinned starter template.
+- **Scroll between full-viewport screens.** Stack multiple edge-to-edge "screens" and let the page scroll (optionally scroll-snap) from one to the next — each screen is its own composed console view, the way a game flows menu → dashboard → detail.
+- **Scroll within a view.** A single console screen can scroll *internally* — a tile wall or content row that runs past the fold, a detail panel that scrolls while the nav rail stays pinned. The frame stays full-bleed; the content inside it moves.
+
+The through-line: each **view** is composed full-bleed and viewport-owning, and **scroll carries the user between and through those views**. Never flatten a game frontend into a single locked screen just to honor "full-bleed," and never fall back to a centered fixed-width column just because the page scrolls.
+
+**Escape hatch — when NOT to go full-bleed.** Honor these without being asked, and always honor an explicit instruction:
+- The prompt explicitly asks for a fixed-width, centered, boxed, "traditional website," article, or contained layout.
+- The content is genuinely long-form reading (documentation, articles, legal/settings text) where a comfortable measure (~60–75ch line length) aids legibility — still let the *page* be full-bleed and merely constrain the reading column within it.
+- Small standalone artifacts (a single card, a login form, an isolated component, an email) where there is no "screen" to fill.
+Even in these cases, prefer a full-bleed backdrop/atmosphere with the constrained element composed on top, rather than a bare centered box on an empty margin.
 
 ## 3D Scrolling Hero Sections (3D-Hero-Scroll)
 
@@ -97,7 +125,10 @@ ship the template's placeholder brand.
 where PLAY/END end and whether the ride sweeps the whole page: `page` (default)
 = PLAY glides through to the document bottom and END jumps there, so the
 below-journey content (CTAs, launch buttons, configurators) **must be designed
-to the film's brand and exit tone**, not a reskinned starter template; `hero`
+to the film's brand and exit tone**, not a reskinned starter template — this is
+where the hero **settles into the full-bleed console home view** (tile wall,
+edge-anchored HUD/menu, focus states) per *Layout Philosophy*; the film is the
+entrance, the console home is the destination it lands into; `hero`
 = PLAY/END stop at the journey's end. It is deliberately named `sweep`, **not
 `reach`**, so it never collides with a spec/plan's route/DOM-scope
 terminology — carry the *behavior* (PLAY-sweeps-to-bottom, END-to-bottom,

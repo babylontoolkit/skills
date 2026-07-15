@@ -81,6 +81,10 @@ Before building anything, decide the **N distinct directions** so the batch does
 - **With `--awwwards`:** see *Sourcing directions from awwwards* below.
 - **With neither:** invent the N directions from the theme + world anchor.
 
+**Full-bleed console UI is the baseline for every direction.** These are **game front-ends**, so each prototype defaults to a **full-page-width, full-viewport, edge-to-edge** layout that feels like a modern console dashboard / AAA game menu (Xbox / PS5), per bt-design's *Layout Philosophy — Full-Bleed Console UI* section — every view owns the whole viewport, full-bleed atmosphere, UI anchored to the edges with a TV-safe gutter, console focus/selection states. The directions still vary the *design language* (motion system, type voice, 3D approach) on top of that shared full-bleed baseline; they do **not** vary down to a centered fixed-width marketing column unless a specific direction deliberately calls for a contained treatment (e.g. an editorial/long-form lens) — and when one does, note it in `_directions.md` and still keep a full-bleed backdrop behind the contained element.
+
+**Full-bleed does not mean a single locked screen — these are landing pages, so scroll stays first-class** (bt-design's *scroll is the transport, not the enemy* rule). Full-viewport views scroll between and through each other, and any **3D-hero-scroll direction plays its cinematic scroll, then settles into the full-bleed console home view at the end** (the sweep-into-console handoff) rather than dead-ending or dropping into a stock template. Compose each view full-bleed; let scroll carry the user between them.
+
 Write the plan to `_prototypes/_directions.md` (id, name, one-line design language, inspiration source + attribution if any, whether it's a 3D-hero-scroll direction). This is the batch's manifest.
 
 ## Sourcing directions from awwwards
@@ -122,7 +126,7 @@ Build the N prototypes **in parallel via subagents** — if a subagent-spawning/
 Each prototype subagent gets: its **direction**, the **theme**, the **world anchor** (screenshots + extracted palette/mood/silhouettes), the **`--type`**, and the **asset workflows** available. It must:
 
 1. **Own its folder.** Create `_prototypes/<NN-slug>/` and put **everything self-contained inside it** — markup, styles, scripts, and all generated/downloaded assets. No shared globals; a prototype is copy-out-able on its own.
-2. **Build to the Fable bar for its lens** — advanced 3D tactics, otherworldly animation, exceptional palette, novel type. Not a template with the colors swapped; a distinct, *mind-blowing* execution of that direction for this game.
+2. **Build to the Fable bar for its lens** — advanced 3D tactics, otherworldly animation, exceptional palette, novel type. Not a template with the colors swapped; a distinct, *mind-blowing* execution of that direction for this game. **Full-bleed console UI by default** (bt-design's *Layout Philosophy*): fill the whole viewport edge-to-edge like a console dashboard / game menu, not a centered fixed-width website — unless this direction is the noted contained exception.
 3. **Produce assets** via any mix of the available workflows: Pinterest pulls for reference, **GPT Image 2** for stills, **KIE MCP servers / Higgsfield (Kling, etc.)** for motion/video, hand-authored WebGL/SVG/CSS. All assets stay faithful to the world anchor and live in the prototype's folder.
 4. **3D-hero-scroll directions:** follow *The 3D-hero-scroll batch rule* below.
 5. Run its own **iteration passes** (Step 4) before returning.

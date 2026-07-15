@@ -131,6 +131,8 @@ Before writing a single line of the new site, produce a written **DNA Blueprint*
 
 Now apply the creative brief to the *skin only*. Choose the new subject/object, palette, typographic personality, mood, and copy so they serve the prompt — while keeping every mechanic from the blueprint intact. The igloo becomes a lone monolith / a drifting seed / a frozen relic — but it still moves through the world on scroll exactly as the igloo did. Push the aesthetic hard and specific per the brief; do not water it down toward generic.
 
+**Fidelity governs the layout — but skin toward game-frontend console UI.** The reference's layout width and spatial composition live in the COPY-EXACTLY bucket, so match the original: if it's full-bleed / full page width (as the cinematic, award-winning references this skill targets almost always are), reproduce that faithfully; if it is genuinely fixed-width, keep it fixed-width — do **not** force full-bleed onto a reference that isn't. Within whatever width the blueprint dictates, push the *skin* toward the modern-console game-frontend feel from bt-design's *Layout Philosophy — Full-Bleed Console UI* (edge-anchored HUD/menu clusters, console focus/selection states, cinematic overlays), since the output is our game's Home page — never at the cost of a mechanic.
+
 ## Phase 4 — Rebuild with `bt-design`
 
 Hand the DNA Blueprint to the **bt-design** skill to build the actual frontend as our `Home` page (plus any supporting pages the original implies). Instruct bt-design to:

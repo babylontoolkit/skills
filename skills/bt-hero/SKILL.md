@@ -54,7 +54,7 @@ Parse `arguments` into the eight slots:
 5. **The controls** — PLAY autoplay button (and its label) · TOP/END jump nav — keep or drop. *(Default: per sweep, Tier 2.)*
 6. **The sweep** — after the film: **page** = PLAY glides on through the whole page to the bottom (default) · **hero** = stops at the film's end. 
 7. **The brand & words** — name, tagline, up to ~3 count-up stats, a feature moment, a closing line. *(Default: invented to match the star; never a fixed house style.)*
-8. **Below the journey** — what the rest of the page is. With `sweep: page` it **must be designed to the film's brand and exit tone**, never left as a stock template. *(Default: restyle the page's existing content to the film's exit tone.)*
+8. **Below the journey** — what the rest of the page is. With `sweep: page` it **must be designed to the film's brand and exit tone**, never left as a stock template — and this is precisely **where the scroll-scrubbed hero settles into the full-bleed console home view**: the film is the entrance, the console home (tile wall, edge-anchored HUD/menu, focus states) is the destination it lands into (bt-design's *scroll is the transport* handoff). Build it **full-bleed / full page width** — edge-to-edge console-UI composition per bt-design's *Layout Philosophy — Full-Bleed Console UI*, not a centered fixed-width marketing column (unless the input asks for a contained treatment). *(Default: restyle the page's existing content to the film's exit tone.)*
 
 Then resolve every unfilled slot by exactly one of two paths:
 
