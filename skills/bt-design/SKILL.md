@@ -61,7 +61,27 @@ This applies with equal force to loading transitions *inside* the game (level lo
 
 ## Layout Philosophy — Full-Bleed Console UI (DEFAULT)
 
-**Default to full page width. Design edge-to-edge, filling the entire viewport — like a game console dashboard, not a centered website column.** Fixed-width, centered content columns (the classic `max-width: 1100px; margin: 0 auto` marketing-site pattern) are the *exception*, reached for only when explicitly requested or when the specific content genuinely reads better contained (see the escape hatch below). Full-bleed is what makes these interfaces feel like a **game frontend** rather than a traditional web page.
+**Default to full page width. Design edge-to-edge, filling the entire viewport — like a game console dashboard, not a centered website column.**
+
+### The CSS contract (checked, not vibes — read this as a linter would)
+
+The #1 recurring failure of this skill is a landing page whose root or hero is a centered fixed-width column. It keeps happening because "full-bleed" gets interpreted as a *mood* while the CSS quietly ships `max-width: 1200px; margin: 0 auto`. So the rule is stated at the CSS level:
+
+- **FORBIDDEN** on the page root, the hero, and every top-level section: `max-width` combined with auto margins (`margin: 0 auto` / `margin-inline: auto`), fixed pixel widths, and any wrapper element whose only job is to center a column.
+
+  ```css
+  /* ✗ THE FAILURE — this is a website column, not a game frontend */
+  .home { max-width: 1200px; margin: 0 auto; }
+
+  /* ✓ THE CONTRACT — the section owns the viewport; only TEXT gets a measure */
+  .home { width: 100%; }
+  .hero { width: 100%; min-height: 100dvh; }
+  .hero p { max-width: 65ch; }
+  ```
+
+- **REQUIRED:** root and every section `width: 100%`; backgrounds, hero art, and bars touch BOTH viewport edges (`background-size: cover` / `object-fit: cover` — an image's natural width must never decide the page width); UI clusters anchored to viewport edges with safe-area gutters, never floated in a centered box.
+- The ONLY permitted `max-width` is a readable measure (~60–75ch) on a TEXT element *inside* a section that itself runs edge-to-edge (this is the escape-hatch below, applied to text, not to layout).
+- **SELF-CHECK before finishing (mandatory):** re-read the stylesheet you just wrote. If any structural container carries `max-width` + auto margins, the task is failed — fix it before finishing. At 1920px there must be no empty margin strip on either side of the hero. Fixed-width, centered content columns (the classic `max-width: 1100px; margin: 0 auto` marketing-site pattern) are the *exception*, reached for only when explicitly requested or when the specific content genuinely reads better contained (see the escape hatch below). Full-bleed is what makes these interfaces feel like a **game frontend** rather than a traditional web page.
 
 What "full page width" means here — build the console-UI feel, not just a wide box:
 - **Every view owns the whole viewport.** Each *composed screen* fills the viewport edge-to-edge — sized to `100vw × 100dvh` (use `100dvh`/`100svh`, not `100vh`, so mobile browser chrome doesn't clip it). "Full-bleed console" describes how each **view** is composed; it does **not** mean the page is locked to a single non-scrolling screen. **This is still a web application — scroll stays first-class.** Real console UIs scroll too (Xbox tile rows, PS5 home). What we avoid is a narrow centered column on empty margins, not scrolling itself.
