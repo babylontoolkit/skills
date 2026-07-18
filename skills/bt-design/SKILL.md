@@ -42,6 +42,21 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 
 Remember: You are capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
 
+## Splash, Preloader & Loading Screens — NEVER derived from the default (non-negotiable)
+
+The most common failure in generated game chrome: the splash / loading screen is **seeded from the default Babylon Toolkit splash** — a centered logo with a spinner — and merely recolored to the theme. Recoloring the default is not designing; **deriving from the default IS the failure**, no matter how well the colors match.
+
+> You must be creative and not follow the default splash screen theme. Think out of the box and make a creative splash screen, with interaction and atmosphere as the game loads. Don't limit yourself to the default Babylon Toolkit splash screen or the mechanics of its loader. You are AI. There is no limit to what you can do.
+
+Treat every loading surface (preloader, splash, initial overlay) as a **designed scene in the game's world**, not a utility screen:
+
+- **Invent a progress metaphor native to THIS game.** A racer: track start-lights counting down, a fuel gauge filling, a speedometer needle sweeping to redline. A platformer: the level assembling tile by tile. A space game: a warp drive charging, a star map resolving. A dungeon crawler: torches igniting one by one down a corridor. The progress percentage should *drive the scene* — not sit under it as a bare bar.
+- **Bring the full aesthetic direction with you.** The splash uses the same typography, palette, motion language, and atmosphere as the landing page and HUD — it is the first screen of the experience, often seen for several seconds, and it sets the tone. Full-bleed, edge-to-edge, like everything else (see *Layout Philosophy*).
+- **Design the wait itself.** Staggered reveals, ambient motion (drifting particles, scanlines, parallax layers, animated environment art), rotating flavor text/lore/tips in the game's voice, a bold wordmark treatment for the game's own title. The player should *want* to watch it load.
+- **The default's anatomy is a placeholder, not a seed.** Centered-logo-plus-spinner, a thin bar at the bottom, a percentage in a corner — if the result still reads as "the stock loader, restyled," start over from the game's fantasy instead. NO stock spinner, NO engine/toolkit branding, nothing carried over from the default splash except the wiring the host platform requires (progress subscription, mount points, re-exports — keep the MECHANICS, replace ALL of the look, layout, and behavior of the visuals).
+
+This applies with equal force to loading transitions *inside* the game (level loads, respawns, scene swaps): same world, same metaphor, same bar.
+
 ## Layout Philosophy — Full-Bleed Console UI (DEFAULT)
 
 **Default to full page width. Design edge-to-edge, filling the entire viewport — like a game console dashboard, not a centered website column.** Fixed-width, centered content columns (the classic `max-width: 1100px; margin: 0 auto` marketing-site pattern) are the *exception*, reached for only when explicitly requested or when the specific content genuinely reads better contained (see the escape hatch below). Full-bleed is what makes these interfaces feel like a **game frontend** rather than a traditional web page.
