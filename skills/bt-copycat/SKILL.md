@@ -135,7 +135,11 @@ Now apply the creative brief to the *skin only*. Choose the new subject/object, 
 
 ## Phase 4 — Rebuild with `bt-design`
 
-Hand the DNA Blueprint to the **bt-design** skill to build the actual frontend as our `Home` page (plus any supporting pages the original implies). Instruct bt-design to:
+Hand the DNA Blueprint to the **bt-design** skill to build the actual frontend as our `Home` page (plus any supporting pages the original implies).
+
+**Output target — where the rebuild lands (Babylon Toolkit projects):** the Home page is authored in **`src/pages/Home.tsx` + `src/pages/Home.css`** (supporting pieces in `src/pages/` / `src/components/`). It is deliberately pulled OUT of `app.tsx` — **`app.tsx` and `src/routing/**` are a READ-ONLY routing shell; never write the design into them.** The shell already routes `/` to `Home`, so replacing `Home.tsx`/`Home.css` IS replacing the landing page. Keep the play contract intact (`navigate('/play', { gameMode: … })` via `useUnifiedNavigation`; `src/pages`/`src/components` stay Babylon-free), and if the retheming extends to the game chrome (splash/preloader/overlay), that lives in `src/custom/**` per the bt-landing skill's rules. For non-Toolkit hosts, target whatever the root route's page component actually is — never a router/shell file.
+
+Instruct bt-design to:
 
 - Match the blueprint's mechanics and timing **exactly** — this is a fidelity job, not a fresh design. Where bt-design would normally improvise, here it executes the blueprint.
 - Generate the re-imagined video/image/3D assets (image & video generation) to fill the asset manifest under the new theme — as beautiful and cinematic as the original's.

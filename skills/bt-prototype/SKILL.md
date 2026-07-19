@@ -143,7 +143,7 @@ For prototypes with real interaction (3D scroll, WebGL, video heroes), a pass **
 
 ## Step 5 — Report & record
 
-When the batch lands, report a compact index: each prototype's id, direction/design-language, folder path, whether it's a 3D-hero-scroll build, and its inspiration source (if `--motionsites`). Point the user at how to preview them and remind them the purpose is to **pick one as the starter front-end**. If the project keeps `SPEC.md`, record the batch per the project's working agreement.
+When the batch lands, report a compact index: each prototype's id, direction/design-language, folder path, whether it's a 3D-hero-scroll build, and its inspiration source (if `--motionsites`). Point the user at how to preview them and remind them the purpose is to **pick one as the starter front-end** — adoption means porting the chosen prototype into **`src/pages/Home.tsx` + `Home.css`** (the landing page's real home; `app.tsx` + `src/routing/**` are a read-only shell and never receive the design), following the bt-landing skill's rules. If the project keeps `SPEC.md`, record the batch per the project's working agreement.
 
 ---
 
