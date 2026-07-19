@@ -55,6 +55,16 @@ REDESIGN — do not reskin — all three surfaces to the SAME design language as
 
 **The splash must NEVER be derived from the default Babylon splash (centered logo + spinner) — recoloring the default IS the failure.** Think out of the box: design the loading experience as a scene in this game's world, with a progress metaphor native to THIS game — a racer's start-lights counting down, a fuel gauge filling, a platformer's level assembling tile by tile, a warp drive charging — driven by the real progress value, not a bare bar under a logo. Atmosphere worth watching: staggered reveals, ambient motion, flavor text in the game's voice. There is no limit to what you can do here.
 
+**ENGINE CONTRACT — splash element IDs are LAW (STRONGLY ENFORCED, zero exceptions):** the engine's runtime code shows and hides the splash screen and writes its label/status text by looking up these EXACT DOM ids/names — it cannot find renamed elements, and if it can't find them the splash NEVER hides and the scene underneath is never revealed:
+
+- `xbabylonjsSplashScreen` — the main splash screen panel (the root element the engine shows/hides)
+- `babylonjsLoadingDiv` — the loading container element
+- `babylonjsLoadingText` — the loading label element (the engine writes its text content)
+- `babylonjsLoadingDivStyle` — the injected style element for the loading div
+- `xbabylonjsStatusTextDiv` — the status text element (the engine writes its text content)
+
+Any redesign of the splash MUST keep every one of these elements present with its id/name byte-for-byte unchanged — never rename, remove, duplicate, or conditionally unmount them. All the creativity happens AROUND this skeleton: restyle them via CSS that targets these ids, nest new decorative elements inside or beside them, reposition and re-animate them freely — but the ids themselves are engine wiring, exactly like the `"OnLoadProgress"` subscription below. Because the engine writes label text into `babylonjsLoadingText` and `xbabylonjsStatusTextDiv` at runtime, those two must remain real text-bearing elements (style the text; don't replace the element with an image or empty it via JS). SELF-CHECK before finishing: grep the redesigned splash for all five ids — any one missing means the task is FAILED; fix it first.
+
 **LIGHTWEIGHT is a hard constraint, not a style choice.** The splash and preloader ARE the progress info — they exist to COVER loading, so they must paint instantly and show progress immediately. Build their creativity from what renders in the first frame: CSS gradients, keyframe animation, typography, particles, inline SVG, canvas-drawn effects, at most small image assets (a compact logo, a texture tile). Do NOT put multi-megabyte generated hero art, photography, or video on these surfaces — a splash that loads its own heavy image defeats itself. Heavy art belongs on the landing page, behind a styled fallback.
 
 **Keep ONLY each surface's wiring; replace ALL of the visuals:**
