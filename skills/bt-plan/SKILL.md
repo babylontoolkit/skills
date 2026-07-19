@@ -1,6 +1,6 @@
 ---
 name: bt-plan
-description: "The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec."
+description: "The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec. Also supports a Quick Plan mode: when given only a brief (no spec file), it plans directly from the brief using sensible defaults for anything normally taken from the spec."
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Task
 ---
 
@@ -17,12 +17,43 @@ Use the user’s message after the skill name as the `arguments`.
 ```
 - **`<feature-spec>`** — the feature spec file to create a plan for. This is the *blueprint*.
 - **`<optional-brief>`** — the brief or instructions for generating the plan. This is the *variable*.
-- If either is missing, ask for it before starting. Never guess a file path or URL.
+- Never guess a file path or URL. Resolve the arguments as follows:
+  - **Both a spec file and a brief** → normal full planning.
+  - **A spec file only** → normal full planning; the brief defaults to "Generate a detailed implementation plan".
+  - **A brief only, no spec file** → **Quick Plan mode** (see below). Do not ask *for a spec file* — treat the brief as the feature request. But because there is no spec, **interview the user with clarifying questions** to pin down the requirements before finalizing the plan.
+  - **Neither** → ask the user for at least a brief before starting.
 
 Example:
 ```
 /bt-plan → @feature_spec.md → "Generate a detailed implementation plan"
+/bt-plan → "add a settings toggle to mute all game audio"   # no spec file → Quick Plan mode, automatically
 ```
+
+---
+
+## Quick Plan mode (no feature spec file)
+
+When invoked with a brief but **no feature spec file**, produce a plan directly from the brief. Do not stop to ask *for a spec file* — but do **interview the user** to recover the decisions the spec would normally have captured. A spec is largely the product of that Q&A; skipping the file must not mean skipping the questions. Everything the skill would normally read from the feature spec is supplied by sensible defaults only as a **last-resort fallback** for anything left unanswered:
+
+| Normally from the spec | Quick Plan default |
+| --- | --- |
+| Feature name (for `<feature-name>_plan.md`) | Derive a short kebab-case name from the brief (e.g. "mute all game audio" → `mute-game-audio`). |
+| Full feature requirements | Use the brief itself as the requirements, expanded by the Step 1 codebase analysis. |
+| `spec_impact: yes/no` | **Infer** it from the Step 1 analysis: `yes` if the feature adds/changes a system, convention, dependency, or architectural decision; otherwise `no`. |
+| `Project Spec Alignment` section | Derive alignment directly from root `SPEC.md` + the analysis. |
+
+Quick Plan mode changes **only** which inputs are read — it does **not** relax any rigor. Step 1 (the comprehensive codebase analysis, including reading root `SPEC.md`) runs in full, and the plan still ends with the SPEC.md write-back task whenever the inferred `spec_impact` is `yes`. Emit one visible status line when this path is taken: `⚡ [bt-plan] Quick Plan mode — no feature spec file; planning from the brief`.
+
+### Interview before planning (Quick Plan)
+
+Because there is no spec, the clarifying questions the spec process would have asked are now **your** responsibility. After the Step 1 analysis (so your questions are grounded in the real codebase, not generic), and **before** writing the plan:
+
+- Ask the user a focused round of clarifying questions covering the things that most change the plan: scope and non-goals, target UX/behavior, edge cases, which existing systems/files it should integrate with, constraints, and — critically — anything ambiguous in the brief or where the codebase suggests more than one reasonable approach.
+- Prefer a small number of high-leverage questions (grouped, easy to answer) over interrogating the user. Do not ask about things the brief or codebase already make clear.
+- Only fall back to the defaults table for items the user leaves unanswered or explicitly says "you decide". Never silently pick a default when a quick question would materially improve the plan.
+- If the user declines to answer or says "just make the plan", proceed with the defaults and state which assumptions you made in the plan's Codebase Analysis section.
+
+The goal is the same as a spec: a plan optimized to what the user actually wants — reached by asking, not by guessing.
 
 ---
 
@@ -59,7 +90,7 @@ This analysis can be **fanned out**. First check whether you actually have a sub
 
 Before writing a single implementation step, investigate the actual codebase read-only. This is mandatory — do NOT generate any plan content until this analysis is complete. Read and search the repo to discover, not assume:
 
-1. Read the referenced feature spec in full (from `_specs/` or the file named in `arguments`), **and read the project `SPEC.md` at the repository root in full.** SPEC.md is the source of truth for the durable architecture, systems, conventions, and decisions — the plan MUST conform to it. Note the feature spec's `spec_impact` field and its `Project Spec Alignment` section. If the plan you are about to write would conflict with SPEC.md (contradict a decision, cross a system boundary, break a convention), STOP and flag the conflict to the user before writing the plan; do not silently override the project spec.
+1. Read the referenced feature spec in full (from `_specs/` or the file named in `arguments`), **and read the project `SPEC.md` at the repository root in full.** SPEC.md is the source of truth for the durable architecture, systems, conventions, and decisions — the plan MUST conform to it. Note the feature spec's `spec_impact` field and its `Project Spec Alignment` section. **In Quick Plan mode there is no feature spec file** — treat the brief as the feature request, still read root `SPEC.md` in full, and *infer* the `spec_impact` and Project Spec Alignment from the analysis per the Quick Plan defaults table. If the plan you are about to write would conflict with SPEC.md (contradict a decision, cross a system boundary, break a convention), STOP and flag the conflict to the user before writing the plan; do not silently override the project spec.
 2. Map the project: top-level structure, entry points, how the app is built and run (build scripts, test runner, package manifests).
 3. Identify the conventions actually used in this repo: naming, file/folder organization, state management, styling, error handling, testing patterns.
 4. Find the closest existing feature(s) or modules to the one being planned and study how they are implemented — the plan should follow these patterns.
@@ -72,7 +103,7 @@ If the spec or codebase is too ambiguous to analyze responsibly, stop and ask th
 
 ## Step 2. Write the plan
 
-Only after Step 1 is complete, write the plan markdown to `_specs/` as `<feature-name>_plan.md`. The document MUST open with a `## Codebase Analysis` section that summarizes the findings from Step 1 (cite the real files/modules you inspected) — this is the evidence that the analysis happened. This section MUST include a short **SPEC.md alignment** note: which SPEC.md sections the plan conforms to, and whether the feature is spec-impacting (carry over the feature spec's `spec_impact`). A plan without a grounded analysis section is invalid; do not produce one.
+Only after Step 1 is complete, write the plan markdown to `_specs/` as `<feature-name>_plan.md`. The document MUST open with a `## Codebase Analysis` section that summarizes the findings from Step 1 (cite the real files/modules you inspected) — this is the evidence that the analysis happened. This section MUST include a short **SPEC.md alignment** note: which SPEC.md sections the plan conforms to, and whether the feature is spec-impacting (carry over the feature spec's `spec_impact`, or in Quick Plan mode the value you inferred, and say it was inferred). A plan without a grounded analysis section is invalid; do not produce one.
 
 Then write the implementation as an ordered checklist of discrete tasks. Use GitHub-style checkboxes so progress can be tracked directly in the file — one task per line, numbered T1, T2, T3 … in dependency order, each small enough to be implemented and verified on its own:
 
