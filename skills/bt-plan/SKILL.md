@@ -1,6 +1,6 @@
 ---
 name: bt-plan
-description: "The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec. Also supports a Quick Plan mode: when given only a brief (no spec file), it plans directly from the brief using sensible defaults for anything normally taken from the spec."
+description: "The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec. Also supports a Quick Plan mode: when given only a brief (no spec file), it interviews the user to build a mini-spec and plans from that. Always planning-only — it writes the plan file and stops; execution is the separate bt-execute skill."
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Task
 ---
 
@@ -33,7 +33,10 @@ Example:
 
 ## Quick Plan mode (no feature spec file)
 
-When invoked with a brief but **no feature spec file**, produce a plan directly from the brief. Do not stop to ask *for a spec file* — but do **interview the user** to recover the decisions the spec would normally have captured. A spec is largely the product of that Q&A; skipping the file must not mean skipping the questions. Everything the skill would normally read from the feature spec is supplied by sensible defaults only as a **last-resort fallback** for anything left unanswered:
+> 🛑 **"Quick" refers ONLY to skipping the spec file — never to skipping steps, and NEVER to executing the plan.**
+> Quick Plan is still **PLANNING MODE**. It ends the moment `_specs/<feature-name>_plan.md` is written. Do **NOT** implement any task, do **NOT** edit application/source files, do **NOT** run builds or tests, and do **NOT** continue into the tasks you just wrote — not even the first one, not even if the tasks look small, obvious, or trivially automatable. The user executes tasks separately with the **bt-execute** skill, deliberately, with a clean context between steps. Auto-executing destroys that workflow.
+
+When invoked with a brief but **no feature spec file**, produce a plan from the brief. Do not stop to ask *for a spec file* — instead **interview the user** to build a **mini-spec** from their answers, then plan from that mini-spec exactly as you would from a real spec file. A spec is largely the product of that Q&A; skipping the file must not mean skipping the questions. Everything the skill would normally read from the feature spec is supplied by sensible defaults only as a **last-resort fallback** for anything left unanswered:
 
 | Normally from the spec | Quick Plan default |
 | --- | --- |
@@ -42,7 +45,18 @@ When invoked with a brief but **no feature spec file**, produce a plan directly 
 | `spec_impact: yes/no` | **Infer** it from the Step 1 analysis: `yes` if the feature adds/changes a system, convention, dependency, or architectural decision; otherwise `no`. |
 | `Project Spec Alignment` section | Derive alignment directly from root `SPEC.md` + the analysis. |
 
-Quick Plan mode changes **only** which inputs are read — it does **not** relax any rigor. Step 1 (the comprehensive codebase analysis, including reading root `SPEC.md`) runs in full, and the plan still ends with the SPEC.md write-back task whenever the inferred `spec_impact` is `yes`. Emit one visible status line when this path is taken: `⚡ [bt-plan] Quick Plan mode — no feature spec file; planning from the brief`.
+**The one and only difference in Quick Plan mode is operating without a spec file** — the interview produces a mini-spec that stands in for it. Everything else is identical to a normal run: Step 1's comprehensive codebase analysis (including reading root `SPEC.md`) runs in full, the plan document has the same structure, the SPEC.md write-back task is still appended when the inferred `spec_impact` is `yes`, and the run still **STOPS after writing the plan file**. Nothing about Quick Plan grants permission to implement.
+
+Emit one visible status line when this path is taken: `⚡ [bt-plan] Quick Plan mode — no feature spec file; interviewing, then planning from the brief`.
+
+### Finishing a Quick Plan (hard stop)
+
+After writing `_specs/<feature-name>_plan.md`, **STOP**. Your final response must be a short summary of the plan plus the exact next-step hint below — and nothing else. Do not begin T1. Do not offer to "go ahead and start". If the user wants execution, they will invoke bt-execute themselves:
+
+```
+Plan written to _specs/<feature-name>_plan.md
+Run a single task with `bt-execute _specs/<feature-name>_plan.md T1`, or every task with `bt-execute _specs/<feature-name>_plan.md ALL`.
+```
 
 ### Interview before planning (Quick Plan)
 
@@ -76,6 +90,8 @@ If a required fetch fails, STOP and tell me. Do not guess at the API.
 ## Planning mode — do not implement
 
 This command runs in PLANNING MODE. Research read-only and produce ONLY the technical plan document. Do NOT implement the feature, edit any existing application/source files, or run build, test, or other shell commands. The only file you may create is the plan markdown in `_specs/`, named `<feature-name>_plan.md`.
+
+**This applies identically in Quick Plan mode.** Planning and execution are deliberately separate skills: `bt-plan` writes the plan, `bt-execute` runs it — one task at a time, with a clean context between tasks, at the user's discretion. Rolling straight from planning into implementation defeats the entire purpose of that split. Writing the plan file is the LAST action of this skill in every mode.
 
 ## Step 0. Confirm planning mode
 
