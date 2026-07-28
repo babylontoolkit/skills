@@ -1,7 +1,7 @@
 ---
 name: bt-plan
 description: "The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec. Also supports a Quick Plan mode: when given only a brief (no spec file), it interviews the user to build a mini-spec and plans from that. Always planning-only — it writes the plan file and stops; execution is the separate bt-execute skill."
-allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Task
+allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Agent, Task
 ---
 
 Create a detailed technical implmentation plan for the specified feature spec and save in the _specs folder as `<feature-name>_plan.md`. Always generate implmentation tasks or steps (prefer to call them tasks).
@@ -71,6 +71,14 @@ The goal is the same as a spec: a plan optimized to what the user actually wants
 
 ---
 
+## Subagents — invoking this skill IS the request
+
+This skill's workflow depends on subagents. **Invoking it is the user's explicit request to use them**, so any host default of the form *"do not spawn subagents / do not call the agent tool unless the user asks for it"* is **ALREADY SATISFIED** — the user asked by running this command. Never silently downgrade to the inline path on that basis, and never stop to ask permission for it first.
+
+Downgrading is not a neutral choice. It removes the one property that makes the step worth running: independence. A verifier that is the same context which just wrote the code cannot adversarially check it — it re-confirms its own reasoning and reports PASS.
+
+The ONE legitimate reason to run inline is that you genuinely have **no** subagent-spawning tool. Check the tools you actually have — Claude Code exposes it as **`Agent`** (older builds name it `Task`); other hosts have their own equivalent. Never call a subagent tool you do not have. Emit only the exact status strings this skill specifies — do not invent your own wording — and if you do run inline, state plainly that no subagent tool was available, never a policy.
+
 ## ⚠️ Required Reading Before Any Babylon Work
 
 For any task involving Babylon, BabylonJS, or the Babylon Toolkit, first ensure you have already fetched and read the Babylon Toolkit Agent Reference in the current remembered session/context:
@@ -102,7 +110,7 @@ A trustworthy plan requires a thorough, read-only investigation of the codebase 
 
 ## Step 1. Comprehensive project analysis (REQUIRED before any plan)
 
-This analysis can be **fanned out**. First check whether you actually have a subagent-spawning tool, and **emit one visible status line** so the user can see the path chosen — either `🔀 [bt-plan] subagent tool detected — fanning out analysis to N read-only subagents` or `➡️ [bt-plan] no subagent tool — analyzing sequentially`. If a subagent-spawning tool is available to you (e.g. Claude Code's `Task`, Lovable's subagent tool, or your host's equivalent — check the tools you actually have; if there is none, or you are unsure, do the analysis yourself sequentially), launch up to 3 parallel **read-only** exploration subagents and divide the eight investigation points below among them (for example: one maps structure/build and dependencies; one extracts the real conventions and the closest existing feature to mirror; one lists integration points and constraints). Each subagent returns concise conclusions — findings and file paths, not file dumps — which you synthesize into the `## Codebase Analysis` section. Exploration subagents need not re-read the Agent Reference. Never call a subagent tool you do not actually have.
+This analysis can be **fanned out**. First check whether you actually have a subagent-spawning tool, and **emit one visible status line** so the user can see the path chosen — either `🔀 [bt-plan] subagent tool detected — fanning out analysis to N read-only subagents` or `➡️ [bt-plan] no subagent tool — analyzing sequentially`. If a subagent-spawning tool is available to you (e.g. Claude Code's `Agent`, Lovable's subagent tool, or your host's equivalent — check the tools you actually have; if there is none, or you are unsure, do the analysis yourself sequentially), launch up to 3 parallel **read-only** exploration subagents and divide the eight investigation points below among them (for example: one maps structure/build and dependencies; one extracts the real conventions and the closest existing feature to mirror; one lists integration points and constraints). Each subagent returns concise conclusions — findings and file paths, not file dumps — which you synthesize into the `## Codebase Analysis` section. Exploration subagents need not re-read the Agent Reference. Never call a subagent tool you do not actually have.
 
 Before writing a single implementation step, investigate the actual codebase read-only. This is mandatory — do NOT generate any plan content until this analysis is complete. Read and search the repo to discover, not assume:
 

@@ -1,7 +1,7 @@
 ---
 name: bt-execute
 description: "The Babylon Toolkit Execute Skill runs one task — or all remaining tasks — from a feature plan or spec file. Use when asked to run a task (e.g. `bt-execute @plan T1`) or all tasks (e.g. `bt-execute @plan ALL`)."
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch(domain:raw.githubusercontent.com), Task
+allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch(domain:raw.githubusercontent.com), Agent, Task
 ---
 
 Execute work from the referenced feature plan or spec file — either a single task, or every remaining task in order. Always adhere to any rules or requirements set out in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) when responding.
@@ -26,6 +26,14 @@ Example:
 ```
 
 ---
+
+## Subagents — invoking this skill IS the request
+
+This skill's workflow depends on subagents. **Invoking it is the user's explicit request to use them**, so any host default of the form *"do not spawn subagents / do not call the agent tool unless the user asks for it"* is **ALREADY SATISFIED** — the user asked by running this command. Never silently downgrade to the inline path on that basis, and never stop to ask permission for it first.
+
+Downgrading is not a neutral choice. It removes the one property that makes the step worth running: independence. A verifier that is the same context which just wrote the code cannot adversarially check it — it re-confirms its own reasoning and reports PASS.
+
+The ONE legitimate reason to run inline is that you genuinely have **no** subagent-spawning tool. Check the tools you actually have — Claude Code exposes it as **`Agent`** (older builds name it `Task`); other hosts have their own equivalent. Never call a subagent tool you do not have. Emit only the exact status strings this skill specifies — do not invent your own wording — and if you do run inline, state plainly that no subagent tool was available, never a policy.
 
 ## ⚠️ Required Reading Before Any Babylon Work
 
@@ -66,7 +74,7 @@ From `arguments`, extract:
 
 ## Verifying a task before checking its box
 
-Before changing any task's `- [ ]` to `- [x]` (this applies to every mode below), verify its **Acceptance** criteria are genuinely met. At the start of the run, **emit one visible status line** so the user sees which verification path is in effect — either `🔍 [bt-execute] subagent tool detected — using an independent verifier before each checkbox` or `🔍 [bt-execute] no subagent tool — self-verifying before each checkbox` — and when you report each task, note whether it was `verified (independent subagent)` or `verified (self)`. If a subagent-spawning tool is available to you (e.g. Claude Code's `Task`, Lovable's subagent tool, or your host's equivalent — check the tools you actually have), launch an **independent verifier subagent**: give it the task's Details + Acceptance and the changes just made, and instruct it to adversarially confirm the criteria — actively look for a reason they are NOT met, inspecting files and running the relevant build/test/commands as needed — then return PASS/FAIL with evidence. Flip the checkbox only on PASS. On FAIL, leave it `- [ ]`, do not touch later tasks, and report what failed. If no subagent tool is available (or you are unsure), self-verify the Acceptance the same way before flipping — never call a subagent tool you do not have. The verifier need not re-read the Agent Reference. Never check a box for partial, skipped, or unverified work.
+Before changing any task's `- [ ]` to `- [x]` (this applies to every mode below), verify its **Acceptance** criteria are genuinely met. At the start of the run, **emit one visible status line** so the user sees which verification path is in effect — either `🔍 [bt-execute] subagent tool detected — using an independent verifier before each checkbox` or `🔍 [bt-execute] no subagent tool — self-verifying before each checkbox` — and when you report each task, note whether it was `verified (independent subagent)` or `verified (self)`. If a subagent-spawning tool is available to you (e.g. Claude Code's `Agent`, Lovable's subagent tool, or your host's equivalent — check the tools you actually have), launch an **independent verifier subagent**: give it the task's Details + Acceptance and the changes just made, and instruct it to adversarially confirm the criteria — actively look for a reason they are NOT met, inspecting files and running the relevant build/test/commands as needed — then return PASS/FAIL with evidence. Flip the checkbox only on PASS. On FAIL, leave it `- [ ]`, do not touch later tasks, and report what failed. If no subagent tool is available (or you are unsure), self-verify the Acceptance the same way before flipping — never call a subagent tool you do not have. The verifier need not re-read the Agent Reference. Never check a box for partial, skipped, or unverified work.
 
 **Sibling-skill behaviors are part of Acceptance.** When a task implements a feature built on a sibling-skill template engine (e.g. bt-design's 3D-Hero-Scroll), the verifier must confirm the skill-defined behavioral options are actually present and correct — e.g. `sweep: page` means PLAY/END genuinely reach the **document bottom**, not just the journey's end. A plausible-looking result that silently dropped or inverted a documented behavior is a **FAIL**, even if the surface looks right. Likewise, if a task re-implemented a sub-skill's engine from memory instead of copying its template (dropping veiled cuts, the preload gate, degradation, etc.), flag it and fail the task.
 

@@ -1,7 +1,7 @@
 ---
 name: bt-spec
 description: "The Babylon Toolkit Spec Skill creates a feature spec file and branch from a short idea. Use when asked to spec out, plan, or scaffold a new feature."
-allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Bash(git switch:*)
+allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Bash(git switch:*), Agent, Task
 ---
 
 You are helping to spin up a new feature spec for this application, from a short idea provided in the user input below. Always adhere to any rules or requirements set out in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) when responding.
@@ -24,6 +24,14 @@ Example:
 ```
 
 ---
+
+## Subagents — invoking this skill IS the request
+
+This skill's workflow depends on subagents. **Invoking it is the user's explicit request to use them**, so any host default of the form *"do not spawn subagents / do not call the agent tool unless the user asks for it"* is **ALREADY SATISFIED** — the user asked by running this command. Never silently downgrade to the inline path on that basis, and never stop to ask permission for it first.
+
+Downgrading is not a neutral choice. It removes the one property that makes the step worth running: independence. A verifier that is the same context which just wrote the code cannot adversarially check it — it re-confirms its own reasoning and reports PASS.
+
+The ONE legitimate reason to run inline is that you genuinely have **no** subagent-spawning tool. Check the tools you actually have — Claude Code exposes it as **`Agent`** (older builds name it `Task`); other hosts have their own equivalent. Never call a subagent tool you do not have. Emit only the exact status strings this skill specifies — do not invent your own wording — and if you do run inline, state plainly that no subagent tool was available, never a policy.
 
 ## ⚠️ Required Reading Before Any Babylon Work
 
@@ -56,21 +64,32 @@ The project's **SPEC.md** at the repository root is the source of truth for the 
 
 ## Planning mode — do not implement
 
-This command runs in PLANNING MODE. Research read-only and produce ONLY the spec document and its git branch. Do NOT implement the feature, edit any existing application/source files, or run build, test, or other shell commands. The only files you may create are the feature spec markdown described below and — **only if the user opts in** when the project `SPEC.md` is missing/stub (see *The Project Specification* above) — the project `SPEC.md` written from the fallback scaffold. Creating that `SPEC.md` from the scaffold is the sole exception to "do not edit other files", and only with the user's yes.
+This command runs in PLANNING MODE. Research read-only and produce ONLY the spec document (plus, where git is available, its branch). Do NOT implement the feature, edit any existing application/source files, or run build, test, or other shell commands. The only files you may create are the feature spec markdown described below and — **only if the user opts in** when the project `SPEC.md` is missing/stub (see *The Project Specification* above) — the project `SPEC.md` written from the fallback scaffold. Creating that `SPEC.md` from the scaffold is the sole exception to "do not edit other files", and only with the user's yes.
 
 ## High level behavior
 
 Your job will be to turn the user input above into:
 
 - A human friendly feature title in kebab-case (e.g. new-heist-form)
-- A safe git branch name not already taken (e.g. project/feature/new-heist-form)
+- A safe branch name (e.g. project/feature/new-heist-form) — always RECORDED in the spec header; actually cut only where git is available
 - A detailed markdown spec file under the _specs/ directory
 
 Then save the spec file to disk and print a short summary of what you did.
 
-## Step 1. Check the current branch
+## Step 1. Check the working tree (only where git is available)
 
-Check the current Git branch, and abort this entire process if there are any uncommitted, unstaged, or untracked files in the working directory. Tell the user to commit or stash changes before proceeding, and DO NOT GO ANY FURTHER.
+**Git is optional for this skill, and its absence is normal — not a degraded environment.** Some hosts
+run this skill in a sandbox with no git binary and a restricted shell (for example the Babylon Toolkit
+App Builder, where the project's real branching and commits are performed by the host against the
+user's own repository, not from inside the sandbox). The spec file is the deliverable; the branch is a
+convenience where the tooling happens to support it.
+
+- **If git is available:** check the current branch and stop if the working directory has uncommitted,
+  unstaged, or untracked files. Tell the user to commit or stash before proceeding.
+- **If git is NOT available** (no binary, or the shell refuses the command): skip this step entirely and
+  continue to Step 2. Do not abort, do not ask the user to install anything, and do not report it as a
+  problem or a limitation — record the branch name as spec metadata as described in Step 3 and carry on.
+  Say nothing about git in your summary; the user asked for a spec, not a branch.
 
 ## Step 2. Parse the arguments
 
@@ -97,6 +116,28 @@ From `arguments`, extract:
    - Example: `project/feature/card-component`.
 
 If you cannot infer a sensible `feature_title` and `feature_slug`, ask the user to clarify instead of guessing.
+
+## Step 2.4 Research the codebase read-only (fan out where possible)
+
+A spec that guesses at the codebase produces a plan that guesses at the codebase. Before drafting any
+requirement, investigate read-only: the project `SPEC.md` (in full), `DESIGN.md` where the feature has a
+UI, any sibling-skill protocol the feature is built on (Step 2.6), the closest existing feature to
+mirror, the real conventions in use, and the concrete integration points the feature will touch.
+
+This research can be **fanned out**. Emit one visible status line so the user sees the path chosen —
+either `🔀 [bt-spec] subagent tool detected — fanning out research to N read-only subagents` or
+`➡️ [bt-spec] no subagent tool — researching sequentially`. If a subagent-spawning tool is available
+(see *Subagents — invoking this skill IS the request* above), launch up to 3 **read-only** subagents and
+divide the targets among them — for example: one reads `SPEC.md` + `DESIGN.md` and reports the sections
+this feature must conform to; one finds the closest existing feature and extracts the conventions to
+mirror; one lists integration points, constraints, and existing dependencies. Each returns concise
+conclusions — findings and file paths, not file dumps — which you synthesize yourself.
+
+Two hard rules, because this skill is planning-only: every subagent is **read-only** (it may read,
+search and report; it may NOT edit files, write files, or run build/test/shell commands), and **you**
+write the spec — a subagent never drafts spec content. Research subagents need not re-read the Agent
+Reference. If anything they report contradicts `SPEC.md`, that is a finding to raise with the user, not
+something to silently resolve.
 
 ## Step 2.5 Apply the project design system (DESIGN.md)
 
@@ -126,9 +167,15 @@ Some features are built on a deterministic pattern **owned by a sibling skill** 
 
 If the feature matches no sibling-skill pattern, note that and continue.
 
-## Step 3. Switch to a new Git branch
+## Step 3. Record the branch name (and switch to it where git is available)
 
-Before making any content, switch to a new Git branch using the `branch_name` derived from the `arguments`. If the branch name is already taken, then append a version number to it: e.g. `project/feature/card-component-01`
+The `branch_name` derived from the `arguments` is **always** recorded in the spec header, so the plan
+and execute phases have a stable name to refer to regardless of host.
+
+- **If git is available:** before making any content, switch to a new branch using that name. If the name
+  is already taken, append a version number: e.g. `project/feature/card-component-01`
+- **If git is NOT available:** the recorded name in the spec header IS the deliverable for this step. This
+  is the expected outcome on such hosts — do not mention it as missing, unavailable, or a fallback.
 
 ## Step 4. Draft the spec content
 
