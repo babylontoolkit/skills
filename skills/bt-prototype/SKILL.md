@@ -7,6 +7,8 @@ Build **N radically-different, mind-blowing landing-page prototypes** for a sing
 
 The **mechanics of any 3D-scroll hero** are owned by **bt-hero** / bt-design's 3D-Hero-Scroll reference — never re-implement them here. This skill owns the **batch**: intake, direction spread, fan-out, per-prototype asset pipeline, and the iteration-pass quality gate.
 
+**Load bt-design before you plan the directions.** Every prototype is built to its *Layout Philosophy — Full-Bleed Console UI* and its *scroll is the transport* rule, both named by section below; the standards have to be in context for the batch to share one bar. Where skills are loaded with a tool (the Babylon Toolkit App Builder platform), call `load_skill('bt-design')`, and fetch its bundled references with `read_skill_resource` using the paths the load returns — never a guessed path. Where skills are files on disk (Claude Code), read `bt-design/SKILL.md` from the same skills directory, `~/.claude/skills/` or the project's `.claude/skills/`. If it is already in your context, skip the load. Each subagent needs the standards too — brief them with the direction AND the loaded design standards, since a subagent does not inherit your context.
+
 Always adhere to any rules or requirements set out in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) when responding.
 
 Use the user's message after the skill name as the `arguments`.

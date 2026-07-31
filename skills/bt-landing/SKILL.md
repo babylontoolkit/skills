@@ -21,7 +21,18 @@ Use the user's message after the skill name as the `arguments`.
 
 - **With a brief:** the brief is the design direction. Honor every specific it names; invent boldly where it is silent.
 - **Without a brief:** derive the direction from the game itself — its title, genre, GameMode, and any art already in the project. Commit to a BOLD aesthetic per the bt-design skill's Design Thinking section.
-- **On a NEW project (the creation turn):** the platform invokes this procedure automatically with the project brief. Same steps, no difference.
+- **On a NEW project (the first build turn):** the platform invokes this procedure automatically with the project brief, and pre-loads bt-design alongside it. Same steps, no difference — the prerequisite below is already satisfied, so do not re-load it.
+
+# Prerequisite — load bt-design FIRST, before anything else
+
+**This procedure is built on the bt-design skill's standards and is incomplete without them.** Several steps below defer to bt-design by name (Design Thinking, the full-bleed console UI vocabulary, typography and motion). Those references are instructions to *use* that skill's content, not decoration — designing "to bt-design's standards" without having read them produces generic output that misses the point of running this skill at all.
+
+So, as your FIRST action:
+
+- **If bt-design is already in your context** (a "Skills — already in context" block names it, or you loaded it earlier in this conversation) — proceed straight to Step 0. Do not re-load it.
+- **Otherwise, load it now.** Where skills are loaded with a tool (the Babylon Toolkit App Builder platform), call `load_skill('bt-design')`. Where skills are files on disk (Claude Code), read the sibling `bt-design/SKILL.md` from the same skills directory — `~/.claude/skills/` or the project's `.claude/skills/`.
+
+One load, before you write anything. Loading is cheap; discovering halfway through a redesign that you are missing the standards means redrafting the whole thing.
 
 # Step 0 — discover the project facts (never guess them)
 
@@ -43,7 +54,7 @@ Rewrite BOTH files COMPLETELY, as a landing page designed from scratch for this 
 - SELF-CHECK before finishing: re-read your Home.css — any structural container with `max-width` + auto margins means the task is failed; fix it first. At 1920px there must be NO empty margin strip on either side of the hero.
 - Responsive from ~320px to ~2560px, no horizontal scrollbar at any width, nothing clipped or overlapping.
 
-Design to the bt-design skill's standards: full-bleed console UI, bold committed aesthetic, distinctive typography, real motion. `src/pages/` and `src/components/` stay Babylon-free — never import `GameManager` or any Babylon module there; navigation goes through `useUnifiedNavigation`.
+Design to the bt-design skill's standards — the ones you loaded in the Prerequisite: full-bleed console UI, bold committed aesthetic, distinctive typography, real motion. `src/pages/` and `src/components/` stay Babylon-free — never import `GameManager` or any Babylon module there; navigation goes through `useUnifiedNavigation`.
 
 # Step 2 — the chrome (`src/custom/**`): splash, preloader, overlay — ALL THREE, one theme
 
