@@ -40,7 +40,7 @@ Before writing anything, read what is true in THIS project:
 
 - **The play contract:** find the registered GameMode class (look in `src/scripts/*.ts` for `RegisterClass`, and at `src/babylon/globals.ts`'s registration block). Gameplay is entered ONLY via `navigate('/play', { gameMode: '<RegisteredModeClass>', sceneUrl?, ...selections })` through `useUnifiedNavigation`. The redesign may move, restyle, multiply, or remove play buttons — but this call must survive, exactly, with the project's real class name.
 - **Images on disk:** list what exists under `src/assets/` and `public/` (including `public/assets/generated/`). Import from these or none — never invent an asset path.
-- **The chrome location:** `src/custom/` — `loading.tsx`, `splash.tsx` + `splash.css`, `overlay.tsx` + `overlay.css`. This folder is a WRITE zone that sits OUTSIDE the read-only `src/babylon`, so its framework imports go through `'../babylon/…'` (e.g. `import GameManager from '../babylon/globals'`) and its bundled logo imports through `'../assets/…'`.
+- **The chrome location:** `src/chrome/` — `loading.tsx`, `splash.tsx` + `splash.css`, `overlay.tsx` + `overlay.css`. This folder is a WRITE zone that sits OUTSIDE the read-only `src/babylon`, so its framework imports go through `'../babylon/…'` (e.g. `import GameManager from '../babylon/globals'`) and its bundled logo imports through `'../assets/…'`.
 
 # Step 1 — the landing page (`src/pages/Home.tsx` + `Home.css`)
 
@@ -56,13 +56,13 @@ Rewrite BOTH files COMPLETELY, as a landing page designed from scratch for this 
 
 Design to the bt-design skill's standards — the ones you loaded in the Prerequisite: full-bleed console UI, bold committed aesthetic, distinctive typography, real motion. `src/pages/` and `src/components/` stay Babylon-free — never import `GameManager` or any Babylon module there; navigation goes through `useUnifiedNavigation`.
 
-# Step 2 — the chrome (`src/custom/**`): splash, preloader, overlay — ALL THREE, one theme
+# Step 2 — the chrome (`src/chrome/**`): splash, preloader, overlay — ALL THREE, one theme
 
 REDESIGN — do not reskin — all three surfaces to the SAME design language as the landing page (typography, palette, motion). Doing only the overlay and stopping is the classic miss: the splash and preloader are the two that ship with the Babylon logo + spinner, so skipping them leaves engine branding in the user's game.
 
-1. **Preloader** — `src/custom/loading.tsx`. First thing on screen, before the app mounts.
-2. **Splash / loading screen** — `src/custom/splash.tsx` + `splash.css`. Shown while the 3D scene loads.
-3. **Initial overlay** — `src/custom/overlay.tsx` + `overlay.css`. The in-game HUD layer — retheme it to match (a title/brand corner, a frame); the full HUD grows later with gameplay.
+1. **Preloader** — `src/chrome/loading.tsx`. First thing on screen, before the app mounts.
+2. **Splash / loading screen** — `src/chrome/splash.tsx` + `splash.css`. Shown while the 3D scene loads.
+3. **Initial overlay** — `src/chrome/overlay.tsx` + `overlay.css`. The in-game HUD layer — retheme it to match (a title/brand corner, a frame); the full HUD grows later with gameplay.
 
 **The splash must NEVER be derived from the default Babylon splash (centered logo + spinner) — recoloring the default IS the failure.** Think out of the box: design the loading experience as a scene in this game's world, with a progress metaphor native to THIS game — a racer's start-lights counting down, a fuel gauge filling, a platformer's level assembling tile by tile, a warp drive charging — driven by the real progress value, not a bare bar under a logo. Atmosphere worth watching: staggered reveals, ambient motion, flavor text in the game's voice. There is no limit to what you can do here.
 
@@ -78,13 +78,15 @@ Any redesign of the splash MUST keep every one of these elements present with it
 
 **LIGHTWEIGHT is a hard constraint, not a style choice.** The splash and preloader ARE the progress info — they exist to COVER loading, so they must paint instantly and show progress immediately. Build their creativity from what renders in the first frame: CSS gradients, keyframe animation, typography, particles, inline SVG, canvas-drawn effects, at most small image assets (a compact logo, a texture tile). Do NOT put multi-megabyte generated hero art, photography, or video on these surfaces — a splash that loads its own heavy image defeats itself. Heavy art belongs on the landing page, behind a styled fallback.
 
+**IMPORTS AND FRAMEWORK WIRING ARE COPIED, NEVER RE-DERIVED (STRONGLY ENFORCED):** you are restyling these files, not re-authoring them. Before you write `splash.tsx` / `overlay.tsx` / `loading.tsx`, READ the file you are about to replace and carry its **entire import block** — and every `GameManager`, `EventBus` and `useUnifiedNavigation` line — across **unchanged, character for character**. Rewrite only markup, styles and copy. Do not retype an import from memory, do not "tidy" it, do not change default vs named form, path, or ordering. If a single import in your new file differs from the original's, you have introduced a build error. Concretely: **`GameManager` is a DEFAULT export** — `import GameManager from '../babylon/globals'`, never `import { GameManager } from '../babylon/globals'` (that exact slip has shipped a project that would not compile). The framework's export shape is not something to infer; it is something to copy. SELF-CHECK before finishing: diff your new import block against the original's — they must be identical.
+
 **Keep ONLY each surface's wiring; replace ALL of the visuals:**
 
 - `loading.tsx` re-exports `babylonLogo` / `spinnerLogo` that `splash.tsx` imports — keep those exports (or update `splash.tsx`'s import to match).
 - `splash.tsx` keeps its `GameManager.EventBus` `"OnLoadProgress"` subscription — that is REAL load progress; drive your metaphor from it.
 - `overlay.tsx` keeps `pointer-events: none` on its container so input reaches the canvas; only genuinely interactive elements get `pointer-events: auto`.
 - Never delete image files from disk (`public/babylon.png` + `public/spinner.png` are framework-required, whatever your design shows).
-- `src/custom/**` runs in the viewer context, so it MAY import `GameManager`/`EventBus` and `useUnifiedNavigation` — through `'../babylon/…'` paths (Step 0).
+- `src/chrome/**` runs in the viewer context, so it MAY import `GameManager`/`EventBus` and `useUnifiedNavigation` — through `'../babylon/…'` paths (Step 0).
 
 The Layout law from Step 1 binds these surfaces too — full-bleed, responsive, edge-to-edge.
 
