@@ -42,7 +42,25 @@ Before writing anything, read what is true in THIS project:
 - **Images on disk:** list what exists under `src/assets/` and `public/` (including `public/assets/generated/`). Import from these or none — never invent an asset path.
 - **The chrome location:** `src/chrome/` — `loading.tsx`, `splash.tsx` + `splash.css`, `overlay.tsx` + `overlay.css`. This folder is a WRITE zone that sits OUTSIDE the read-only `src/babylon`, so its framework imports go through `'../babylon/…'` (e.g. `import GameManager from '../babylon/globals'`) and its bundled logo imports through `'../assets/…'`.
 
-# Step 1 — the landing page (`src/pages/Home.tsx` + `Home.css`)
+# Step 1 — the design system (`DESIGN.md` at the project root)
+
+The project's committed design direction lives in ONE file: **`DESIGN.md`**, at the project root. Read it before designing anything — this step is what makes ten projects come out looking like ten different games instead of ten flavors of the same one, and what keeps every later edit to THIS project coherent with what already shipped.
+
+- **If `DESIGN.md` has real content** — it IS the design system. Every surface this run touches honors its palette, typography, motion language, and tone; your own instincts defer to it. The brief still outranks it: when the brief names a new direction ("dark synthwave, neon grid, VHS grain"), the new direction wins — and you REWRITE `DESIGN.md` to match as part of this run. The file always records what actually shipped, never what used to be true.
+- **If `DESIGN.md` does not exist, is empty, or is only a placeholder** — **CREATE it now (replacing the placeholder wholesale), BEFORE writing any page or chrome code.** A placeholder is recognizable by content, not just by size: the starter template ships one whose Design Overview says *"There are no special design instructions."* (followed by a "Non-design note" link section that is explicitly not guidance) — that file is EMPTY for this step's purposes, as is any DESIGN.md with blank/boilerplate headings, TODO markers, or no committed values (no hex codes, no font names). Committing the direction to the file first is the point: a direction decided mid-draft drifts back to defaults; a direction written down gets built.
+
+**What `DESIGN.md` must contain** — short, concrete, buildable; a design system, not an essay:
+
+- **Direction** — one sentence naming the aesthetic lens and the tone extreme it commits to (per bt-design's Design Thinking), e.g. "sun-bleached desert-rally poster: grainy, analog, high-noon", "cold orbital-station UI: precise, monochrome, quietly threatening".
+- **Palette** — actual hex values with roles: dominant, surface, 1–2 sharp accents, text tones. Dominant-with-sharp-accents, never a timid evenly-distributed spread.
+- **Typography** — display face and body face BY NAME (distinctive and characterful — never Inter/Roboto/Arial/system fonts).
+- **Motion** — the motion language: what animates, easing character, tempo (e.g. "slow drifts + hard snaps", "spring physics everywhere", "near-still, light flickers only").
+- **Atmosphere** — background and texture rules: grain, gradient meshes, geometry, scanlines, layered transparency — whatever this direction uses instead of flat fills.
+- **Voice** — one line on copy tone for labels and flavor text (a racer barks, a horror game whispers).
+
+**Anti-convergence rule (why this file exists):** you cannot see the other projects this platform has built, so left to instinct you will converge on the same dark-hero-plus-glow-accent design every time. When WRITING a fresh `DESIGN.md`, pick the direction for THIS game and deliberately pass on the first, most obvious treatment for its genre — vary light against dark, loud against restrained, ornate against brutal. If the direction you are about to commit would look at home on any generic game site, it is the wrong one.
+
+# Step 2 — the landing page (`src/pages/Home.tsx` + `Home.css`)
 
 Rewrite BOTH files COMPLETELY, as a landing page designed from scratch for this game. Nothing from the previous page survives unless the brief explicitly says to keep it — no starter hero, no demo buttons, no Vite/React/Babylon links, no footer, no engine/toolkit attribution of any kind. Reach gameplay through the play contract from Step 0.
 
@@ -54,11 +72,11 @@ Rewrite BOTH files COMPLETELY, as a landing page designed from scratch for this 
 - SELF-CHECK before finishing: re-read your Home.css — any structural container with `max-width` + auto margins means the task is failed; fix it first. At 1920px there must be NO empty margin strip on either side of the hero.
 - Responsive from ~320px to ~2560px, no horizontal scrollbar at any width, nothing clipped or overlapping.
 
-Design to the bt-design skill's standards — the ones you loaded in the Prerequisite: full-bleed console UI, bold committed aesthetic, distinctive typography, real motion. `src/pages/` and `src/components/` stay Babylon-free — never import `GameManager` or any Babylon module there; navigation goes through `useUnifiedNavigation`.
+Design to the bt-design skill's standards — the ones you loaded in the Prerequisite — **through the lens `DESIGN.md` commits to (Step 1)**: full-bleed console UI, the file's palette and typography, real motion in the file's motion language. `src/pages/` and `src/components/` stay Babylon-free — never import `GameManager` or any Babylon module there; navigation goes through `useUnifiedNavigation`.
 
-# Step 2 — the chrome (`src/chrome/**`): splash, preloader, overlay — ALL THREE, one theme
+# Step 3 — the chrome (`src/chrome/**`): splash, preloader, overlay — ALL THREE, one theme
 
-REDESIGN — do not reskin — all three surfaces to the SAME design language as the landing page (typography, palette, motion). Doing only the overlay and stopping is the classic miss: the splash and preloader are the two that ship with the Babylon logo + spinner, so skipping them leaves engine branding in the user's game.
+REDESIGN — do not reskin — all three surfaces to the SAME design language as the landing page (the `DESIGN.md` system from Step 1: typography, palette, motion). Doing only the overlay and stopping is the classic miss: the splash and preloader are the two that ship with the Babylon logo + spinner, so skipping them leaves engine branding in the user's game.
 
 1. **Preloader** — `src/chrome/loading.tsx`. First thing on screen, before the app mounts.
 2. **Splash / loading screen** — `src/chrome/splash.tsx` + `splash.css`. Shown while the 3D scene loads.
@@ -88,19 +106,20 @@ Any redesign of the splash MUST keep every one of these elements present with it
 - Never delete image files from disk (`public/babylon.png` + `public/spinner.png` are framework-required, whatever your design shows).
 - `src/chrome/**` runs in the viewer context, so it MAY import `GameManager`/`EventBus` and `useUnifiedNavigation` — through `'../babylon/…'` paths (Step 0).
 
-The Layout law from Step 1 binds these surfaces too — full-bleed, responsive, edge-to-edge.
+The Layout law from Step 2 binds these surfaces too — full-bleed, responsive, edge-to-edge.
 
-# Step 3 — bespoke art (when media generation is available)
+# Step 4 — bespoke art (when media generation is available)
 
 If the platform's `generate_image` / `generate_video` tools are available on this turn, use them to make the design beautiful: a hero background, a logo/wordmark, splash-adjacent accents (16:9 for wide heroes, 1:1 for badges/logos; png when alpha matters). Make ALL generate calls FIRST, in ONE parallel round, before writing any files; reference the returned `/assets/generated/…` paths exactly as returned (the one exception to never-invent-an-asset-path) — the renders land in the background, so every surface must look finished while they do (styled color/gradient fallback behind each image, never a blank box). At most ONE short looping hero video, and only if it truly elevates the design — video costs the user hundreds of credits. If the tools are absent, design with CSS + the images on disk instead.
 
-Generated art goes on the LANDING PAGE — never on the splash/preloader (Step 2's lightweight rule).
+Generated art goes on the LANDING PAGE — never on the splash/preloader (Step 3's lightweight rule). Art direction for every generate call comes from `DESIGN.md` — prompt the renders in its palette and atmosphere so the art belongs to the same design as the CSS around it.
 
-# Step 4 — finish clean
+# Step 5 — finish clean
 
 - Zero unresolved imports after the rewrite (every import points at a file that exists).
 - No Toolkit/BabylonJS/engine branding anywhere in the user-facing design.
 - The play contract fires with the project's REAL GameMode class.
 - All four surfaces read as one designed product, not four separate efforts.
+- `DESIGN.md` records the direction that actually shipped — freshly written if it was missing/placeholder, rewritten if the brief redirected it, untouched if this run honored it as-is. A shipped design the file does not describe is a failed Step 1.
 
-State in one short paragraph what design direction you committed to, so the next `/bt-landing` run can be briefed against it.
+State in one short paragraph what design direction you committed to (it is now also in `DESIGN.md`), so the next `/bt-landing` run can be briefed against it.

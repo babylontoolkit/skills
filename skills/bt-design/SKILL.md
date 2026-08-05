@@ -11,6 +11,8 @@ The user provides frontend requirements: a component, page, application, or inte
 
 ## Design Thinking
 
+**The project's `DESIGN.md` (root) is the committed design system — check it FIRST.** If it has real content (an actual direction with palette hexes and named fonts — not the starter placeholder that says *"There are no special design instructions."*), every design task in that project honors it: its palette, typography, motion language, and tone outrank your own instincts, so an isolated edit lands in the same design as everything around it. Diverge only when the user's request explicitly redirects the design — and when it does, update `DESIGN.md` in the same run so the file keeps describing what shipped. If the file is missing or placeholder-only and you are doing a full design pass (bt-landing owns this as its Step 1), commit the direction you choose below to `DESIGN.md` before writing code.
+
 Before coding, understand the context and commit to a BOLD aesthetic direction:
 - **Purpose**: What problem does this interface solve? Who uses it?
 - **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
