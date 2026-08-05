@@ -15,7 +15,7 @@ Use the user's message after the skill name as the `arguments`.
 # Invocation
 
 ```
-/bt-gauntlet [--name:slug] [--template:gauntlet|bounded] [--rounds:N] [--resume|--status|--stop] [<name>] <brief + attachments>
+/bt-gauntlet [--name:slug] [--template:gauntlet|bounded] [--rounds:N] [--card:file] [--resume|--status|--stop] [<name>] <brief + attachments>
 ```
 
 **Flags** (all optional; `--flag:value` or `--flag`):
@@ -23,6 +23,7 @@ Use the user's message after the skill name as the `arguments`.
 - **`--name: slug`** — this gauntlet job's name; it becomes the job's workspace folder `_gauntlet/<name>/`. **Any number of gauntlet jobs can exist side by side in one project** (e.g. `cod-fps`, `racing-demo`), each fully independent. If omitted on a new gauntlet, derive a short kebab-case slug from the brief (e.g. `cod-fps`) and confirm it in the interview.
 - **`--template: gauntlet | bounded`** — which loop template drives the run. `gauntlet` = **Template A** (full-on Shumer-style fan-out: builders vs fresh harsh critics, blind A/B against the reference). `bounded` = **Template B** (single-track objective / metric / boundary loop card — use when reliability and cost matter more than dramatic language). **Default: `gauntlet`.** The choice is recorded in the job's `_gauntlet/<name>/loop-card.md`; a job never mixes templates.
 - **`--rounds: N`** — maximum full rounds (build → verify → critic → record) THIS invocation may run before parking cleanly with a status report and the exact resume command. **Default: `5`.** Override per session (`--rounds:20` for a long night).
+- **`--card: file`** — a **pre-filled loop card**: one of the two templates below with EVERY slot already answered, including `<NAME>`. Skips the interview entirely — validate the card (all slots filled, name doesn't collide with an existing job), copy it to `_gauntlet/<name>/loop-card.md`, distill `brief.md` from it, and start round 1 without asking anything. This is the **non-interactive entry** used when a spec/plan drives the gauntlet (see *Composition with the spec workflow*). If any slot is unfilled or vague, STOP and report which — never guess a slot.
 - **`--resume [<name>]`** — skip the interview, load `_gauntlet/<name>/`, and continue at its `NEXT ACTION`. This is how the loop continues in a brand-new session a day or a week later. Name resolution: an explicit name targets that job; with no name and exactly ONE job in `_gauntlet/`, resume it; with several jobs, list them (name, parts done/total, next action) and ask which one — never guess.
 - **`--status [<name>]`** — read-only report: parts done/total, budgets spent vs boundaries, last critic verdict, next action. With no name, print an **index of ALL gauntlet jobs** in `_gauntlet/` (one line each). Runs zero rounds.
 - **`--stop [<name>]`** — park that job deliberately: write the current status into its `progress.md`, print the resume command, run nothing further. Same name resolution as `--resume`.
@@ -39,7 +40,7 @@ could think of.
 
 The skill turns that brief, via the interview below, into a filled loop card — built with **BabylonJS + the Babylon Toolkit**, not ThreeJS — then runs the loop.
 
-**Mode resolution:** if `--resume`, `--status`, or `--stop` is present, run that mode (with its name resolution). Otherwise, if `_gauntlet/` contains existing jobs and no new brief was given, list them and offer to resume one. Otherwise this is a **new gauntlet**: run the interview. A new gauntlet whose `--name` collides with an existing job is an error — offer `--resume <name>` or a different name; never silently overwrite a job's workspace.
+**Mode resolution:** if `--resume`, `--status`, or `--stop` is present, run that mode (with its name resolution). Otherwise, if `_gauntlet/` contains existing jobs and no new brief was given, list them and offer to resume one. Otherwise this is a **new gauntlet**: run the interview — or, with `--card:`, validate the supplied card and start immediately. A new gauntlet whose `--name` collides with an existing job is an error — offer `--resume <name>` or a different name; never silently overwrite a job's workspace.
 
 ---
 
@@ -64,6 +65,8 @@ If the project keeps a root **SPEC.md**, read it before the first round of each 
 ---
 
 # The Interview (mandatory before round 1 of a NEW gauntlet)
+
+*(Skipped entirely when `--card:` supplies a complete pre-filled loop card — validation replaces conversation.)*
 
 The loop may not start until **every slot of the chosen template is filled**. This is extensive by design — a vague slot produces a loop that spins without a finish line. Use the host's structured question tool (e.g. `AskUserQuestion`) where available; plain numbered questions otherwise. Batch related questions; don't drip them one at a time. Where the user's brief already answers a slot, confirm rather than re-ask. Push back on weak answers and co-rewrite them into useful ones (weak: "make it AAA" → useful: a testable sentence).
 
@@ -254,6 +257,37 @@ Stop, park state, and report when: <SUCCESS CONDITION> passes; <TIME / COST /
 ATTEMPT / PERMISSION / SAFETY BOUNDARIES> is reached; the same blocker repeats;
 or uncertainty requires human judgment.
 ```
+
+---
+
+# Composition with the Spec Workflow (bt-spec / bt-plan / bt-execute)
+
+**The gauntlet contains its own plan — never run bt-plan on gauntlet work.** The mapping to the sibling skills:
+
+| Spec workflow | Gauntlet equivalent |
+| --- | --- |
+| `_specs/<feature>_spec.md` (bt-spec) | `_gauntlet/<name>/loop-card.md` — objective, benchmark, success condition, boundaries |
+| `_specs/<feature>_plan.md` (bt-plan) | the part checklist in `_gauntlet/<name>/progress.md` — the lead agent's round-1 decomposition |
+| bt-execute `ALL` (checkbox resume) | the round protocol + `--resume <name>` |
+
+The difference is when a box may flip. A **bt-plan task** is feed-forward: known work, visited once, `- [x]` when its acceptance verifies. A **gauntlet part** is feedback: `- [x]` only when a fresh critic says it beats the reference bar, however many rounds that takes.
+
+**Rule of thumb:** acceptance criteria you can enumerate up front, each satisfiable in one pass → **bt-spec → bt-plan → bt-execute**. "As good as *that*" against a reference, unknown iteration count → **bt-gauntlet**.
+
+**Typical sequence for a real game — use both:**
+
+1. **Foundation via the spec workflow** — scaffold, player controller, physics, level loading, weapon systems, HUD. Checklist-shaped work with crisp acceptance; cheaper and faster than critic rounds.
+2. **Quality via a gauntlet job** — once the game exists, `/bt-gauntlet --name:aaa-polish <brief>` with the reference media. The loop builds on whatever the plan produced.
+
+## Inside the spec loop (bt-gauntlet named in a bt-spec brief)
+
+When a bt-spec / bt-plan / bt-execute run encounters this skill named in its brief (e.g. `/bt-spec Build the racing game, then polish it to Gran Turismo quality using bt-gauntlet`), the composition follows the same idiom bt-prototype uses with bt-hero — **pre-resolve everything at spec time so nothing prompts mid-run**:
+
+- **bt-spec:** the interview happens HERE, at spec time — the spec answers every loop-card slot (including `<NAME>`, the reference media to collect into `_gauntlet/<name>/reference/`, and the boundaries) and writes the **pre-filled loop card** as a spec artifact (e.g. `_specs/<feature>_gauntlet-card.md`).
+- **bt-plan:** the gauntlet becomes one task (usually the last), whose Details invoke `/bt-gauntlet --card:_specs/<feature>_gauntlet-card.md --rounds:N`. Its **Acceptance** is observable: "gauntlet job `<name>` reports DONE — success condition met and the integration critic passed — as evidenced by `_gauntlet/<name>/progress.md` and the final round journal."
+- **bt-execute:** runs the task by invoking the gauntlet non-interactively. Because a gauntlet may outlast one session, the task's checkbox stays `- [ ]` while the job is merely parked; each later `bt-execute <plan> NEXT` run re-enters via `/bt-gauntlet --resume <name>` and the box flips only when the job genuinely reports DONE (or a loop-card boundary fires and the user accepts the parked result — record which). The gauntlet's own critic evidence IS the acceptance evidence; the bt-execute verifier reads `progress.md` + the last round journal rather than re-judging the art.
+
+bt-gauntlet never orchestrates bt-spec itself — composition is always initiated from the spec side.
 
 ---
 
