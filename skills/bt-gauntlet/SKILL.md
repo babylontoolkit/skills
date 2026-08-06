@@ -58,6 +58,14 @@ https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md
 
 If you have not read it in this session/context, or you no longer remember it due to context loss/compaction (which WILL be the case on `--resume` in a fresh session), fetch and read it before writing any code. Treat it as the authority for conventions, API, and patterns; fetch its linked subpages only when relevant. Do not refetch what you still remember. If a required fetch fails, STOP and tell the user. Do not guess at the API. Builders spawned as subagents must be given (or told to fetch) the Agent Reference too — a subagent does not inherit your context.
 
+## ⚠️ Babylon Toolkit Component Authority (supplied interactive assets)
+
+The doctrine lives in the Agent Reference — `references/scene-components.md` § "Babylon Toolkit Component Authority" (https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scene-components.md): supplied GLTF/GLB files are **interactive prefabs** whose `extras.metadata.components` carry configured physics, components, serialized tuning and gameplay intent; `TOOLKIT.*` components are the first-class engine implementation — compose and tune them through `PROJECT.*` ScriptComponents, never reimplement, bypass, or delete them; replacement requires the documented-evidence checklist defined there. Read that section before any round that touches supplied interactive assets. This skill adds the gauntlet-specific mechanics:
+
+- **Round 1 writes the inventory to disk.** If the job's supplied assets (attachments, the project's asset folders, or `_gauntlet/<name>/reference/`) include GLTF/GLB carrying `extras.metadata.components`, the first build round MUST scan them and write `_gauntlet/<name>/components.md`: the component inventory grouped by scene node — class, execution order, serialized properties, intended responsibility — with every component classified **protected-system** (`TOOLKIT.*` — tune properties, never replace), **project** (`PROJECT.*` — the gauntlet may implement/modify these), or **authoring-only** (markers/level-design metadata consumed by mission or encounter logic). Record the safe-to-tune properties and the declared APIs verified against `babylon.toolkit.d.ts`. A resumed cold session READS this file instead of re-deriving it; the round that changes the supplied assets updates it.
+- **Builders build against the manifest.** Builder subagents are given (or told to read) `components.md` alongside the Agent Reference. Desired movement goes through the existing character controller; animation drivers set parameters on the existing `AnimationState`; vehicle input commands the existing car/vehicle components. Unity-authored serialized values are preserved unless a measured gameplay/physics/perf issue justifies the change — and the measurement goes in the round journal.
+- **Critics enforce it.** The critic's inputs include `components.md` when it exists. Reimplementing, bypassing (e.g. direct transform updates beside an attached physics controller — the hidden-duplicate-motor defect), or deleting a component marked protected is a **FAIL regardless of how the visual evidence looks**, unless the round journal carries the full replacement-evidence checklist from the reference (demonstrated limitation, reproducing test, alternatives attempted, scope and risks, rollback path, regression tests). This is an architectural criterion IN ADDITION to pixels/perf/console — a duplicated character motor passes a screenshot on day one and desyncs physics, grounding, and animation later.
+
 ## ⚠️ The Project Specification (SPEC.md)
 
 If the project keeps a root **SPEC.md**, read it before the first round of each invocation and conform to its architecture, systems, and conventions while building. If gauntlet work changes the architecture, a system, a convention, or a dependency, update SPEC.md per its "How to update this spec" contract as part of the round that changes it.
@@ -100,6 +108,10 @@ _gauntlet/
 │   │                        #   Written once after the interview; the loop never edits it.
 │   ├── brief.md             # Full interview answers (genre, camera, physics, assets,
 │   │                        #   target FPS, scope cuts, ESM/UMD, ...).
+│   ├── components.md        # Component inventory of supplied interactive GLTF/GLB
+│   │                        #   assets (protected TOOLKIT.* / project PROJECT.* /
+│   │                        #   authoring-only) — written in round 1, read on resume.
+│   │                        #   Only exists when supplied assets carry component metadata.
 │   ├── progress.md          # THE resume file — format below.
 │   ├── rounds/
 │   │   ├── round-01.md      # Append-only per-round journal: what was built, critic
@@ -147,7 +159,7 @@ last critic>, re-capture evidence at 1080p, re-run the weapons critic.
 
 1. Resolve the job: explicit name → that job; one job in `_gauntlet/` → resume it; several → list them and ask.
 2. Fetch/read the Babylon Toolkit Agent Reference if not already remembered in this session.
-3. Read `_gauntlet/<name>/loop-card.md` → `progress.md` → the last 1–2 `rounds/*.md`.
+3. Read `_gauntlet/<name>/loop-card.md` → `progress.md` → `components.md` (if present) → the last 1–2 `rounds/*.md`.
 4. **Reality check:** verify the workspace still matches the project (files it claims exist do exist; the build still builds; git state sane). Log discrepancies and correct `progress.md` before looping — never resume against stale state.
 5. Report a one-paragraph "resuming from" summary to the user (job name, round counter, parts done/total, next action).
 6. Execute `NEXT ACTION` and enter the round protocol. Chat history is never required — the files ARE the memory.
@@ -156,11 +168,11 @@ last critic>, re-capture evidence at 1080p, re-run the weapons critic.
 
 # The Round Protocol (one round; both templates)
 
-1. **Inspect** the current state: `progress.md` + the actual project.
+1. **Inspect** the current state: `progress.md` + the actual project — plus `components.md` when supplied assets carry component metadata (write it now if it is owed and missing).
 2. **Select** the highest-impact unmet criterion/part (respect user priorities from the brief).
 3. **Build** — make one coherent improvement. **Template A:** fan out builder subagents only for *genuinely independent* parts; **keep tightly coupled systems under one sequential owner** (the Claude-of-Duty repo itself notes broad fan-out performed WORSE than sequential ownership for coupled visual systems). **Template B:** single-track — one improvement at a time.
 4. **Verify with the real artifact** — build/serve the game, then capture **real browser evidence**: screenshots into `_gauntlet/<name>/evidence/` (via chrome-devtools MCP or the host's browser tool), perf/FPS numbers, console-error check. **Screenshots are required for visual parts.** If no browser tool exists in this host, mark the part `unverified` in `progress.md` — an `unverified` part can NEVER be flipped to `- [x]` on the builder's word; code/perf/test critics still run.
-5. **Criticize (fresh context)** — spawn a harsh critic subagent that receives ONLY: the loop card, this part's spec, the reference media, and the captured evidence — **never the builder's rationale**. It compares our evidence with `_gauntlet/<name>/reference/` as a **blind A/B** where possible ("frame 1 vs frame 2 — which looks better and why"), scores against the rubric, names the **single largest meaningful gap** with a concrete correction target, and returns PASS/FAIL with evidence. The critic does not grade effort or intent; it grades pixels, numbers, and behavior.
+5. **Criticize (fresh context)** — spawn a harsh critic subagent that receives ONLY: the loop card, this part's spec, the reference media, the captured evidence, and `components.md` (when it exists) — **never the builder's rationale**. Component-authority violations (a protected `TOOLKIT.*` component reimplemented, bypassed, or deleted without the reference's replacement-evidence checklist in the round journal) are an automatic FAIL, whatever the pixels look like. It compares our evidence with `_gauntlet/<name>/reference/` as a **blind A/B** where possible ("frame 1 vs frame 2 — which looks better and why"), scores against the rubric, names the **single largest meaningful gap** with a concrete correction target, and returns PASS/FAIL with evidence. The critic does not grade effort or intent; it grades pixels, numbers, and behavior.
 6. **Record** — append `rounds/round-NN.md`; update `progress.md`: on PASS flip the part to `- [x]`; on FAIL log the gap as the next attempt's target and increment the attempt counter; if the part hit its attempts boundary, force a strategy change or escalate. Persist BEFORE the next round.
 7. **Gate check**, in order:
    - **Success condition met** → run the **integration pass**: one final fresh critic inspects the complete game end-to-end for consistency, seams, and fit with the original objective (local quality can rise while the whole becomes inconsistent). On pass, report DONE with the evidence summary.
@@ -191,6 +203,13 @@ be improved and judged independently, and record that decomposition as the part
 checklist in _gauntlet/<NAME>/progress.md. Fan out builder subagents only where
 the work is genuinely independent; keep tightly coupled systems under one owner.
 Give every important part a separate, harsh critic with fresh context.
+
+If the supplied assets include GLTF/GLB files carrying Babylon Toolkit component
+metadata (extras.metadata.components), write the component inventory to
+_gauntlet/<NAME>/components.md in round 1 and honor it every round: TOOLKIT.*
+components are first-class — compose and tune them through PROJECT.* scripts,
+never reimplement, bypass, or delete them (see the Agent Reference's
+"Babylon Toolkit Component Authority" section). Critics fail violations.
 
 Each critic must inspect the real running game — browser screenshots captured
 into _gauntlet/<NAME>/evidence/ — not the builder's summary, and compare it
@@ -241,6 +260,10 @@ Success requires all of the following:
 - <CONCRETE REFERENCE OR MEASURABLE BENCHMARK — objective test or benchmark>
 - <quality rubric or blind reference comparison via _gauntlet/<NAME>/evidence/ screenshots>
 - <integration, performance, accessibility, or safety check>
+- No component-authority violations: supplied TOOLKIT.* components are composed
+  and tuned through PROJECT.* scripts, never reimplemented or bypassed
+  (inventory: _gauntlet/<NAME>/components.md, when supplied assets carry
+  component metadata)
 
 PROCESS
 1. Inspect the current state (progress.md + the actual project).
