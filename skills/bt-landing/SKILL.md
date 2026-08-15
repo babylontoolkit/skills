@@ -1,6 +1,7 @@
 ---
 name: bt-landing
 description: "The Babylon Toolkit Landing Page Skill is the one-shot builder for bt-design's landing page redesign pattern. Give it a plain-language idea, and the skill will generate the landing page, splash screen, preloader and custom overlays."
+dependencies: bt-design
 ---
 
 Turn a plain-language idea into a complete redesign of the game's entire frontend shell: the landing page, the splash screen, the preloader, and the custom in-game overlay — all four surfaces as ONE cohesive design.
