@@ -1,0 +1,43 @@
+{
+  "name": "@babylonjs-toolkit/agent",
+  "version": "1.1.0",
+  "description": "Installs the Babylon Toolkit agent skills and Agent Persona for Claude Code, Codex, GitHub Copilot, Gemini CLI and Antigravity.",
+  "keywords": [
+    "babylonjs",
+    "babylon-toolkit",
+    "agent-skills",
+    "claude-code",
+    "codex",
+    "copilot"
+  ],
+  "homepage": "https://github.com/babylontoolkit/skills#readme",
+  "bugs": {
+    "url": "https://github.com/babylontoolkit/skills/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/babylontoolkit/skills.git"
+  },
+  "license": "MIT",
+  "author": "Mackey Kinard",
+  "bin": {
+    "bt-agent": "bin/bt-agent.js"
+  },
+  "files": [
+    "skills",
+    "bin",
+    "lib",
+    "scripts",
+    "persona.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js",
+    "deploy-all": "npm publish --access public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -3,6 +3,72 @@
 Universal [Agent Skills](https://agentskills.io) for the `Babylon Toolkit` web game development framework.
 Each `SKILL.md` follows the open standard, so the **same file works unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
 
+## Install
+
+```bash
+npm install -g @babylonjs-toolkit/agent
+```
+
+or, without installing anything globally:
+
+```bash
+npx @babylonjs-toolkit/agent install
+```
+
+That installs **every skill** into every skills directory and the **Agent Persona** into every
+global instruction file, on macOS, Linux and Windows. Then restart your agent session — skills
+and instruction files are only read at session start.
+
+### Commands
+
+| Command | What it does |
+|---------|--------------|
+| `bt-agent install` | Install skills + persona into every target (the default) |
+| `bt-agent update` | Reinstall, and remove skills this package no longer ships |
+| `bt-agent uninstall` | Remove what it installed — and nothing else |
+| `bt-agent doctor` | Verify the install; prints `INSTALL OK` or lists what is missing |
+| `bt-agent targets` | Show every target and the paths it writes to |
+
+| Option | Effect |
+|--------|--------|
+| `--project` | Install into the current directory instead of your home directory |
+| `--targets claude,agents` | Restrict to specific targets |
+| `--legacy-codex` | Also write `~/.codex/skills` for pre-`.agents` Codex builds |
+| `--no-persona` | Install skills only; leave instruction files alone |
+| `--persona-only` | Install/refresh the Agent Persona only; do not copy skills |
+| `--dry-run` | Print what would happen and change nothing |
+| `--json` | Machine-readable output |
+
+### What it writes
+
+| Target | Skills | Agent Persona |
+|--------|--------|---------------|
+| Claude Code | `~/.claude/skills/` | `~/.claude/CLAUDE.md` |
+| Codex / Copilot / Antigravity | `~/.agents/skills/` | `~/.agents/AGENTS.md` |
+| Codex chat clients | — | `~/.codex/AGENTS.md` |
+| Gemini CLI | — | `~/.gemini/GEMINI.md` |
+| Legacy Codex CLI (`--legacy-codex`) | `~/.codex/skills/` | — |
+
+Gemini CLI is a separate entry on purpose: it reads `GEMINI.md`, **not** `AGENTS.md`, so
+`~/.agents/AGENTS.md` alone never reaches it.
+
+Your instruction files are never truncated. The persona goes in as a managed block:
+
+```markdown
+<!-- BEGIN BABYLON TOOLKIT PERSONA v1 -->
+...
+<!-- END BABYLON TOOLKIT PERSONA -->
+```
+
+Re-running rewrites only what is between those markers, so the persona can be revised in a
+later release while everything else in the file is left exactly as you wrote it. An older
+unmarked persona is converted to a managed block automatically; a persona you have reworded
+yourself is detected and left alone. Every modified file is backed up to `<file>.bak` first.
+
+Skill folders are tracked in `~/.babylon-toolkit/install-manifest.json`, so `update` and
+`uninstall` only ever touch folders this package installed — a skill you wrote yourself that
+happens to be named `bt-something` is safe.
+
 ## Skills
 
 | Skill | Command | What it does |
@@ -273,23 +339,6 @@ Deploy, spending, credentials, deletion, and messaging are always behind your ex
 | `/bt-gauntlet --status [x]` | Read-only: one job's detail, or the index of all jobs |
 | `/bt-gauntlet --stop [x]` | Park a job deliberately, print its resume command |
 
+# Babylon Toolkit Agent Persona (@babylonjs-toolkit/agent)
 
-# Native Claude Code Installation
-
-- Always prefer the `Default Universal Installation` unless instructed to install the `Native Claude Code Agent Skills`
-- The marketplace plugin install bundles all skill assets (including `bt-atlas/scripts/`) automatically.
-
-To install from marketplace:
-```
-/plugin marketplace add babylontoolkit/skills
-/plugin install agent-skills@babylon-toolkit
-```
-
-To update marketplace plugin:
-```
-/plugin marketplace update babylon-toolkit
-```
-
-# Babylon Toolkit Agent Persona
-
-Simply ask your agent to install the `Babylon Toolkit Agent Skills` for you.
+Simply ask your agent to install the `Babylon Toolkit Agent` for you.
