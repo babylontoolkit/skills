@@ -1,7 +1,7 @@
 ---
 name: bt-spec
 description: "The Babylon Toolkit Spec Skill creates a feature spec file and branch from a short idea. Use when asked to spec out, plan, or scaffold a new feature."
-allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Bash(git switch:*), Agent, Task
+allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Bash(git switch:*), AskUserQuestion, Agent, Task
 ---
 
 You are helping to spin up a new feature spec for this application, from a short idea provided in the user input below. Always adhere to any rules or requirements set out in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) when responding.
@@ -13,14 +13,16 @@ Use the user’s message after the skill name as the `arguments`.
 # Invocation
 
 ```
-/bt-spec <feature-brief>
+/bt-spec [--grill-me] <feature-brief>
 ```
 - **`<feature-brief>`** — the short idea or brief for the feature spec. This is the *variable*.
-- If missing, ask for it before starting. Never guess a file path or URL.
+- **`--grill-me`** *(optional flag)* — interrogate the user relentlessly, one question at a time, until the design tree is actually resolved, instead of drafting the spec in a single pass from the brief. See **Step 2.7**. The flag may appear anywhere in the arguments and is never part of the brief.
+- If the brief is missing, ask for it before starting. Never guess a file path or URL.
 
 Example:
 ```
 /bt-spec → "Generate a detailed implementation plan for the new feature"
+/bt-spec --grill-me "add a settings toggle to mute all game audio"   # interview first, then spec
 ```
 
 ---
@@ -93,7 +95,9 @@ convenience where the tooling happens to support it.
 
 ## Step 2. Parse the arguments
 
-From `arguments`, extract:
+**First, extract and remove any flags — before deriving anything from the text.** Scan `arguments` for `--grill-me`; set `grill_me = true` if present, then **delete it from `arguments`** and collapse the surrounding whitespace. Everything below derives from the flag-stripped remainder. Skipping this produces a spec named `_specs/mute-game-audio-grill-me_spec.md`. Treat an unrecognised `--flag` as part of the brief only if the user clearly meant it as prose; otherwise ask.
+
+From the flag-stripped `arguments`, extract:
 
 1. `feature_title`  
    - A short, human readable title in Title Case.  
@@ -167,6 +171,30 @@ Some features are built on a deterministic pattern **owned by a sibling skill** 
 
 If the feature matches no sibling-skill pattern, note that and continue.
 
+## Step 2.7 `--grill-me` — interrogate until the design is decided (ONLY when the flag is present)
+
+Run this step **only if `grill_me` is true**. Skip it entirely otherwise — the default one-shot path is unchanged.
+
+Without the flag this skill drafts a spec from a short brief in a single pass, and every decision it could not make lands in `## Open Questions` — a section nothing downstream is obligated to read or resolve. Grill mode replaces that guessing with a real interview, and its output lands in the sections that *are* read: `## Functional Requirements`, `## Acceptance Criteria`, `## Possible Edge Cases`, and the `## Decisions` log.
+
+Run this **after Step 2.4**, so every question is grounded in the real codebase rather than generic, and **after Step 2.6**, so a sibling skill's own intake questions are folded into this one interview instead of being asked twice.
+
+**The loop:**
+
+> Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one by one. For each question provide your recommended answer. Ask the questions one at a time. If a question can be answered by exploring the codebase, explore the codebase instead.
+
+The rules that make that loop work:
+
+1. **One question at a time.** Use `AskUserQuestion` where you have it, with your recommended answer as the FIRST option, labelled `(Recommended)`. Never batch a wall of questions, and never move on past a question the user has not answered.
+2. **Explore before you ask.** If the answer is discoverable in the repo — an existing convention, how the closest prior feature did it, a dependency already present — go find it and offer what you found as the recommendation, rather than spending a question on it. Reuse the Step 2.4 findings first; a read-only subagent is the right tool only when the search is genuinely broad.
+3. **Depth-first down the design tree.** Resolve a branch's dependencies before opening the next branch — a decision that invalidates three later questions must be asked *before* them. Name the branch you are on, so the user can see the shape of what remains.
+4. **Never ask what is already settled.** The brief, `SPEC.md`, `DESIGN.md`, and a named sibling skill's documented defaults are answers, not questions. Confirm one of them in a single line only where this feature would plausibly override it.
+5. **Record as you go.** Write every answer into the spec body — as a requirement, an acceptance criterion, or an edge case — *plus* a `## Decisions` entry carrying the *why* and the rejected alternative. An answer that exists only in this transcript is gone the moment the plan phase opens a fresh context.
+6. **Stop when the tree is resolved, not when you run out of questions.** You are done when every remaining unknown is genuinely an implementation choice for bt-plan, or something only the user can decide later. Say so explicitly, then continue to Step 3.
+7. **The user can end it at any time** — "that's enough", "you decide the rest". Honor that immediately: record each unexplored branch in `## Open Questions` *with your recommended answer*, note in the spec that grilling ended early, and continue.
+
+**What must be true when this step ends:** `## Decisions` is non-empty and every entry carries a rationale, and `## Open Questions` holds only genuinely-undecided items — never something the user already answered.
+
 ## Step 3. Record the branch name (and switch to it where git is available)
 
 The `branch_name` derived from the `arguments` is **always** recorded in the spec header, so the plan
@@ -179,7 +207,7 @@ and execute phases have a stable name to refer to regardless of host.
 
 ## Step 4. Draft the spec content
 
-Create a markdown spec document that Plan mode can use directly and save it in the _specs folder as `<feature_slug>_spec.md`. Use the exact structure as defined in the feature spec template file @FEATURE.md located at the project root. The template includes a required `spec_impact` header field and a `Project Spec Alignment` section — fill both in from your SPEC.md read above (cite the SPEC.md sections the feature relies on, describe how it fits the architecture, and for `spec_impact: yes` state exactly what will change in SPEC.md and in which section). Do not add technical implementation details such as code examples. If the feature spec template file is missing, create a new feature spec file with the following sections:
+Create a markdown spec document that Plan mode can use directly and save it in the _specs folder as `<feature_slug>_spec.md`. Use the exact structure as defined in the feature spec template file @FEATURE.md located at the project root. **If that project template predates grill mode and has no `## Decisions` section, append one anyway whenever `grill_me` is true** (using the shape in the fallback template below, placed directly before `## Open Questions`) — the rationale must be recorded regardless of which template the project ships. The template includes a required `spec_impact` header field and a `Project Spec Alignment` section — fill both in from your SPEC.md read above (cite the SPEC.md sections the feature relies on, describe how it fits the architecture, and for `spec_impact: yes` state exactly what will change in SPEC.md and in which section). Do not add technical implementation details such as code examples. If the feature spec template file is missing, create a new feature spec file with the following sections:
 ```
 # Feature Spec Template
 
@@ -228,7 +256,19 @@ spec_impact: <yes|no>   # yes if this feature adds/changes a system, convention,
 ## Acceptance Criteria
 - ...
 
+## Decisions  _(the "why" — REQUIRED when run with `--grill-me`)_
+<!-- Mirrors SPEC.md's Decisions log, at feature scope. One entry per settled
+     design decision: what was chosen, why, and what was rejected. bt-plan reads
+     the feature spec in full, so this is how a decision's rationale survives into
+     the plan phase instead of being relitigated there — and for
+     spec_impact: yes features it feeds the final `Update SPEC.md` task directly. -->
+- **<decision>.** <why — the deciding constraint or the precedent in the codebase.>
+  Rejected: <alternative> (<why not>). → <FR-n, AC-n>
+
 ## Open Questions
+<!-- ONLY genuinely-undecided items. Anything answered during grilling belongs in
+     Functional Requirements / Acceptance Criteria / Possible Edge Cases plus a
+     Decisions entry above — never parked here. -->
 - ...
 
 ## Testing Guidelines
