@@ -1,4 +1,4 @@
-# Babylon Toolkit Agent Skills (1.0.0)
+# Babylon Toolkit Agent Skills (1.1.6)
 
 Universal [Agent Skills](https://agentskills.io) for the `Babylon Toolkit` web game development framework.
 Each `SKILL.md` follows the open standard, so the **same file works unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
@@ -53,10 +53,13 @@ refresh the persona, and prune skills the new release no longer ships.
 
 If the upgrade is not possible it says so and continues with what is on disk:
 
-- running through `npx`, from a git checkout, or as a project dependency — there is
-  no global package to upgrade, so it reinstalls the bundled files
+- running through `npx`, from a git checkout, a `npm link`ed working copy, or as a
+  project dependency — there is no global package to upgrade, so it reinstalls the
+  bundled files
 - the registry is unreachable — it reinstalls the version you already have
 - the global install needs elevated permissions — it prints the exact command to run
+- npm reports success but this CLI still runs the old version — you have more than
+  one Node/npm on PATH, and it tells you which path was left behind
 
 Use `--no-self-update` to skip the npm check entirely.
 

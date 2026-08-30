@@ -166,8 +166,16 @@ function printSelfUpdate(result) {
       break;
     case 'upgrade-failed':
       console.log(`\nCould not upgrade ${PACKAGE_NAME} ${result.current} -> ${result.latest}: ${result.reason}`);
-      console.log(`Run this yourself (it may need sudo): ${result.command}`);
+      console.log(`Run this yourself (it may need elevated permissions): ${result.command}`);
+      console.log(`  installed at: ${prettyPath(result.root)}`);
       console.log('Reinstalling the currently installed version instead.');
+      break;
+    case 'upgrade-stale':
+      console.log(`\n${result.command} reported success, but this CLI still runs ${result.onDisk} from`);
+      console.log(`  ${prettyPath(result.root)}`);
+      console.log('That path was not updated, so you likely have more than one Node/npm');
+      console.log('installation. Check which one is on PATH:');
+      console.log(process.platform === 'win32' ? '  where bt-agent && npm root -g' : '  which bt-agent && npm root -g');
       break;
     case 'check-failed':
       console.log(`\nCould not check npm for a newer version: ${result.reason}`);
@@ -260,6 +268,7 @@ function main() {
         // payload already on disk — so it could never deliver a new release. Bring
         // the package itself up to date first, then hand over to the new CLI.
         let selfResult = null;
+        let selfFailed = false;
         if (opts.selfUpdate) {
           selfResult = selfUpdate({
             dryRun: opts.dryRun,
@@ -268,6 +277,10 @@ function main() {
             },
           });
           if (!opts.json) printSelfUpdate(selfResult);
+
+          // The files were installed correctly, but the release the user asked for
+          // is not the one now running — that is a failure worth a non-zero exit.
+          selfFailed = selfResult.status === 'upgrade-stale' || selfResult.status === 'upgrade-failed';
 
           if (selfResult.status === 'upgraded') {
             const passthrough = process.argv.slice(2).filter((a) => a !== 'update');
@@ -299,7 +312,7 @@ function main() {
             console.log('\nDry run — nothing was written.\n');
           }
         }
-        process.exit(opts.dryRun || check.ok ? 0 : 1);
+        process.exit(opts.dryRun || (check.ok && !selfFailed) ? 0 : 1);
         break;
       }
 
