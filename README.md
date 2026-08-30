@@ -24,7 +24,7 @@ and instruction files are only read at session start.
 | Command | What it does |
 |---------|--------------|
 | `bt-agent install` | Install skills + persona into every target (the default) |
-| `bt-agent update` | Reinstall, and remove skills this package no longer ships |
+| `bt-agent update` | Fetch the newest release from npm, reinstall it, and prune dropped skills |
 | `bt-agent uninstall` | Remove what it installed — and nothing else |
 | `bt-agent doctor` | Verify the install; prints `INSTALL OK` or lists what is missing |
 | `bt-agent targets` | Show every target and the paths it writes to |
@@ -36,8 +36,29 @@ and instruction files are only read at session start.
 | `--legacy-codex` | Also write `~/.codex/skills` for pre-`.agents` Codex builds |
 | `--no-persona` | Install skills only; leave instruction files alone |
 | `--persona-only` | Install/refresh the Agent Persona only; do not copy skills |
+| `--no-self-update` | `update` only: reinstall the bundled files; do not fetch npm |
 | `--dry-run` | Print what would happen and change nothing |
 | `--json` | Machine-readable output |
+
+### Updating
+
+```bash
+bt-agent update
+```
+
+`update` asks npm for the newest published version. If there is one it upgrades the
+global package for you — with whichever manager installed it (`npm`, `pnpm`, `yarn`
+or `bun`) — then hands over to the freshly installed CLI to copy the new skills,
+refresh the persona, and prune skills the new release no longer ships.
+
+If the upgrade is not possible it says so and continues with what is on disk:
+
+- running through `npx`, from a git checkout, or as a project dependency — there is
+  no global package to upgrade, so it reinstalls the bundled files
+- the registry is unreachable — it reinstalls the version you already have
+- the global install needs elevated permissions — it prints the exact command to run
+
+Use `--no-self-update` to skip the npm check entirely.
 
 ### What it writes
 

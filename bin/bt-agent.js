@@ -4,7 +4,8 @@
 const { install, uninstall } = require('../lib/install');
 const { doctor } = require('../lib/doctor');
 const { TARGETS, targetIds } = require('../lib/targets');
-const { prettyPath } = require('../lib/paths');
+const { selfUpdate, reexec, upgradeCommand, PACKAGE_NAME } = require('../lib/selfupdate');
+const { prettyPath, resolveTargetPath } = require('../lib/paths');
 const { version } = require('../package.json');
 
 const USAGE = `
@@ -18,7 +19,7 @@ Usage
 
 Commands
   install      Install skills + persona into every target        (default)
-  update       Same as install, and remove skills no longer shipped
+  update       Upgrade this package from npm, then reinstall and prune
   uninstall    Remove what this tool installed, and nothing else
   doctor       Verify the install; prints INSTALL OK or INSTALL FAILED
   targets      List the available targets and their paths
@@ -30,6 +31,7 @@ Options
   --no-persona         Install skills only; do not touch instruction files
   --persona-only       Install/refresh the Agent Persona only; do not copy skills
   --no-migrate         Leave a legacy unmarked persona in place, do not convert it
+  --no-self-update     update: reinstall the bundled files only; do not fetch npm
   --dry-run            Print what would happen; change nothing
   --json               Machine-readable output
   -h, --help           Show this help
@@ -40,6 +42,7 @@ Examples
   bt-agent install --legacy-codex
   bt-agent install --project
   bt-agent doctor
+  bt-agent update
 `;
 
 function parseArgs(argv) {
@@ -51,6 +54,7 @@ function parseArgs(argv) {
     persona: true,
     skills: true,
     migrate: true,
+    selfUpdate: true,
     dryRun: false,
     json: false,
     help: false,
@@ -82,6 +86,9 @@ function parseArgs(argv) {
         break;
       case '--no-migrate':
         opts.migrate = false;
+        break;
+      case '--no-self-update':
+        opts.selfUpdate = false;
         break;
       case '--dry-run':
         opts.dryRun = true;
@@ -146,6 +153,44 @@ function printInstall(report) {
   }
 }
 
+function printSelfUpdate(result) {
+  switch (result.status) {
+    case 'upgraded':
+      console.log(`\nUpgraded ${PACKAGE_NAME} ${result.current} -> ${result.latest}.`);
+      break;
+    case 'current':
+      console.log(`\n${PACKAGE_NAME} ${result.current} is the latest published version.`);
+      break;
+    case 'would-upgrade':
+      console.log(`\nWould upgrade ${PACKAGE_NAME} ${result.current} -> ${result.latest} (${result.command}).`);
+      break;
+    case 'upgrade-failed':
+      console.log(`\nCould not upgrade ${PACKAGE_NAME} ${result.current} -> ${result.latest}: ${result.reason}`);
+      console.log(`Run this yourself (it may need sudo): ${result.command}`);
+      console.log('Reinstalling the currently installed version instead.');
+      break;
+    case 'check-failed':
+      console.log(`\nCould not check npm for a newer version: ${result.reason}`);
+      console.log(`Reinstalling ${PACKAGE_NAME} ${result.current} from disk.`);
+      break;
+    case 'skipped':
+      console.log(`\nSkipping the npm upgrade — ${result.reason}.`);
+      break;
+    default:
+      break;
+  }
+}
+
+/** Name only what this run actually installed. */
+function restartNote(report) {
+  const parts = [];
+  if (report.skillsInstalled !== false) parts.push('skills');
+  if (report.persona.length) parts.push('persona');
+  const what = parts.length === 2 ? 'skills and persona are' : `${parts[0] || 'files'} ${parts[0] === 'skills' ? 'are' : 'is'}`;
+  console.log('\nRestart your agent session (Claude Code, Codex, Copilot, Gemini CLI)');
+  console.log(`so the ${what} picked up.\n`);
+}
+
 function printDoctor(result) {
   const { checked } = result;
   console.log(
@@ -158,6 +203,19 @@ function printDoctor(result) {
     console.log('INSTALL FAILED — missing:');
     for (const m of result.missing) console.log(`  ${prettyPath(m)}`);
   }
+}
+
+function targetsJson(mode, projectRoot) {
+  return TARGETS.map((t) => {
+    const spec = mode === 'project' ? t.project : t.global;
+    return {
+      id: t.id,
+      label: t.label,
+      default: Boolean(t.default),
+      skills: spec.skills ? resolveTargetPath(spec.skills, mode, projectRoot) : null,
+      instructions: spec.instructions ? resolveTargetPath(spec.instructions, mode, projectRoot) : null,
+    };
+  });
 }
 
 function printTargets(mode) {
@@ -197,8 +255,55 @@ function main() {
 
   try {
     switch (opts.command) {
-      case 'install':
       case 'update': {
+        // `update` used to be a plain alias for `install`, which only re-copied the
+        // payload already on disk — so it could never deliver a new release. Bring
+        // the package itself up to date first, then hand over to the new CLI.
+        let selfResult = null;
+        if (opts.selfUpdate) {
+          selfResult = selfUpdate({
+            dryRun: opts.dryRun,
+            log: (msg) => {
+              if (!opts.json) console.log(msg);
+            },
+          });
+          if (!opts.json) printSelfUpdate(selfResult);
+
+          if (selfResult.status === 'upgraded') {
+            const passthrough = process.argv.slice(2).filter((a) => a !== 'update');
+            const code = reexec(['install', ...passthrough], selfResult.latest);
+            if (code !== null) process.exit(code);
+            // Could not re-exec: fall through and install with what is loaded.
+            if (!opts.json) {
+              console.log('\nCould not restart the upgraded CLI — run `bt-agent install` to finish.');
+            }
+          }
+        }
+
+        const report = install(common);
+        const check = doctor(common);
+
+        if (opts.json) {
+          console.log(JSON.stringify({ ...report, selfUpdate: selfResult, doctor: check }, null, 2));
+        } else {
+          printInstall(report);
+          if (!opts.dryRun) {
+            console.log('');
+            if (check.ok) {
+              console.log('INSTALL OK');
+              restartNote(report);
+            } else {
+              printDoctor(check);
+            }
+          } else {
+            console.log('\nDry run — nothing was written.\n');
+          }
+        }
+        process.exit(opts.dryRun || check.ok ? 0 : 1);
+        break;
+      }
+
+      case 'install': {
         const report = install(common);
         const check = doctor(common);
 
@@ -210,8 +315,7 @@ function main() {
             console.log('');
             if (check.ok) {
               console.log('INSTALL OK');
-              console.log('\nRestart your agent session (Claude Code, Codex, Copilot, Gemini CLI)');
-              console.log('so the skills and persona are picked up.\n');
+              restartNote(report);
             } else {
               printDoctor(check);
             }
@@ -246,7 +350,8 @@ function main() {
       }
 
       case 'targets':
-        printTargets(opts.mode);
+        if (opts.json) console.log(JSON.stringify(targetsJson(opts.mode, process.cwd()), null, 2));
+        else printTargets(opts.mode);
         break;
 
       case 'help':
