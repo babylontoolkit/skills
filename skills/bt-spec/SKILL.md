@@ -33,7 +33,23 @@ This skill's workflow depends on subagents. **Invoking it is the user's explicit
 
 Downgrading is not a neutral choice. It removes the one property that makes the step worth running: independence. A verifier that is the same context which just wrote the code cannot adversarially check it — it re-confirms its own reasoning and reports PASS.
 
-The ONE legitimate reason to run inline is that you genuinely have **no** subagent-spawning tool. Check the tools you actually have — Claude Code exposes it as **`Agent`** (older builds name it `Task`); other hosts have their own equivalent. Never call a subagent tool you do not have. Emit only the exact status strings this skill specifies — do not invent your own wording — and if you do run inline, state plainly that no subagent tool was available, never a policy.
+The ONE legitimate reason to run inline is that you genuinely have **no** subagent-spawning tool. Check the tools you actually have — Claude Code exposes it as **`Agent`** (older builds name it `Task`); other hosts have their own equivalent. Never call a subagent tool you do not have. Use the exact fan-out / inline status strings this skill specifies for the *path-chosen* line (the progress-narration lines below carry a fixed prefix but free wording), and if you do run inline, state plainly that no subagent tool was available, never a policy.
+
+## ⚠️ Progress narration — NEVER go silent
+
+The user is watching a terminal, not your reasoning. Research and analysis in this skill routinely take several minutes, and **a silent span of more than about 30 seconds is indistinguishable from a hang or a crash** — users cancel runs on exactly that basis, throwing away all the work done so far. Silence is therefore a failure of this skill, not a neutral default. Narrate continuously, in short one-line status updates, from the first action to the final summary.
+
+**Hard rules:**
+
+1. **Announce before every long action.** Before any tool call that can take more than a few seconds — fetching the Agent Reference, reading `SPEC.md` / `DESIGN.md` / a sibling skill, launching subagents, a broad search — emit one visible line saying what you are about to do and why. Example: `🔎 [bt-spec] Reading SPEC.md and DESIGN.md to find the sections this feature must conform to …`
+2. **Report after every result.** After each tool result, emit one line stating what you learned and what comes next, *before* the next tool call. The text between tool calls IS the progress display; a run of back-to-back tool calls with no text between them is a silent run.
+3. **Subagents get a line each, going out and coming back.** When fanning out, print one line per subagent naming what it is investigating (`🚀 [bt-spec] Subagent 1/3 → mapping project structure, build + dependencies`). Prefer the host's background / non-blocking launch mode where it exists (Claude Code's `Agent` with `run_in_background: true`), so each completion returns control to you and you can report it: `✅ [bt-spec] Subagent 1/3 done — <one-line finding>`. Never block on all subagents in silence and then report them together.
+4. **Waiting is also something to say.** If you are waiting on subagents with nothing else to do, say so once, naming what is still outstanding: `⏳ [bt-spec] Waiting on 2/3 research subagents (conventions to mirror, integration points) — typically 1–3 minutes …`. One line per wait, not repeated spam.
+5. **Mark the phase transitions.** Emit a line when research starts, when it completes, and when drafting begins — e.g. `🧩 [bt-spec] Research complete — <n> findings synthesized` followed by a **3–6 bullet research summary** (the key findings, with file paths) so the user can see what the run is based on, then `✍️ [bt-spec] Drafting the document …`.
+6. **Keep the lines short and uniform.** Format: `<emoji> [bt-spec] <what> — <detail>`. One line each. The prefix and emoji are fixed; the `<what>` / `<detail>` wording is yours. Do not dump findings, file contents, or tool output as progress — a status line says what happened, the document holds the detail.
+7. **A silent gap may never span more than a single tool call.** If one tool call is itself long (a subagent, a large fetch), the line *preceding* it must say what it is and roughly how long it is expected to take.
+
+This applies to every phase of this skill — the Agent Reference fetch, `SPEC.md`/`DESIGN.md` reads, the fan-out research, sibling-skill reads, interviewing, and drafting. When in doubt, say what you are doing.
 
 ## ⚠️ Required Reading Before Any Babylon Work
 
@@ -137,6 +153,17 @@ this feature must conform to; one finds the closest existing feature and extract
 mirror; one lists integration points, constraints, and existing dependencies. Each returns concise
 conclusions — findings and file paths, not file dumps — which you synthesize yourself.
 
+**Narrate the whole step** (see *Progress narration — NEVER go silent* above). This is the step that most
+often runs for minutes, so it is where the rule matters most. The required cadence:
+
+- One `🚀 [bt-spec] Subagent i/N → <what it investigates>` line per subagent as it is launched, and prefer
+  the background / non-blocking launch mode so completions return to you one at a time.
+- One `✅ [bt-spec] Subagent i/N done — <one-line finding>` line as each returns; a `⏳ [bt-spec] Waiting on
+  …` line if you are idle with subagents still outstanding.
+- On the sequential path, one `🔎 [bt-spec] …` line before each read/search and one result line after it.
+- When everything is in: `🧩 [bt-spec] Research complete — <n> findings synthesized`, followed by a 3–6
+  bullet research summary (key findings with file paths), before moving on to Step 2.5.
+
 Two hard rules, because this skill is planning-only: every subagent is **read-only** (it may read,
 search and report; it may NOT edit files, write files, or run build/test/shell commands), and **you**
 write the spec — a subagent never drafts spec content. Research subagents need not re-read the Agent
@@ -186,7 +213,7 @@ Run this **after Step 2.4**, so every question is grounded in the real codebase 
 The rules that make that loop work:
 
 1. **One question at a time.** Use `AskUserQuestion` where you have it, with your recommended answer as the FIRST option, labelled `(Recommended)`. Never batch a wall of questions, and never move on past a question the user has not answered.
-2. **Explore before you ask.** If the answer is discoverable in the repo — an existing convention, how the closest prior feature did it, a dependency already present — go find it and offer what you found as the recommendation, rather than spending a question on it. Reuse the Step 2.4 findings first; a read-only subagent is the right tool only when the search is genuinely broad.
+2. **Explore before you ask.** If the answer is discoverable in the repo — an existing convention, how the closest prior feature did it, a dependency already present — go find it and offer what you found as the recommendation, rather than spending a question on it. Reuse the Step 2.4 findings first; a read-only subagent is the right tool only when the search is genuinely broad. Say so while you do it — `🔎 [bt-spec] Checking the codebase for <X> before asking …` — so a pause between questions never reads as the interview having stalled.
 3. **Depth-first down the design tree.** Resolve a branch's dependencies before opening the next branch — a decision that invalidates three later questions must be asked *before* them. Name the branch you are on, so the user can see the shape of what remains.
 4. **Never ask what is already settled.** The brief, `SPEC.md`, `DESIGN.md`, and a named sibling skill's documented defaults are answers, not questions. Confirm one of them in a single line only where this feature would plausibly override it.
 5. **Record as you go.** Write every answer into the spec body — as a requirement, an acceptance criterion, or an edge case — *plus* a `## Decisions` entry carrying the *why* and the rejected alternative. An answer that exists only in this transcript is gone the moment the plan phase opens a fresh context.
@@ -206,6 +233,8 @@ and execute phases have a stable name to refer to regardless of host.
   is the expected outcome on such hosts — do not mention it as missing, unavailable, or a fallback.
 
 ## Step 4. Draft the spec content
+
+Emit `✍️ [bt-spec] Drafting _specs/<feature_slug>_spec.md …` before writing, and `💾 [bt-spec] Spec written — _specs/<feature_slug>_spec.md` once the file is saved.
 
 Create a markdown spec document that Plan mode can use directly and save it in the _specs folder as `<feature_slug>_spec.md`. Use the exact structure as defined in the feature spec template file @FEATURE.md located at the project root. **If that project template predates grill mode and has no `## Decisions` section, append one anyway whenever `grill_me` is true** (using the shape in the fallback template below, placed directly before `## Open Questions`) — the rationale must be recorded regardless of which template the project ships. The template includes a required `spec_impact` header field and a `Project Spec Alignment` section — fill both in from your SPEC.md read above (cite the SPEC.md sections the feature relies on, describe how it fits the architecture, and for `spec_impact: yes` state exactly what will change in SPEC.md and in which section). Do not add technical implementation details such as code examples. If the feature spec template file is missing, create a new feature spec file with the following sections:
 ```

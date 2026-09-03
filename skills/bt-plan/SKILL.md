@@ -77,7 +77,23 @@ This skill's workflow depends on subagents. **Invoking it is the user's explicit
 
 Downgrading is not a neutral choice. It removes the one property that makes the step worth running: independence. A verifier that is the same context which just wrote the code cannot adversarially check it — it re-confirms its own reasoning and reports PASS.
 
-The ONE legitimate reason to run inline is that you genuinely have **no** subagent-spawning tool. Check the tools you actually have — Claude Code exposes it as **`Agent`** (older builds name it `Task`); other hosts have their own equivalent. Never call a subagent tool you do not have. Emit only the exact status strings this skill specifies — do not invent your own wording — and if you do run inline, state plainly that no subagent tool was available, never a policy.
+The ONE legitimate reason to run inline is that you genuinely have **no** subagent-spawning tool. Check the tools you actually have — Claude Code exposes it as **`Agent`** (older builds name it `Task`); other hosts have their own equivalent. Never call a subagent tool you do not have. Use the exact fan-out / inline status strings this skill specifies for the *path-chosen* line (the progress-narration lines below carry a fixed prefix but free wording), and if you do run inline, state plainly that no subagent tool was available, never a policy.
+
+## ⚠️ Progress narration — NEVER go silent
+
+The user is watching a terminal, not your reasoning. Research and analysis in this skill routinely take several minutes, and **a silent span of more than about 30 seconds is indistinguishable from a hang or a crash** — users cancel runs on exactly that basis, throwing away all the work done so far. Silence is therefore a failure of this skill, not a neutral default. Narrate continuously, in short one-line status updates, from the first action to the final summary.
+
+**Hard rules:**
+
+1. **Announce before every long action.** Before any tool call that can take more than a few seconds — fetching the Agent Reference, reading `SPEC.md` / `DESIGN.md` / a sibling skill, launching subagents, a broad search — emit one visible line saying what you are about to do and why. Example: `🔎 [bt-plan] Reading SPEC.md and DESIGN.md to find the sections this feature must conform to …`
+2. **Report after every result.** After each tool result, emit one line stating what you learned and what comes next, *before* the next tool call. The text between tool calls IS the progress display; a run of back-to-back tool calls with no text between them is a silent run.
+3. **Subagents get a line each, going out and coming back.** When fanning out, print one line per subagent naming what it is investigating (`🚀 [bt-plan] Subagent 1/3 → mapping project structure, build + dependencies`). Prefer the host's background / non-blocking launch mode where it exists (Claude Code's `Agent` with `run_in_background: true`), so each completion returns control to you and you can report it: `✅ [bt-plan] Subagent 1/3 done — <one-line finding>`. Never block on all subagents in silence and then report them together.
+4. **Waiting is also something to say.** If you are waiting on subagents with nothing else to do, say so once, naming what is still outstanding: `⏳ [bt-plan] Waiting on 2/3 research subagents (conventions to mirror, integration points) — typically 1–3 minutes …`. One line per wait, not repeated spam.
+5. **Mark the phase transitions.** Emit a line when research starts, when it completes, and when drafting begins — e.g. `🧩 [bt-plan] Research complete — <n> findings synthesized` followed by a **3–6 bullet research summary** (the key findings, with file paths) so the user can see what the run is based on, then `✍️ [bt-plan] Drafting the document …`.
+6. **Keep the lines short and uniform.** Format: `<emoji> [bt-plan] <what> — <detail>`. One line each. The prefix and emoji are fixed; the `<what>` / `<detail>` wording is yours. Do not dump findings, file contents, or tool output as progress — a status line says what happened, the document holds the detail.
+7. **A silent gap may never span more than a single tool call.** If one tool call is itself long (a subagent, a large fetch), the line *preceding* it must say what it is and roughly how long it is expected to take.
+
+This applies to every phase of this skill — the Agent Reference fetch, `SPEC.md`/`DESIGN.md` reads, the fan-out research, sibling-skill reads, interviewing, and drafting. When in doubt, say what you are doing.
 
 ## ⚠️ Required Reading Before Any Babylon Work
 
@@ -112,6 +128,13 @@ A trustworthy plan requires a thorough, read-only investigation of the codebase 
 
 This analysis can be **fanned out**. First check whether you actually have a subagent-spawning tool, and **emit one visible status line** so the user can see the path chosen — either `🔀 [bt-plan] subagent tool detected — fanning out analysis to N read-only subagents` or `➡️ [bt-plan] no subagent tool — analyzing sequentially`. If a subagent-spawning tool is available to you (e.g. Claude Code's `Agent`, Lovable's subagent tool, or your host's equivalent — check the tools you actually have; if there is none, or you are unsure, do the analysis yourself sequentially), launch up to 3 parallel **read-only** exploration subagents and divide the eight investigation points below among them (for example: one maps structure/build and dependencies; one extracts the real conventions and the closest existing feature to mirror; one lists integration points and constraints). Each subagent returns concise conclusions — findings and file paths, not file dumps — which you synthesize into the `## Codebase Analysis` section. Exploration subagents need not re-read the Agent Reference. Never call a subagent tool you do not actually have.
 
+**Narrate the whole step** (see *Progress narration — NEVER go silent* above). This is the step that most often runs for minutes, so it is where the rule matters most. The required cadence:
+
+- One `🚀 [bt-plan] Subagent i/N → <what it investigates>` line per subagent as it is launched, and prefer the background / non-blocking launch mode so completions return to you one at a time.
+- One `✅ [bt-plan] Subagent i/N done — <one-line finding>` line as each returns; a `⏳ [bt-plan] Waiting on …` line if you are idle with subagents still outstanding.
+- On the sequential path, one `🔎 [bt-plan] …` line before each read/search (each of the eight investigation points below) and one result line after it.
+- When everything is in: `🧩 [bt-plan] Analysis complete — <n> findings synthesized`, followed by a 3–6 bullet analysis summary (key findings with file paths), before moving on to the interview (Quick Plan) or Step 2.
+
 Before writing a single implementation step, investigate the actual codebase read-only. This is mandatory — do NOT generate any plan content until this analysis is complete. Read and search the repo to discover, not assume:
 
 1. Read the referenced feature spec in full (from `_specs/` or the file named in `arguments`), **and read the project `SPEC.md` at the repository root in full.** SPEC.md is the source of truth for the durable architecture, systems, conventions, and decisions — the plan MUST conform to it. Note the feature spec's `spec_impact` field and its `Project Spec Alignment` section. **In Quick Plan mode there is no feature spec file** — treat the brief as the feature request, still read root `SPEC.md` in full, and *infer* the `spec_impact` and Project Spec Alignment from the analysis per the Quick Plan defaults table. If the plan you are about to write would conflict with SPEC.md (contradict a decision, cross a system boundary, break a convention), STOP and flag the conflict to the user before writing the plan; do not silently override the project spec.
@@ -126,6 +149,8 @@ Before writing a single implementation step, investigate the actual codebase rea
 If the spec or codebase is too ambiguous to analyze responsibly, stop and ask the user rather than guessing.
 
 ## Step 2. Write the plan
+
+Emit `✍️ [bt-plan] Writing _specs/<feature-name>_plan.md …` before writing, and `💾 [bt-plan] Plan written — _specs/<feature-name>_plan.md` once the file is saved.
 
 Only after Step 1 is complete, write the plan markdown to `_specs/` as `<feature-name>_plan.md`. The document MUST open with a `## Codebase Analysis` section that summarizes the findings from Step 1 (cite the real files/modules you inspected) — this is the evidence that the analysis happened. This section MUST include a short **SPEC.md alignment** note: which SPEC.md sections the plan conforms to, and whether the feature is spec-impacting (carry over the feature spec's `spec_impact`, or in Quick Plan mode the value you inferred, and say it was inferred). A plan without a grounded analysis section is invalid; do not produce one.
 
