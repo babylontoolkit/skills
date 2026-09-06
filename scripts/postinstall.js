@@ -34,8 +34,10 @@ function main() {
   for (const entry of report.skillDirs) console.log(`  skills  ${entry.dir}`);
   for (const p of report.persona) console.log(`  persona ${p.file} — ${p.action}`);
 
+  for (const c of report.config) console.log(`  config  ${c.file} — ${c.action} (network_access = true)`);
+
   console.log(check.ok ? '\nINSTALL OK' : '\nINSTALL INCOMPLETE — run `bt-agent doctor` for details');
-  console.log('\nRestart your agent session so the skills and persona are picked up.\n');
+  console.log('\nRestart your agent session so the skills, persona and Codex configuration are picked up.\n');
 }
 
 try {

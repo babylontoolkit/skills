@@ -16,8 +16,9 @@ npx @babylonjs-toolkit/agent install
 ```
 
 That installs **every skill** into every skills directory and the **Agent Persona** into every
-global instruction file, on macOS, Linux and Windows. Then restart your agent session — skills
-and instruction files are only read at session start.
+global instruction file, on macOS, Linux and Windows. Codex targets also enable outbound
+network access in their workspace-write configuration. Restart your agent session to pick
+up the skills, instructions and configuration.
 
 ### Commands
 
@@ -75,6 +76,31 @@ Use `--no-self-update` to skip the npm check entirely.
 
 Gemini CLI is a separate entry on purpose: it reads `GEMINI.md`, **not** `AGENTS.md`, so
 `~/.agents/AGENTS.md` alone never reaches it.
+
+Codex installs (the default `codex` target, or `codex-legacy`) also merge the shipped
+[`.codex/config.toml`](.codex/config.toml) setting into `~/.codex/config.toml`, or
+`<project>/.codex/config.toml` with `--project`:
+
+```toml
+[sandbox_workspace_write]
+network_access = true
+```
+
+This allows outbound network access to all domains while using the workspace-write
+sandbox, including fetching the Agent Reference from GitHub. It does not change the
+sandbox mode, filesystem permissions or approval policy. Managed policies can override
+this setting; project configuration applies only to trusted projects.
+
+Install, update and the global npm postinstall hook apply this setting whenever a Codex
+target is selected, including `--persona-only` and `--no-persona` runs. An existing
+`network_access = false` is changed to `true`; other settings and comments are preserved.
+Changed configurations are backed up to `config.toml.bak`; repeated installs are idempotent
+and `--dry-run` writes nothing. Standard TOML sections and root dotted keys are supported;
+an inline `sandbox_workspace_write = { ... }` table is left untouched with an actionable
+error, so convert it to the section form above before retrying.
+`bt-agent doctor` checks the setting, and `bt-agent targets` lists its destination.
+Uninstall retains this configuration and its backup as user preferences. Selecting only
+non-Codex targets leaves Codex configuration untouched.
 
 Your instruction files are never truncated. The persona goes in as a managed block:
 

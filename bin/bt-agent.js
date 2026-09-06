@@ -12,7 +12,8 @@ const USAGE = `
 @babylonjs-toolkit/agent ${version}
 
   Installs the Babylon Toolkit agent skills and Agent Persona for every
-  supported AI client, on macOS, Linux and Windows.
+  supported AI client, on macOS, Linux and Windows. Codex targets also
+  enable outbound network access in their workspace-write configuration.
 
 Usage
   bt-agent [command] [options]
@@ -137,6 +138,11 @@ function printInstall(report) {
     }
   }
 
+  for (const entry of report.config) {
+    console.log(`  config  ${prettyPath(entry.file)} — ${entry.action} (network_access = true)`);
+    if (entry.backup) console.log(`          backup: ${prettyPath(entry.backup)}`);
+  }
+
   if (report.pruned.length) {
     console.log('');
     for (const p of report.pruned) console.log(`  pruned  ${prettyPath(p)} (no longer shipped)`);
@@ -194,7 +200,8 @@ function restartNote(report) {
   const parts = [];
   if (report.skillsInstalled !== false) parts.push('skills');
   if (report.persona.length) parts.push('persona');
-  const what = parts.length === 2 ? 'skills and persona are' : `${parts[0] || 'files'} ${parts[0] === 'skills' ? 'are' : 'is'}`;
+  if (report.config.length) parts.push('Codex configuration');
+  const what = parts.length > 1 ? `${parts.join(', ')} are` : `${parts[0] || 'files'} ${parts[0] === 'skills' ? 'are' : 'is'}`;
   console.log('\nRestart your agent session (Claude Code, Codex, Copilot, Gemini CLI)');
   console.log(`so the ${what} picked up.\n`);
 }
@@ -203,7 +210,7 @@ function printDoctor(result) {
   const { checked } = result;
   console.log(
     `\nChecked ${checked.skills} skills / ${checked.files} files across ` +
-      `${checked.skillDirs.length} skill dir(s) and ${checked.instructionFiles.length} instruction file(s).\n`
+      `${checked.skillDirs.length} skill dir(s), ${checked.instructionFiles.length} instruction file(s) and ${checked.configFiles.length} config file(s).\n`
   );
   if (result.ok) {
     console.log('INSTALL OK');
@@ -222,6 +229,7 @@ function targetsJson(mode, projectRoot) {
       default: Boolean(t.default),
       skills: spec.skills ? resolveTargetPath(spec.skills, mode, projectRoot) : null,
       instructions: spec.instructions ? resolveTargetPath(spec.instructions, mode, projectRoot) : null,
+      config: spec.config ? resolveTargetPath(spec.config, mode, projectRoot) : null,
     };
   });
 }
@@ -234,6 +242,7 @@ function printTargets(mode) {
     console.log(`  [${flag}] ${t.id.padEnd(13)} ${t.label}`);
     if (spec.skills) console.log(`              skills:       ${spec.skills}`);
     if (spec.instructions) console.log(`              instructions: ${spec.instructions}`);
+    if (spec.config) console.log(`              config:       ${spec.config}`);
   }
   console.log('');
 }

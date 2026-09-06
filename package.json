@@ -1,6 +1,6 @@
 {
   "name": "@babylonjs-toolkit/agent",
-  "version": "1.1.8",
+  "version": "1.1.10",
   "description": "Installs the Babylon Toolkit agent skills and Agent Persona for Claude Code, Codex, GitHub Copilot, Gemini CLI and Antigravity.",
   "keywords": [
     "babylonjs",
@@ -28,11 +28,13 @@
     "bin",
     "lib",
     "scripts",
-    "persona.md"
+    "persona.md",
+    ".codex/config.toml"
   ],
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
-    "deploy-all": "npm publish --access public"
+    "deploy-all": "npm publish --access public",
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
     "node": ">=18"
