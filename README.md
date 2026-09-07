@@ -124,7 +124,7 @@ happens to be named `bt-something` is safe.
 | Skill | Command | What it does |
 |-------|---------|--------------|
 | [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. |
-| [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a decision-complete, task-checklist technical plan from a spec — the plan is the shared memory that keeps a long, fresh-context-per-task run cohesive. |
+| [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive. |
 | [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec. |
 | [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. |
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
@@ -140,17 +140,19 @@ the frontmatter `name` + `description` to decide when the skill applies. The `al
 line is honored by Claude Code (auto-approves those tools) and safely ignored by Codex and
 Copilot.
 
-### Why plans are heavy
+### Heavy plans (`/bt-plan --heavy`)
 
 A plan can hold 50+ tasks and run for days, with each task executed by `bt-execute` in a fresh
-context. The only thing that survives between tasks is the plan file, so `bt-plan` writes it as
-the feature's shared memory: a numbered `## Decisions` log (every choice, its rationale, what was
-rejected, which tasks it binds), a `## Design Reference` (file map, interfaces written as code,
-data shapes, algorithms with their constants, edge-case policy, verbatim conventions to mirror,
-exact API usage, test strategy), and self-contained tasks that cite those sections by name
-instead of relying on memory of earlier tasks. Before the plan is final, a fresh read-only
-subagent audits it as a cold executor and every gap it finds is fixed. The result is that task 40
-uses the same names, shapes and patterns as task 3 — whichever session, day, or model runs it.
+context. The only thing that survives between tasks is the plan file. `--heavy` makes `bt-plan`
+write it as the feature's shared memory: a numbered `## Decisions` log (every choice, its
+rationale, what was rejected, which tasks it binds), a `## Design Reference` (file map, interfaces
+written as code, data shapes, algorithms with their constants, edge-case policy, verbatim
+conventions to mirror, exact API usage, test strategy), and self-contained tasks that cite those
+sections by name instead of relying on memory of earlier tasks. Before the plan is final, a fresh
+read-only subagent audits it as a cold executor and every gap it finds is fixed. The result is
+that task 40 uses the same names, shapes and patterns as task 3 — whichever session or day runs
+it. Without the flag, `bt-plan` produces its standard plan; `bt-execute` runs either kind the
+same way.
 
 ## Universal Installations
 
