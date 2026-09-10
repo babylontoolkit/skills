@@ -1,4 +1,4 @@
-# Babylon Toolkit Agent Skills (1.1.6)
+# Babylon Toolkit Agent Skills (1.1.14)
 
 Universal [Agent Skills](https://agentskills.io) for the `Babylon Toolkit` web game development framework.
 Each `SKILL.md` follows the open standard, so the **same file works unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
@@ -129,7 +129,7 @@ happens to be named `bt-something` is safe.
 | [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. |
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
 | [`bt-landing`](skills/bt-landing/SKILL.md) | `/bt-landing` | Re-design the landing page, splash screen, preloader and custom overlays. |
-| [`bt-gauntlet`](skills/bt-gauntlet/SKILL.md) | `/bt-gauntlet` | Agent based gauntlet loop engineering. ([usage guide](gauntletusage.md)) |
+| [`bt-gauntlet`](skills/bt-gauntlet/SKILL.md) | `/bt-gauntlet` | Agent based gauntlet loop engineering — web games, Unity levels, or Blender models. ([usage guide](#babylon-toolkit-loop-engineering-gauntlet-loop)) |
 | [`bt-prototype`](skills/bt-prototype/SKILL.md) | `/bt-prototype` | Create any number of award winning frontend prototypes. |
 | [`bt-design`](skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. |
 | [`bt-hero`](skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. |
@@ -187,7 +187,28 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 
 # Babylon Toolkit Loop Engineering (Gauntlet Loop)
 
-**What it is in one line:** you give it a game brief and a quality bar; it interviews you, writes a loop card, then runs rounds of *build → capture real browser evidence → fresh harsh critic vs your reference (blind A/B) → record* until the success condition passes or a boundary fires — building with **BabylonJS + the Babylon Toolkit, never Three.js**. All state lives in `_gauntlet/<name>/`, so you can stop any time and resume days or weeks later.
+**What it is in one line:** you give it a brief and a quality bar; it interviews you, locks a **target image** and the **cameras** every screenshot is taken from, writes a loop card, then runs rounds of *build → capture real evidence → fresh harsh critic scores a rubric and returns the full gap list → record* until the success condition passes or a boundary fires — building with **BabylonJS + the Babylon Toolkit, never Three.js**. All state lives in `_gauntlet/<name>/`, so you can stop any time and resume days or weeks later.
+
+### Three deliverable kinds, one loop
+
+The round protocol, critic contract, stall ladder and resume machinery are identical in every case. What changes is what the builder edits and how evidence is produced — settled in the interview and recorded in the loop card.
+
+| Kind | The builder edits | Evidence is |
+| --- | --- | --- |
+| `web-game` | BabylonJS / Toolkit TypeScript, scene code, shaders, UI | the running game in a browser |
+| `unity-level` | a Unity scene via the Unity CLI — terrain, light rig, reflection probes, bake settings, fog, tonemapping | the **exported** level served over the toolkit dev server, plus the exported scene metadata |
+| `blender-model` | a `.blend`/FBX via headless Blender — geometry, UVs, PBR maps, LODs, skinning | the asset loaded in BabylonJS under a frozen lighting rig |
+
+Each kind has its own prerequisite gate, part taxonomy and failure table in `skills/bt-gauntlet/references/`.
+
+### How a part is judged
+
+- **The bar is an image, and it is locked.** No prose bars. If you have no reference media it generates one (a real in-engine screenshot, never concept art), then freezes it for the run.
+- **Evidence comes from locked cameras.** Three to five named cameras with exact transforms; a frame shot from anywhere else is inadmissible.
+- **A scored rubric, not a vibe.** Composition / Lighting & Atmosphere / Materials / Detail / Motion, out of 10 (models get their own axes). Default pass mark 8.0.
+- **The critic returns the whole gap list**, prioritised and actionable — not one gap per round — and it sees the previous round's score and screenshot so regressions are caught.
+- **Hard gates are separate from the score**: perf budget, console clean, camera lock, component authority, and the pipeline's own gate (e.g. did the change actually cross the Unity export boundary).
+- **A stall ladder forces adaptation.** No full-point gain in two rounds, or the same top gap named twice → incremental tweaks are forbidden and one architectural change is required. If that fails too → it stops and asks you.
 
 ---
 
@@ -202,7 +223,7 @@ could think of.
 
 What happens:
 
-1. It derives a job name from the brief (e.g. `cod-fps`) and runs the **interview** — deliverable, objective, reference/benchmark media (attach screenshots!), success condition, boundaries, Babylon-specific game questions, loop mechanics.
+1. It derives a job name from the brief (e.g. `cod-fps`) and runs the **interview** — deliverable kind and deliverable, objective, the target image and locked cameras (attach screenshots, or let it generate the target), rubric and pass threshold, success condition, boundaries, kind-specific questions, loop mechanics.
 2. It shows you the filled **loop card** and waits for your confirmation.
 3. It runs up to **5 rounds** (the default session cap), then parks with a status report and the exact resume command.
 
@@ -212,13 +233,13 @@ Name it yourself and pick the template explicitly:
 /bt-gauntlet --name:cod-fps --template:gauntlet I want you to build a first-person shooter ...
 ```
 
-Attach reference screenshots/clips with the message — they become the critics' benchmark in `_gauntlet/cod-fps/reference/`.
+Attach reference screenshots/clips with the message — they become the locked target in `_gauntlet/cod-fps/reference/`. If you attach nothing, the interview generates the target instead and shows it to you before anything is built.
 
 ## 2. Choose a template
 
 | | `--template:gauntlet` (default) | `--template:bounded` |
 | --- | --- | --- |
-| Style | Full Shumer-style: decompose into parts, fan out builders, fresh harsh critic per part, blind A/B vs reference | Single-track loop card: one coherent improvement per round against an objective/metric/boundary checklist |
+| Style | Full Shumer-style: decompose into parts, fan out builders, fresh harsh critic per part, scored against the locked target | Single-track loop card: one coherent improvement per round against an objective/metric/boundary checklist |
 | Best for | One ambitious visual artifact chasing a reference bar ("CoD-level FPS") | Reliability- and cost-sensitive work with objective verifiers ("60 FPS, zero console errors, all checks green") |
 | Cost profile | Heavier (builder + critic subagents per part) | Lighter (one improvement, one verifier per round) |
 
@@ -387,8 +408,9 @@ This is an operator convenience you apply from the outside. The SKILL.md deliber
 In order of precedence, a round's gate check ends things when:
 
 1. **Success condition met** → one final fresh **integration critic** inspects the whole game for seams and consistency → report DONE with the evidence summary.
-2. **A loop-card boundary fires** (total rounds exhausted, attempts-per-part hit without a new strategy, repeated blocker, permission needed) → park + escalate to you with specifics.
-3. **The `--rounds` session cap is reached** → park cleanly and print `/bt-gauntlet --resume <name>`.
+2. **The stall ladder reaches STALLED** — an architectural change was forced after two flat rounds (or the same top gap twice) and still did not move the score → park + escalate, rather than burn rounds guessing at another big swing.
+3. **A loop-card boundary fires** (total rounds exhausted, attempts-per-part hit without a new strategy, repeated blocker, permission needed) → park + escalate to you with specifics.
+4. **The `--rounds` session cap is reached** → park cleanly and print `/bt-gauntlet --resume <name>`.
 
 Deploy, spending, credentials, deletion, and messaging are always behind your explicit approval, no matter what the brief says.
 
