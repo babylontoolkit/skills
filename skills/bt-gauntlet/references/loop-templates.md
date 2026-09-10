@@ -12,7 +12,7 @@ templates.
 I want you to create <DELIVERABLE> that achieves <OBJECTIVE> at the quality
 level of <CONCRETE REFERENCE OR MEASURABLE BENCHMARK>.
 
-DELIVERABLE KIND: <web-game | unity-level | blender-model>
+DELIVERABLE KIND: <web-game | unity>
 Follow the matching pipeline reference for how to build and how to verify.
 
 Build it with BabylonJS and the Babylon Toolkit (NOT Three.js), following the
@@ -81,7 +81,7 @@ OBJECTIVE
 <OBJECTIVE — the exact outcome that should become true for <DELIVERABLE>>
 
 DELIVERABLE KIND
-<web-game | unity-level | blender-model> — build and verify per the matching
+<web-game | unity> — build and verify per the matching
 pipeline reference.
 
 ENGINE

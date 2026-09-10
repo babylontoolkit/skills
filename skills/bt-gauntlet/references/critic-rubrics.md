@@ -38,7 +38,7 @@ never effort or intent.
 Fractional scores allowed. The axes depend on the deliverable kind; the pipeline reference names which
 table applies.
 
-**Scene / level / in-game visual rubric** (`web-game`, `unity-level`) — **10 points**:
+**Scene / level / in-game visual rubric** — for `web-game` jobs and for **scene parts** of a `unity` job (lighting, GI, IBL, probes, atmosphere, composition, set dressing) — **10 points**:
 
 | Axis | Points | What it covers |
 |---|---|---|
@@ -48,7 +48,7 @@ table applies.
 | **Detail & Density** | 0–2 | Set dressing, clutter, wear, edge damage, decals, scatter, small-scale variation. Does the frame hold up under a fine-toothed comb? |
 | **Motion & Life** | 0–1 | Animation, wind, particles, flicker, ambient movement. Score `n/a` and redistribute to Detail when the part is genuinely static. |
 
-**Model / asset rubric** (`blender-model`) — **10 points**:
+**Model / asset rubric** — for **asset parts** of a `unity` job (an individual model: silhouette, UVs, bakes, materials, topology, rig) — **10 points**:
 
 | Axis | Points | What it covers |
 |---|---|---|

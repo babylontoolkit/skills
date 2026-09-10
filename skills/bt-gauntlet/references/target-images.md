@@ -71,8 +71,8 @@ pipeline can physically deliver, and split it three ways:
 Critics are instructed never to raise gaps against `OUT OF REACH` items. Without this list the critic names
 the same impossible gap every round, the stall ladder fires, and the run parks for no good reason.
 
-For `unity-level` jobs the boundary is concrete: the 73 scene-metadata keys the exporter emits. See
-`unity-level-pipeline.md` § *Scope the target to what can actually cross the boundary*.
+For `unity` jobs the boundary is concrete: the 73 scene-metadata keys the exporter emits. See
+`unity-pipeline.md` § *Scope the target to what can actually cross the boundary*.
 
 ---
 
@@ -112,10 +112,10 @@ with exactly one locked camera, recorded in `_gauntlet/<name>/cameras.md`:
 
 - Three to five cameras is usually right: a hero establishing shot, one or two secondary angles, and a
   detail crop that forces the critic to look closely.
-- For `unity-level`, these are **real Unity cameras** named `gauntlet_<slug>` saved in the scene, so they
-  export with the level and can be selected by name in the browser.
-- For `blender-model`, they are fixed orbit angles **plus a frozen lighting rig** — see
-  `blender-model-pipeline.md` § *Lock the viewer, not just the camera*.
+- For `unity` jobs these are **real Unity cameras** named `gauntlet_<slug>` saved in the scene: the in-loop
+  snapshot renders through them, and they export with the level too. When the subject is a single asset,
+  frame it in the scene it lives in under that scene's frozen lighting rig — see `unity-pipeline.md`
+  § *Where the work is judged*.
 - Evidence not captured from a locked transform is **inadmissible** — it fails the camera-lock gate.
 
 Add a camera mid-run only by amendment, and generate its target at the same time.

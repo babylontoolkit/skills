@@ -26,7 +26,7 @@ or above the pass threshold with every gate green, however many rounds that take
 2. **Quality via a gauntlet job** — once the game exists, `/bt-gauntlet --name:aaa-polish <brief>` with the
    reference media. The loop builds on whatever the plan produced.
 
-For a `unity-level` deliverable the same split applies, one layer down: use the spec workflow to scaffold
+For a `unity` deliverable the same split applies, one layer down: use the spec workflow to scaffold
 the Unity project, install the three packages and get a first export working end to end (that work is
 enumerable and verifiable in one pass), then hand the *fidelity* problem to a gauntlet job. The Unity
 Exporter reference points at this skill for exactly that step.
@@ -70,7 +70,7 @@ re-invocation — no host loop feature is required.
   tool otherwise. None available and no user-supplied reference → stop and ask (see `target-images.md`).
 - **Interview:** `AskUserQuestion` where the host has it; plain numbered questions otherwise.
 - **Unity / Blender CLIs:** shell tools, so they work on any host with a shell. A host with no shell cannot
-  run the `unity-level` or `blender-model` pipelines — say so rather than degrading silently.
+  run the `unity` pipeline — say so rather than degrading silently.
 - **Skill loading:** where skills are loaded with a tool (the Babylon Toolkit App Builder platform),
   `load_skill('bt-gauntlet')`; where skills are files on disk (Claude Code), this folder lives in
   `~/.claude/skills/` or the project's `.claude/skills/`. **Copy the entire folder — SKILL.md alone is not

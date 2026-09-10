@@ -27,9 +27,10 @@ _gauntlet/
 │   │                        #   authoring-only) — written in round 1, read on resume.
 │   │                        #   Only exists when supplied assets carry component metadata.
 │   ├── pipeline.md          # Pipeline state for the deliverable kind: project paths,
-│   │                        #   Unity project root, licence tier, dev-server port, bake
-│   │                        #   tier in use, .blend/FBX paths. Written round 1, re-verified
-│   │                        #   on every resume (a resident Editor does NOT survive a pause).
+│   │                        #   Unity project root, licence tier, capture mode, bake tier,
+│   │                        #   checkpoint cadence + last checkpoint round, dev-server port,
+│   │                        #   .blend/FBX paths. Written round 1, re-verified on every
+│   │                        #   resume (a resident Editor does NOT survive a pause).
 │   ├── progress.md          # THE resume file — format below.
 │   ├── rounds/
 │   │   ├── round-01.md      # Append-only per-round journal: what was built, the critic's
@@ -48,10 +49,10 @@ _gauntlet/
 ```markdown
 # Gauntlet Progress
 Name: cod-fps
-Kind: web-game | unity-level | blender-model
+Kind: web-game | unity
 Template: gauntlet | bounded
 Round: 12 (total, cumulative across all sessions)
-Budgets: rounds 12/40 · no-improvement streak 0/3 · stall: none · bake tier: preview
+Budgets: rounds 12/40 · no-improvement streak 0/3 · stall: none · bake tier: preview · last checkpoint: round 1
 
 ## Parts
 - [x] P1 Movement & player controller — passed round 4 (9.0/10, gates all PASS)

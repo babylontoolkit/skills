@@ -1,4 +1,4 @@
-# Babylon Toolkit Agent Skills (1.1.14)
+# Babylon Toolkit Agent Skills (1.1.15)
 
 Universal [Agent Skills](https://agentskills.io) for the `Babylon Toolkit` web game development framework.
 Each `SKILL.md` follows the open standard, so the **same file works unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
@@ -189,17 +189,16 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 
 **What it is in one line:** you give it a brief and a quality bar; it interviews you, locks a **target image** and the **cameras** every screenshot is taken from, writes a loop card, then runs rounds of *build → capture real evidence → fresh harsh critic scores a rubric and returns the full gap list → record* until the success condition passes or a boundary fires — building with **BabylonJS + the Babylon Toolkit, never Three.js**. All state lives in `_gauntlet/<name>/`, so you can stop any time and resume days or weeks later.
 
-### Three deliverable kinds, one loop
+### Two deliverable kinds, one loop
 
 The round protocol, critic contract, stall ladder and resume machinery are identical in every case. What changes is what the builder edits and how evidence is produced — settled in the interview and recorded in the loop card.
 
 | Kind | The builder edits | Evidence is |
 | --- | --- | --- |
 | `web-game` | BabylonJS / Toolkit TypeScript, scene code, shaders, UI | the running game in a browser |
-| `unity-level` | a Unity scene via the Unity CLI — terrain, light rig, reflection probes, bake settings, fog, tonemapping | the **exported** level served over the toolkit dev server, plus the exported scene metadata |
-| `blender-model` | a `.blend`/FBX via headless Blender — geometry, UVs, PBR maps, LODs, skinning | the asset loaded in BabylonJS under a frozen lighting rig |
+| `unity` | a Unity scene via the Unity CLI — terrain, light rig, reflection probes, bake settings, fog, tonemapping — with headless Blender as the tool for low-level model work (in place, so GUIDs survive) | a **Unity camera snapshot** rendered straight to PNG each round — the loop stays in Unity. The export + browser check is a deliberate checkpoint, and what you export (whole level, or one asset as a container) is your call at the time |
 
-Each kind has its own prerequisite gate, part taxonomy and failure table in `skills/bt-gauntlet/references/`.
+Each kind's prerequisite gate, part taxonomy, verify recipe and failure table live in `skills/bt-gauntlet/references/`.
 
 ### How a part is judged
 
