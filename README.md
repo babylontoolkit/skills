@@ -1,4 +1,4 @@
-# Babylon Toolkit Agent Skills (1.1.15)
+# Babylon Toolkit Agent Skills (1.1.16)
 
 Universal [Agent Skills](https://agentskills.io) for the `Babylon Toolkit` web game development framework.
 Each `SKILL.md` follows the open standard, so the **same file works unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
