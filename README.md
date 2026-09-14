@@ -1,4 +1,4 @@
-# Babylon Toolkit Agent Skills (1.1.16)
+# Babylon Toolkit Agent Skills (1.1.18)
 
 Universal [Agent Skills](https://agentskills.io) for the `Babylon Toolkit` web game development framework.
 Each `SKILL.md` follows the open standard, so the **same file works unchanged** in Claude Code, Codex CLI, and GitHub Copilot.
@@ -125,7 +125,7 @@ happens to be named `bt-something` is safe.
 |-------|---------|--------------|
 | [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. |
 | [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive. |
-| [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task (or all remaining tasks) from a plan/spec. |
+| [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task, a range (`T3-T7`, `T12-`, `NEXT:3`) or all remaining tasks from a plan/spec; with no task id it runs the next unchecked task. Add `--auto-pilot` for an unattended overnight run that never stops for human input. |
 | [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. |
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
 | [`bt-landing`](skills/bt-landing/SKILL.md) | `/bt-landing` | Re-design the landing page, splash screen, preloader and custom overlays. |
@@ -153,6 +153,29 @@ read-only subagent audits it as a cold executor and every gap it finds is fixed.
 that task 40 uses the same names, shapes and patterns as task 3 — whichever session or day runs
 it. Without the flag, `bt-plan` produces its standard plan; `bt-execute` runs either kind the
 same way.
+
+### Unattended runs (`/bt-execute --auto-pilot`)
+
+```
+/bt-execute --auto-pilot @_specs/<feature>_plan.md ALL
+```
+
+Auto-pilot is for running a 50-task plan overnight. There is no one to ask, so `bt-execute`
+makes every call itself — from the plan's Decisions, then the Babylon Toolkit Agent Reference
+(Unity → interactive glTF → BabylonJS script components), then the codebase, then senior-developer
+default — and logs each one. Nothing is relaxed on quality: every task still goes through the
+testing subagent and an independent acceptance verifier, and a box only flips on a genuine PASS.
+What changes is that a failure never halts the run: a failing task gets a bounded fix loop (up to
+5 attempts), is then marked `⏭️ DEFERRED (auto-pilot): <reason>` in the plan, and the run moves
+on; deferred tasks get one more pass at the end. Each verified task is committed as a checkpoint
+on the current branch (an `autopilot/<plan>` branch is created if you are on `main`; nothing is
+ever pushed), and a `<plan>_autopilot.md` run log next to the plan records every task outcome,
+decision and deferral for you to read in the morning. Re-running the same command resumes and
+re-attempts anything deferred.
+
+One thing the skill cannot do is answer the host's tool-permission prompts — start the session
+in a non-prompting permission mode (Claude Code auto / bypass-permissions) and leave Unity,
+Blender and the dev server reachable if the plan needs them.
 
 ## Universal Installations
 
