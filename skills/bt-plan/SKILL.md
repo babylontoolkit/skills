@@ -1,6 +1,6 @@
 ---
 name: bt-plan
-description: "The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec. Also supports a Quick Plan mode: when given only a brief (no spec file), it interviews the user to build a mini-spec and plans from that. Add `--heavy` for Heavy Plan mode: a decision-complete plan (numbered Decisions log, Design Reference with real interfaces and patterns, self-contained task blocks, cold-context audit) that keeps a long run of fresh-context tasks cohesive. Always planning-only — it writes the plan file and stops; execution is the separate bt-execute skill."
+description: "The Babylon Toolkit Plan Skill creates the detailed technical plan for the specified feature spec file. Use when asked to plan or produce implementation tasks for an existing spec. Also supports a Quick Plan mode: when given only a brief (no spec file), it interviews the user to build a mini-spec and plans from that. Add `--heavy` for Heavy Plan mode: a decision-complete plan (numbered Decisions log, Design Reference with real interfaces and patterns, self-contained task blocks, cold-context audit) that keeps a long run of fresh-context tasks cohesive. Plans are sized to the feature (task budget by spec size, phases, per-task verify level) so execution cost stays proportional. Always planning-only — it writes the plan file and stops; execution is the separate bt-execute skill."
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Agent, Task
 ---
 
@@ -46,6 +46,7 @@ When invoked with a brief but **no feature spec file**, produce a plan from the 
 | Full feature requirements | Use the brief itself as the requirements, expanded by the Step 1 codebase analysis. |
 | `spec_impact: yes/no` | **Infer** it from the Step 1 analysis: `yes` if the feature adds/changes a system, convention, dependency, or architectural decision; otherwise `no`. |
 | `Project Spec Alignment` section | Derive alignment directly from root `SPEC.md` + the analysis. |
+| `size: small/medium/large` | **Infer** it from the brief + analysis per *Size the plan to the feature*. |
 
 **The one and only difference in Quick Plan mode is operating without a spec file** — the interview produces a mini-spec that stands in for it. Everything else is identical to a normal run: Step 1's comprehensive codebase analysis (including reading root `SPEC.md`) runs in full, the plan document has the same structure, the SPEC.md write-back task is still appended when the inferred `spec_impact` is `yes`, and the run still **STOPS after writing the plan file**. Nothing about Quick Plan grants permission to implement.
 
@@ -57,7 +58,7 @@ After writing `_specs/<feature-name>_plan.md`, **STOP**. Your final response mus
 
 ```
 Plan written to _specs/<feature-name>_plan.md
-Run a single task with `bt-execute _specs/<feature-name>_plan.md T1`, or every task with `bt-execute _specs/<feature-name>_plan.md ALL`.
+Run a single task with `bt-execute _specs/<feature-name>_plan.md T1`, or every task with `bt-execute _specs/<feature-name>_plan.md ALL` (add `--strict` for an adversarial verifier on every task).
 ```
 
 ### Interview before planning (Quick Plan)
@@ -103,7 +104,7 @@ So a heavy plan is the **complete, shared memory** of the feature: every decisio
 
 **Write the code when the code IS the decision.** This skill never edits source files, but a heavy plan may (and should) put code *inside the plan*: full signatures, type definitions, data schemas, the tricky 20-line algorithm, a config block, a test skeleton. When the shape of the code is the decision, prose is a lossy encoding of it — write the code once here, and every task that needs it copies the same thing. Leave to prose only the mechanical glue ("wire `X` into `Y`'s constructor the same way `Z` is at `:88`").
 
-**Many small, self-contained tasks beat few large ones.** A task should fit in one fresh context: a handful of files, one clear outcome, everything it needs either in its own block or cited by name from the Decisions and Design Reference. Split a task whenever it grows past roughly ten steps, two hundred lines of new code, or four files.
+**Self-contained tasks, sized to real work.** A task should fit in one fresh context: one clear outcome, everything it needs either in its own block or cited by name from the Decisions and Design Reference. Split a task when it would not fit in one sitting — not merely because it touches several files. *Size the plan to the feature* (task budget, no ceremony tasks, phases, `Verify level`, no brittle pins) applies to heavy plans too: every task and phase costs a verification round at execution time. Heavy mode earns its cost on `large` features; for a `small` feature say in Codebase Analysis why it was requested anyway.
 
 **Do the API homework once, here.** When a task uses a Babylon Toolkit component or BabylonJS API, show the exact call the way the Agent Reference (or its sub-document) shows it, in the Design Reference › *API usage* section — so every task across the run uses the same API the same way instead of each fresh context rediscovering it. Fetch the relevant sub-documents during Step 1 and copy the correct usage into the plan.
 
@@ -141,7 +142,7 @@ Resolve every `Open Question` from the spec here. An open question that survives
 - **API usage** — for every Babylon Toolkit / BabylonJS / third-party API the feature calls, the exact call as the Agent Reference (or the library docs) shows it.
 - **Test strategy** — the test file(s) to create or extend, the harness/pattern to copy (with `file:line`), how to run them, and the baseline to compare against.
 
-**4. `## Tasks`** — the ordered checklist, numbered `T1`, `T2`, `T3` … in dependency order with GitHub-style checkboxes, each small enough to be implemented and verified on its own in a fresh context. Every task uses this block. Fields marked **required** must be present on every task; the others are omitted only when they genuinely have nothing to say.
+**4. `## Tasks`** — the ordered checklist, numbered `T1`, `T2`, `T3` … in dependency order with GitHub-style checkboxes, grouped under `### Phase N — <name>` headings, each task implementable and verifiable on its own in a fresh context. Every task uses this block. Fields marked **required** must be present on every task; the others are omitted only when they genuinely have nothing to say.
 
 ```markdown
 ## Tasks
@@ -165,7 +166,8 @@ Resolve every `Open Question` from the spec here. An open question that survives
     - `throws on a null scene` → rejects with `TypeError`
     - run: `npm test -- tests/foo.test.ts`
   - Acceptance: <observable, checkable statements — what is true when this task is done>   # required
-  - Verify: `npm test -- tests/foo.test.ts` → 2 passing · `npx tsc --noEmit` → no errors · `grep -n "new FooService" src/bar.ts` → 1 hit   # required — commands + expected output
+  - Verify: `npm test -- tests/foo.test.ts` → both named cases pass · `npx tsc --noEmit` → no errors · `grep -n "new FooService" src/bar.ts` → 1 hit   # required — commands + expected output (never an absolute suite count)
+  - Verify level: standard                                         # required — `standard` or `live` (see Size the plan to the feature)
 ```
 
 Rules for heavy task blocks:
@@ -175,7 +177,7 @@ Rules for heavy task blocks:
 - **Anchors are real.** Every `file:line` and "after `<code>`" anchor comes from Step 1's reading of the actual file. Prefer code anchors ("after the line `this.scene = scene;`") to bare line numbers where lines are likely to shift during a long run — or give both.
 - **Names, signatures and values come from the Design Reference.** If a step introduces a name that is not in the Design Reference, add it there first. That is what keeps the fortieth task's naming identical to the third's.
 - **Acceptance is observable.** Something a verifier can check by running a command or inspecting a file: a test count, a grep result, a rendered behaviour ("PLAY auto-scrolls to the document bottom"), never "works correctly". Sibling-skill behaviours are asserted in observable terms exactly as Step 2 requires.
-- **Verify gives the command and the expected output**, so a fresh context compares against a stated value rather than judging.
+- **Verify gives the command and the expected output**, so a fresh context compares against a stated value rather than judging. Expected outputs never pin absolute counts that later tasks change (total tests passed, suite sizes, ledger figures).
 - **Keep the system working between tasks.** When a change spans tasks, say what temporary shim, flag, or compatibility write keeps the app running after each one, and which later task removes it — a resumed run may pause for days between them.
 
 The **SPEC.md write-back task** is required under the same conditions as in Step 2 and is still the LAST task. In a heavy plan, **write the SPEC.md content in the task** — the exact paragraphs to merge into each current-state section and the exact Decisions entries to append (your `## Decisions` entries, promoted to project scope) — using the heavy task block (Steps that name each SPEC.md section and the text to insert, a **Code** block holding the exact markdown, a **Verify** of `grep -n "<distinctive phrase>" SPEC.md` → one hit each), so the write-back records what was planned rather than what one fresh context remembers at the end.
@@ -188,11 +190,11 @@ The draft is not the plan. A plan written in one pass by the same mind that hold
 
 Emit `🕵️ [bt-plan] Cold-context audit — reading the draft as a fresh executor …`. Then, if a subagent-spawning tool is available, launch **one read-only audit subagent** with a fresh context (it must NOT see your reasoning, only the files), and give it: the path of the draft plan, the repository root, and these instructions verbatim:
 
-> You are a competent engineer with a fresh context. You have never seen this repository or this feature before, and you will execute one task at a time with no memory of the others. Read the plan at `<path>` in full. Then, for **every** task, check the plan against the actual codebase (read the files and anchors it names) and list every point where you would be **forced to decide, guess, look up, or infer** something the plan should have given you: a missing signature, name, value, file location or anchor; an anchor that does not match the real file; a step that states a goal instead of an instruction; a step that depends on knowing what an earlier task did rather than on the Design Reference; a name used in a task that is not defined in the Design Reference; a test case without an expected outcome; a Verify without an expected output; an edge case with no decided behaviour; an API call whose exact usage is not shown; any use of "TBD", "appropriate", "suitable", "as needed", "etc." or "the implementer may". Also flag any task that would not fit in one sitting or touches more than four files. Report as a list: `T<n> · step <k> · <what is missing> · <what you would have had to decide>`. Do not fix anything, do not write files, do not run builds or tests. Report "NO GAPS" only if you found none.
+> You are a competent engineer with a fresh context. You have never seen this repository or this feature before, and you will execute one task at a time with no memory of the others. Read the plan at `<path>` in full. Then, for **every** task, check the plan against the actual codebase (read the files and anchors it names) and list every point where you would be **forced to decide, guess, look up, or infer** something the plan should have given you: a missing signature, name, value, file location or anchor; an anchor that does not match the real file; a step that states a goal instead of an instruction; a step that depends on knowing what an earlier task did rather than on the Design Reference; a name used in a task that is not defined in the Design Reference; a test case without an expected outcome; a Verify without an expected output; an edge case with no decided behaviour; an API call whose exact usage is not shown; any use of "TBD", "appropriate", "suitable", "as needed", "etc." or "the implementer may". Also flag any task that would not fit in one sitting, any micro-task that should be merged into its neighbour, any ceremony task (verification sweep, ledger/baseline opening) the brief did not ask for, and any Verify that pins an absolute count a later task will change. Report as a list: `T<n> · step <k> · <what is missing> · <what you would have had to decide>`. Do not fix anything, do not write files, do not run builds or tests. Report "NO GAPS" only if you found none.
 
 If no subagent tool is available, emit `➡️ [bt-plan] no subagent tool — self-auditing the draft` and perform the same read yourself, deliberately re-reading the plan top to bottom against the real files with the checklist above, one task at a time.
 
-Emit `🧾 [bt-plan] Audit found <n> gaps across <m> tasks` (or `… found NO GAPS`). Then **resolve every reported gap by editing the plan** — add the missing decision to `## Decisions`, the missing code/signature/name to `## Design Reference`, the missing instruction to the task — and emit `🔧 [bt-plan] Resolved <n>/<n> gaps`. If the audit found more than a handful of gaps, run it **once more** on the revised plan (`🕵️ [bt-plan] Second audit pass …`); stop after the second pass regardless, and list any gap you chose not to resolve, with why, in the plan's Codebase Analysis. A gap the audit reports that you cannot resolve without the user is a question for the user — ask it now. Re-writing the plan file after the audit is the one case where this skill writes it more than once; it is still the only file this skill ever writes.
+Emit `🧾 [bt-plan] Audit found <n> gaps across <m> tasks` (or `… found NO GAPS`). Then **resolve every reported gap by editing the plan** — add the missing decision to `## Decisions`, the missing code/signature/name to `## Design Reference`, the missing instruction to the task — and emit `🔧 [bt-plan] Resolved <n>/<n> gaps`. If the audit found more than 10 gaps, run it **once more** on the revised plan (`🕵️ [bt-plan] Second audit pass …`); stop after the second pass regardless, and list any gap you chose not to resolve, with why, in the plan's Codebase Analysis. A gap the audit reports that you cannot resolve without the user is a question for the user — ask it now. Re-writing the plan file after the audit is the one case where this skill writes it more than once; it is still the only file this skill ever writes.
 
 Finish with `💾 [bt-plan] Plan finalized — _specs/<feature-name>_plan.md (<n> tasks, <k> decisions)`, then report the number of tasks and decisions, the two or three most consequential decisions (with their D-numbers), anything you were unable to resolve, and the same next-step hint as Quick Plan mode. Then **STOP** — heavy or not, this skill never begins T1.
 
@@ -277,6 +279,19 @@ If the spec or codebase is too ambiguous to analyze responsibly, stop and ask th
 
 *(In Heavy Plan mode, also apply the **Step 1 additions** listed under *Heavy Plan mode* above.)*
 
+## Size the plan to the feature (all modes)
+
+Execution cost is paid **per verification unit**, not per line of code: every phase bt-execute runs costs an implementer pass plus a fresh independent verifier. A plan that splits a one-hour feature into eight micro-tasks, adds bookkeeping tasks, and asks for live Unity/browser QA on each one turns an hour of work into a day. Rigor comes from good Acceptance, named tests and an independent verifier — not from the number of tasks. So:
+
+1. **Read the size.** Take `size: small | medium | large` from the feature spec header. In Quick Plan mode (or for an older spec without it), infer it: **small** ≈ something a developer would do by hand in about 1–2 hours, touching one system; **medium** ≈ a day, a few systems; **large** ≈ multi-day, multi-system, or Unity/Blender/export pipeline work. Record it in Codebase Analysis.
+2. **Task budget.** small → **1–3 tasks**; medium → **3–8**; large → as many as the work needs. Going over the budget needs a one-line reason in Codebase Analysis.
+3. **A task is a meaningful unit of work** — a coherent change a developer would commit on its own, with its own tests. Merge tasks that edit the same file for the same purpose, or that cannot be tested apart (adding a constant and the code that uses it is ONE task). Split only when a task would not fit in one sitting.
+4. **No ceremony tasks.** Do not write standalone "verification sweep", "confirm all callers", "open the review / ledger / baseline / archive" or "final check" tasks unless the brief asks for them. A read-and-confirm check belongs in the **Acceptance** of the task that made the change; the final end-to-end check belongs in the last phase's last task.
+5. **Phases.** Group tasks under `### Phase N — <name>` headings inside `## Tasks`. bt-execute runs one independent verifier per phase, so a phase is "what should be checked together": a small plan is **one phase**; otherwise phases of 2–4 related tasks, ending where a checkpoint is natural (a working intermediate state, a UI becoming visible, the SPEC.md write-back).
+6. **`Verify level` per task.** `standard` (default — build/typecheck, the named tests, diff review) or `live` (needs the dev server, a browser, or Unity/Blender to observe). Mark `live` whenever the task's Acceptance depends on runtime behavior — rendering, visuals, interaction, Unity↔Babylon parity; bt-execute runs live QA on such tasks even if unmarked. Whatever the per-task levels, the **last feature task** (before the SPEC.md write-back) carries one `live` **end-to-end check** of the whole feature when the feature has a rendered, exported or interactive surface — that is where "loaded in the browser, screenshotted, console clean" is verified, once.
+7. **No brittle pins.** Never pin absolute counts that later tasks will change — total tests passed, suite sizes, ledger figures, file hashes of files later tasks edit. Say "the named tests pass and there are no new failures versus the baseline" instead. A pin that goes stale makes a correct task FAIL and costs a whole fix-loop round.
+8. **Named tests, not exhaustive ones.** Each task with a testable surface names its test cases with expected outcomes. Cover the Acceptance and the edge cases the spec lists; do not ask for probe suites, fuzzing or mutation testing unless the feature's risk genuinely calls for it (say why).
+
 ## Step 2. Write the plan
 
 > **Heavy Plan mode (`--heavy`):** the *Heavy plan document* structure and the *cold-context audit* under **Heavy Plan mode** above replace this step. The Codebase Analysis requirements, the SPEC.md write-back rules, and the verbatim `How to execute this plan` section below still apply unchanged inside that structure. Without the flag, follow this step exactly as written.
@@ -285,19 +300,25 @@ Emit `✍️ [bt-plan] Writing _specs/<feature-name>_plan.md …` before writing
 
 Only after Step 1 is complete, write the plan markdown to `_specs/` as `<feature-name>_plan.md`. The document MUST open with a `## Codebase Analysis` section that summarizes the findings from Step 1 (cite the real files/modules you inspected) — this is the evidence that the analysis happened. This section MUST include a short **SPEC.md alignment** note: which SPEC.md sections the plan conforms to, and whether the feature is spec-impacting (carry over the feature spec's `spec_impact`, or in Quick Plan mode the value you inferred, and say it was inferred). A plan without a grounded analysis section is invalid; do not produce one.
 
-Then write the implementation as an ordered checklist of discrete tasks. Use GitHub-style checkboxes so progress can be tracked directly in the file — one task per line, numbered T1, T2, T3 … in dependency order, each small enough to be implemented and verified on its own:
+Then write the implementation as an ordered checklist of tasks, sized and grouped per *Size the plan to the feature* above. Use GitHub-style checkboxes so progress can be tracked directly in the file — one task per line, numbered T1, T2, T3 … in dependency order, grouped under phase headings:
 
 ```markdown
 ## Tasks
 
+### Phase 1 — <name>
+
 - [ ] **T1** — <short task title>
   - Files: `path/one`, `path/two`
   - Details: <what to do>
-  - Acceptance: <how to know it is done>
+  - Tests: <test file> — `<case>` → <expected outcome>; … (or "no testable surface — <why>")
+  - Acceptance: <how to know it is done — observable, no absolute count pins>
+  - Verify level: standard
 - [ ] **T2** — <short task title>
   - Files: `...`
   - Details: <...>
-  - Acceptance: <...>
+  - Tests: <...>
+  - Acceptance: <...; includes the end-to-end check of the whole feature if this is the last feature task>
+  - Verify level: live
 ```
 
 When a task implements a **sibling-skill pattern**, its **Acceptance** must assert the skill-defined behavior in observable terms — e.g. for `sweep: page`, "PLAY auto-scrolls through to the document bottom and END jumps there", not merely "the hero renders". A plausible-looking result that dropped a documented behavior must fail acceptance. Prefer copying the sub-skill's template files as an early task (e.g. "T1 — copy + wire the 3D-Hero-Scroll engine") so later tasks only configure it.
@@ -311,6 +332,7 @@ If the feature is spec-impacting (`spec_impact: yes`, or your analysis found it 
   - Files: `SPEC.md`
   - Details: Update the specific SPEC.md section(s) named in the feature spec's Project Spec Alignment — e.g. add/modify the affected Game System, record the new Convention or Decision (with rationale), and add any new Dependency + version. Follow SPEC.md's "How to update this spec" contract: **replace/merge** the current-state sections (Architecture, Game Systems, Conventions, Dependencies) — removing seed placeholders on first real content — and **append** to the Decisions log (never delete; supersede with a newer entry).
   - Acceptance: SPEC.md accurately describes the architecture/systems/conventions/dependencies as actually implemented by the tasks above; no section contradicts the shipped code; new dependencies are listed.
+  - Verify level: standard
 ```
 
 Make this the LAST task so it captures the true final state. If the feature is genuinely not spec-impacting (`spec_impact: no`), omit this task, but state in the Codebase Analysis that no SPEC.md change is required.
@@ -322,6 +344,7 @@ Finally, include this exact `## How to execute this plan` section verbatim in th
 
 Each task above is a checkbox. To implement:
 - Run a single task with the bt-execute command (e.g. `bt-execute <this-file> T<n>`), run every remaining task in order with `bt-execute <this-file> ALL` (resumable — it skips tasks already checked), or implement the whole plan from a prompt like "implement the plan at <this-file>".
+- bt-execute verifies each phase with an independent verifier; add `--strict` for an adversarial verifier on every task.
 - Work the tasks top to bottom unless a task notes a different dependency order.
 - When a task is fully implemented and its **Acceptance** criteria are met, mark it complete by editing this file and changing that task's `- [ ]` to `- [x]`.
 - Stop and report if a task cannot be completed. Do NOT check a box for partial, skipped, or unverified work.

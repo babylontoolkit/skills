@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.24)
+# Babylon Toolkit Desktop Agent (1.1.25)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -127,7 +127,7 @@ happens to be named `bt-something` is safe.
 |-------|---------|--------------|
 | [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. |
 | [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive. |
-| [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task, a range (`T3-T7`, `T12-`, `NEXT:3`) or all remaining tasks from a plan/spec; with no task id it runs the next unchecked task. Add `--auto-pilot` for an unattended overnight run that never stops for human input. |
+| [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task, a range (`T3-T7`, `T12-`, `NEXT:3`) or all remaining tasks from a plan/spec; with no task id it runs the next unchecked task. Add `--auto-pilot` for an unattended overnight run that never stops for human input, and `--strict` for an adversarial verifier on every task. |
 | [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. |
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
 | [`bt-landing`](skills/bt-landing/SKILL.md) | `/bt-landing` | Re-design the landing page, splash screen, preloader and custom overlays. |
@@ -156,6 +156,32 @@ that task 40 uses the same names, shapes and patterns as task 3 — whichever se
 it. Without the flag, `bt-plan` produces its standard plan; `bt-execute` runs either kind the
 same way.
 
+### Proportional verification (`/bt-execute` default) and `--strict`
+
+Execution time is dominated by verification, not by the code edits, so the loop is sized to the
+feature. `bt-spec` records a `size` (small / medium / large); `bt-plan` uses it to set the task
+budget (a small feature is 1–3 tasks in one phase), groups tasks into phases, marks each task's
+`Verify level` (`standard` or `live`), and never pins absolute test counts. By default
+`bt-execute` has the implementer write and run each task's named tests, then runs **one
+independent verifier per phase** with a scoped charter (Acceptance, the Verify commands, the
+tests re-run and judged for coverage, a diff review for real defects), always does live
+Unity/browser QA on any task whose correctness shows only at runtime (rendering, visuals,
+interaction, Unity↔Babylon parity) plus one end-to-end check at the end, and re-checks only
+what failed.
+Docs are read once by the orchestrator and handed to subagents as a brief instead of every
+subagent re-fetching the Agent Reference.
+
+```
+/bt-execute --strict @_specs/<feature>_plan.md ALL
+/bt-execute --auto-pilot --strict @_specs/<feature>_plan.md ALL
+```
+
+`--strict` restores full rigor: an adversarial verifier on **every task** (mutation checks,
+oracles, re-deriving from the plan as it sees fit), live QA on every task with a rendered or
+exported surface, a full fresh re-verify on each fix attempt, and a 5-attempt fix loop. It
+combines with `--auto-pilot`. There is no separate testing subagent in either mode — the
+implementer writes the tests and the independent verifier judges them.
+
 ### Unattended runs (`/bt-execute --auto-pilot`)
 
 ```
@@ -165,10 +191,10 @@ same way.
 Auto-pilot is for running a 50-task plan overnight. There is no one to ask, so `bt-execute`
 makes every call itself — from the plan's Decisions, then the Babylon Toolkit Agent Reference
 (Unity → interactive glTF → BabylonJS script components), then the codebase, then senior-developer
-default — and logs each one. Nothing is relaxed on quality: every task still goes through the
-testing subagent and an independent acceptance verifier, and a box only flips on a genuine PASS.
-What changes is that a failure never halts the run: a failing task gets a bounded fix loop (up to
-5 attempts), is then marked `⏭️ DEFERRED (auto-pilot): <reason>` in the plan, and the run moves
+default — and logs each one. Nothing is relaxed on quality: every task still has passing tests
+and goes through an independent verifier, and a box only flips on a genuine PASS.
+What changes is that a failure never halts the run: a failing task gets a bounded fix loop (3
+attempts, 5 under `--strict`), is then marked `⏭️ DEFERRED (auto-pilot): <reason>` in the plan, and the run moves
 on; deferred tasks get one more pass at the end. Each verified task is committed as a checkpoint
 on the current branch (an `autopilot/<plan>` branch is created if you are on `main`; nothing is
 ever pushed), and a `<plan>_autopilot.md` run log next to the plan records every task outcome,

@@ -74,6 +74,7 @@ The project's **SPEC.md** at the repository root is the source of truth for the 
 - Align the feature idea to the existing architecture, systems, and conventions in SPEC.md. The feature spec you produce must be derived from and constrained by SPEC.md.
 - **If the feature idea conflicts with SPEC.md** (contradicts an architectural decision, a system boundary, or a convention), STOP and flag the conflict to the user before writing the spec. Do not silently override the project spec.
 - **Classify the feature's `spec_impact`:** it is `yes` if implementing the feature would add or change a game system, a convention, a dependency, or an architectural decision recorded in SPEC.md — otherwise `no`. This drives whether the plan will include a SPEC.md write-back task, so classify honestly.
+- **Classify the feature's `size`:** `small` ≈ what a developer would do by hand in about 1–2 hours, touching one system; `medium` ≈ about a day, a few systems; `large` ≈ multi-day, multi-system, or Unity/Blender/export pipeline work. bt-plan sizes the plan (task count, phases, how much live QA) from this, and execution cost follows the plan — so classify by the real work, not by how important the feature feels.
 - **If SPEC.md is missing or is still a stub with no real content, STOP and ask the user FIRST — before generating the feature spec — whether to create a default project `SPEC.md` from the fallback scaffold** (the scaffold is defined in *Validate The Project Spec* under Step 4). Do not draft the feature spec until they answer.
   - **If the user says yes:** create `SPEC.md` at the repository root from the fallback scaffold, then continue — treat the newly written SPEC.md as the source of truth and align the feature spec to it (this is the normal path; the project now has a spec to grow).
   - **If the user says no:** continue **without** a project-level SPEC.md, and record this note in the feature spec: `"No project SPEC.md content yet — following existing codebase conventions."`
@@ -236,7 +237,7 @@ and execute phases have a stable name to refer to regardless of host.
 
 Emit `✍️ [bt-spec] Drafting _specs/<feature_slug>_spec.md …` before writing, and `💾 [bt-spec] Spec written — _specs/<feature_slug>_spec.md` once the file is saved.
 
-Create a markdown spec document that Plan mode can use directly and save it in the _specs folder as `<feature_slug>_spec.md`. Use the exact structure as defined in the feature spec template file @FEATURE.md located at the project root. **If that project template predates grill mode and has no `## Decisions` section, append one anyway whenever `grill_me` is true** (using the shape in the fallback template below, placed directly before `## Open Questions`) — the rationale must be recorded regardless of which template the project ships. The template includes a required `spec_impact` header field and a `Project Spec Alignment` section — fill both in from your SPEC.md read above (cite the SPEC.md sections the feature relies on, describe how it fits the architecture, and for `spec_impact: yes` state exactly what will change in SPEC.md and in which section). Do not add technical implementation details such as code examples. If the feature spec template file is missing, create a new feature spec file with the following sections:
+Create a markdown spec document that Plan mode can use directly and save it in the _specs folder as `<feature_slug>_spec.md`. Use the exact structure as defined in the feature spec template file @FEATURE.md located at the project root. **If that project template predates grill mode and has no `## Decisions` section, append one anyway whenever `grill_me` is true** (using the shape in the fallback template below, placed directly before `## Open Questions`) — the rationale must be recorded regardless of which template the project ships. The template includes required `spec_impact` and `size` header fields (**if the project's FEATURE.md predates `size`, add the `size:` line under `spec_impact:` anyway**) and a `Project Spec Alignment` section — fill both in from your SPEC.md read above (cite the SPEC.md sections the feature relies on, describe how it fits the architecture, and for `spec_impact: yes` state exactly what will change in SPEC.md and in which section). Do not add technical implementation details such as code examples. If the feature spec template file is missing, create a new feature spec file with the following sections:
 ```
 # Feature Spec Template
 
@@ -252,6 +253,7 @@ Create a markdown spec document that Plan mode can use directly and save it in t
 branch: project/feature/<feature-name>
 design_system: DESIGN.md
 spec_impact: <yes|no>   # yes if this feature adds/changes a system, convention, dependency, or architectural decision in SPEC.md
+size: <small|medium|large>   # small ≈ 1–2 h by hand, one system; medium ≈ a day; large ≈ multi-day / multi-system / pipeline — drives plan size
 
 ## Summary
 <one-paragraph description of the feature>
@@ -301,8 +303,8 @@ spec_impact: <yes|no>   # yes if this feature adds/changes a system, convention,
 - ...
 
 ## Testing Guidelines
-Create a test file(s) in the ./tests folder for the new feature, and create meaningful tests for the following cases, without going too heavy:
-- ...
+Create a test file(s) in the ./tests folder for the new feature, and create meaningful tests for the following named cases (each with its expected outcome), without going too heavy — cover the Acceptance Criteria and the listed edge cases, not exhaustive probing:
+- <case> → <expected outcome>
 ```
 
 ### Validate The Project Spec
