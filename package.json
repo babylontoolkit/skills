@@ -1,7 +1,7 @@
 {
   "name": "@babylonjs-toolkit/agent",
-  "version": "1.1.18",
-  "description": "Installs the Babylon Toolkit agent skills and Agent Persona for Claude Code, Codex, GitHub Copilot, Gemini CLI and Antigravity.",
+  "version": "1.1.24",
+  "description": "Installs the Babylon Toolkit Desktop Agent for Claude Code, Codex, GitHub Copilot, Gemini CLI and Antigravity.",
   "keywords": [
     "babylonjs",
     "babylon-toolkit",

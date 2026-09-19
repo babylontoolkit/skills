@@ -53,7 +53,7 @@ Use the user's message after the skill name as the `arguments`.
 
 ## ⚠️ Required reading before any build
 
-For any Babylon / BabylonJS / Babylon Toolkit work, ensure the **Agent Reference** is already read in this session/context (fetch `https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md` first if not; and its `web-kie-servers.md` sub-document if using the KIE MCP servers). If a required fetch fails, STOP and tell the user. Do not refetch what you already remember.
+For any Babylon / BabylonJS / Babylon Toolkit work, ensure the **Agent Reference** is already read in this session/context (fetch `https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md` first if not; and its `web-kie-servers.md` sub-document if using the KIE MCP servers, or its `web-higgsfield-mcp.md` sub-document if using the Higgsfield MCP). If a required fetch fails, STOP and tell the user. Do not refetch what you already remember.
 
 If the project keeps a root **SPEC.md**, read it first and conform to its architecture/conventions; record the shipped prototypes per the project's working agreement when the batch lands.
 
@@ -74,7 +74,7 @@ The **difference** between prototypes is in the *design language* — layout, mo
 1. Read the flags (`--type`, `--count`, `--motionsites`, `--awwwards[:forensic]`, `--3d-hero-scroll`) and the `<theme>`. Apply defaults (`html`, `10`).
 2. **Theme gate:** if no theme is discernible, ask **once** — one short inline question — then proceed. This is the only interactive stop; once the batch starts, it runs autonomously.
 3. Ingest attached screenshots into a world anchor (above). Note the host: React (Vite/TS) vs plain HTML, per `--type` and any existing project.
-4. **Asset-backend check:** the Fable-grade bar assumes asset generation is available. Confirm what's configured — KIE MCP (image/video/Kling), Higgsfield, GPT Image 2 keys, Pinterest source. If none is available, say so and proceed with hand-authored CSS/SVG/WebGL craft rather than silently producing flat pages.
+4. **Asset-backend check:** the Fable-grade bar assumes asset generation is available. Confirm what's configured — KIE MCP (image/video/Kling — the **default**), Higgsfield MCP, GPT Image 2 keys, Pinterest source. Pass the chosen backend to every subagent so the batch is consistent. **If Higgsfield is the backend, check `balance` and preflight one image and one video with `get_cost: true`, then tell the user the estimated batch cost before fanning out**: N prototypes × video is where credits disappear. If none is available, say so and proceed with hand-authored CSS/SVG/WebGL craft rather than silently producing flat pages.
 
 ## Step 2 — Compose the direction spread (N genuinely-different lenses)
 
@@ -130,7 +130,7 @@ Each prototype subagent gets: its **direction**, the **theme**, the **world anch
 
 1. **Own its folder.** Create `_prototypes/<NN-slug>/` and put **everything self-contained inside it** — markup, styles, scripts, and all generated/downloaded assets. No shared globals; a prototype is copy-out-able on its own.
 2. **Build to the Fable bar for its lens** — advanced 3D tactics, otherworldly animation, exceptional palette, novel type. Not a template with the colors swapped; a distinct, *mind-blowing* execution of that direction for this game. **Full-bleed console UI by default** (bt-design's *Layout Philosophy*): fill the whole viewport edge-to-edge like a console dashboard / game menu, not a centered fixed-width website — unless this direction is the noted contained exception.
-3. **Produce assets** via any mix of the available workflows: Pinterest pulls for reference, **GPT Image 2** for stills, **KIE MCP servers / Higgsfield (Kling, etc.)** for motion/video, hand-authored WebGL/SVG/CSS. All assets stay faithful to the world anchor and live in the prototype's folder.
+3. **Produce assets** via any mix of the available workflows: Pinterest pulls for reference, **GPT Image 2** for stills, **KIE MCP servers (default) / Higgsfield MCP (Kling, Seedance, etc.)** for motion/video, hand-authored WebGL/SVG/CSS. All assets stay faithful to the world anchor and live in the prototype's folder. **Higgsfield returns a job and a CDN URL, not a file:** poll `job_status` (or `jobs_wait` for a batch), then `curl` every result into the prototype folder. Never hot-link a Higgsfield URL. Local reference images must be uploaded first (`media_upload` → PUT → `media_confirm`) and passed as `media_id`s. Always send `use_unlim: false`.
 4. **3D-hero-scroll directions:** follow *The 3D-hero-scroll batch rule* below.
 5. Run its own **iteration passes** (Step 4) before returning.
 

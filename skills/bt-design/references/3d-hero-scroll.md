@@ -39,9 +39,9 @@ memory in any framework; copy it and configure it.
 1. **Footage source** (pick one):
    - **(a) Provided video** — skip to §3 (still needs the scrub re-encode).
    - **(b) Generate the footage** with whatever image/video generation is
-     configured — KIE MCP servers (`kie-image-mcp` / `kie-video-mcp`),
-     Higgsfield MCP, the model's own built-in image/video generation, or any
-     other configured image/video tool — §2.
+     configured — KIE MCP servers (`kie-image-mcp` / `kie-video-mcp`, the
+     **default**), Higgsfield MCP, the model's own built-in image/video
+     generation, or any other configured image/video tool — §2.
    - **(c) No footage possible** — this pattern is wrong; use a static hero.
 2. **Brand tokens** — map `--hs-bg / --hs-ink / --hs-dim / --hs-accent /
    --hs-display / --hs-mono` to the host site's design system (DESIGN.md or
@@ -74,17 +74,38 @@ memory in any framework; copy it and configure it.
 ## 2 · Footage pipeline (generation path)
 
 The generation backend is pluggable — the pipeline below is the same whatever
-produces the frames. Route the image/video calls to whatever is configured:
-KIE MCP servers (`kie-image-mcp` / `kie-video-mcp`), Higgsfield MCP, the model's
-own built-in image/video generation, or any other configured image/video tool.
-The parameter names below (`reference_paths`, `image_paths`) are KIE/Kling's;
-other backends expose the equivalent reference-image and first/last-frame inputs
-under their own names — map to whichever you're using.
+produces the frames. Choose the backend in this order: the one the user named →
+**KIE MCP servers** (`kie-image-mcp` / `kie-video-mcp`, the default) → **Higgsfield
+MCP** → the model's own built-in image/video generation → any other configured
+image/video tool. The parameter names below (`reference_paths`, `image_paths`,
+`out_path`) are KIE/Kling's; map them to your backend (Higgsfield mapping below).
 
 > **If using the KIE MCP servers** (Babylon Toolkit projects): fetch the
 > Babylon Toolkit Agent Reference and its `web-kie-servers.md` sub-document
 > first (per CLAUDE.md). Those servers read the key from `.env` — a file named
 > `env` is ignored.
+
+> **If using the Higgsfield MCP** (`mcp__higgsfield__*`): fetch the Agent
+> Reference's `web-higgsfield-mcp.md` sub-document first. Higgsfield has no
+> `out_path` and cannot read local files, so every KIE-shaped call maps like this:
+>
+> | KIE shape | Higgsfield |
+> |---|---|
+> | local `reference_paths` / `image_paths` | upload first: `media_upload` → `curl -f -X PUT --upload-file <f> '<upload_url>'` → `media_confirm {type:"image"}` → `media_id`. A previous Higgsfield output (anchor image, generated still) needs no upload; pass its `job_id` |
+> | anchor/reference image | `generate_image` `medias: [{role:"image_references", value}]` (`gpt_image_2_5` or `nano_banana_pro`) |
+> | `image_paths[0]` = first frame | `generate_video` `medias: [{role:"start_image", value}]` |
+> | `image_paths[1]` = last frame | `medias: [{role:"end_image", value}]` |
+> | Kling 3 `std`/`pro` | `model: "kling3_0"`, `mode: "std"|"pro"|"4k"`, `duration` 3–15, `aspect_ratio` 16:9 |
+> | general video | `model: "seedance_2_5"` (`duration` 4–30, `resolution` 480p/720p/1080p) |
+> | `out_path` | `job_status {jobId, sync:true}` until `completed` (video ~60–180 s), then `curl -fL -o clipN.mp4 '<result url>'` |
+>
+> The scrub encode strips audio (`-an`), so turn generated audio **off**. That is
+> `sound: "off"` on `kling3_0` and `generate_audio: false` on `seedance_2_5`, and
+> it also lowers the credit cost. Preflight each clip with `get_cost: true`,
+> always send `use_unlim: false`, and tell the user the total credits for the
+> film before submitting it: a 4-clip film is the expensive part of this pattern.
+> The extracted last frame (`last.jpg`) is a local file, so it goes through
+> the upload step before it can pin the next clip's `start_image`.
 
 1. **One hero anchor image first** (image model, e.g. nano-banana-pro, 16:9,
    2K). Every other asset references it (reference/anchor image input) so it is
@@ -103,7 +124,8 @@ under their own names — map to whichever you're using.
 3. **Know your video model's real output** (example — KIE/Kling 3: `std` mode
    returns 1284×716, not 1080p — use `pro` if that matters; clips run ~8.04s
    for a requested 8s). Whatever the backend, ffprobe everything; never assume
-   resolutions or durations.
+   resolutions or durations. Download every clip into the project (`media/`)
+   before ffmpeg touches it; never hot-link a backend CDN URL.
 4. **Concat + scrub encode** (the scrub encode is NON-NEGOTIABLE):
    ```
    ffmpeg -y -f concat -safe 0 -i list.txt -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -an journey.mp4

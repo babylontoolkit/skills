@@ -195,9 +195,18 @@ return UnityEditor.AssetDatabase.AssetPathToGUID(p) + " rig=" + i.animationType 
 **Conventions to preserve for BabylonJS:** ≤ 4 influences per vertex, weights normalised to 1.0, bone names
 matching the Unity Avatar/Animator rig, and `add_leaf_bones=False` on FBX export.
 
-**Textures are generated, not procedural.** Where the toolkit's `kie-image` MCP is configured, use
-`generate_image` for albedo, normals, roughness masks and detail maps. Substituting procedural noise or flat
-colours for maps the target needs is a gate failure, and the commonest reason an asset reads as plastic.
+**Textures are generated, not procedural.** Use `generate_image` for albedo, normals, roughness masks and
+detail maps. It goes to the backend recorded in `pipeline.md`: the toolkit's `kie-image` MCP by default, or
+Higgsfield MCP (upload references → job → download into `Assets/`, per `target-images.md` §1a). Substituting
+procedural noise or flat colours for maps the target needs is a gate failure, and the commonest reason an
+asset reads as plastic.
+
+**Image → starting mesh (Higgsfield only).** When a model part starts from nothing and Higgsfield is
+configured, `generate_3d` (`image_to_3d`, or `multi_image_to_3d` from 2–4 views of the target) can turn the
+locked target's subject into a GLB blockout. Preflight with `get_cost: true`, download the GLB, then
+import it into Blender and refine it like any other source mesh: retopo, UVs, LODs, weights under the gates
+above. It is a head start on the silhouette, never a finished asset. Its topology and UVs will not pass the
+model rubric untouched.
 
 ---
 

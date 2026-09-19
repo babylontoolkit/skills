@@ -20,8 +20,18 @@ gap to it.
    reimagines the scene sends the loop chasing a layout it was never asked to build.
 3. **Starting fresh.** Generate the target directly from the brief.
 
-Where the toolkit's image MCP is configured (`kie-image`, see
-[Image, Video And Sound Generation](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-kie-servers.md)):
+### 1a. Generation backends — kie by default, Higgsfield supported
+
+Every `generate_image(...)` call in this skill is written in the **kie** shape. Pick the backend once, at
+the interview, and record it in `pipeline.md` so a resumed session uses the same one:
+
+1. **The user named a backend or model** → use it.
+2. **kie** (`kie-image` MCP) is configured → **default**.
+3. **Higgsfield** MCP (`mcp__higgsfield__*`) is configured → use it.
+4. Otherwise → the host's built-in image tool.
+
+**kie (default)** — see
+[Image, Video And Sound Generation](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-kie-servers.md):
 
 ```
 generate_image(prompt, out_path, reference_paths?, model?, aspect_ratio?, resolution?, output_format?)
@@ -30,6 +40,28 @@ generate_image(prompt, out_path, reference_paths?, model?, aspect_ratio?, resolu
 - `out_path` → `_gauntlet/<name>/reference/target-<camera>.png`
 - `reference_paths` → the current-state screenshot for the refinement path (up to 14 files)
 - `aspect_ratio` → match the locked camera's aspect; `resolution: "2K"` or `"4K"`; `output_format: "png"`
+
+**Higgsfield** — see
+[Higgsfield MCP Server](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-higgsfield-mcp.md).
+It has no `out_path` and does not read local files. It returns a job, and you download the result. Map each
+kie-shaped call like this:
+
+| kie shape | Higgsfield equivalent |
+|---|---|
+| `reference_paths: [local.png, …]` | Upload first: `media_upload {files:[{filename}]}` → `curl -f -X PUT --upload-file local.png '<upload_url>'` → `media_confirm {type:"image", media_ids:[…]}`. Then pass `medias: [{role:"image_references", value:"<media_id>"}]`. A previous Higgsfield output needs no upload: pass its `job_id` as the `value` |
+| `model` | A Higgsfield id that accepts references — `gpt_image_2_5` (default), `nano_banana_2`, `seedream_v4_5` (4K). `z_image` is the cheapest draft model but takes **no** references |
+| `resolution: "2K"` / `"4K"` | `resolution: "2k"` / `"4k"` (lower case, where the model supports it) |
+| `output_format: "png"` | Nothing to set. Image results are PNG |
+| `out_path` | `job_status {jobId, sync:true}` until `completed`, then `curl -fL -o <out_path> '<results.rawUrl>'` |
+
+Higgsfield rules for this loop:
+- **Preflight** each new model/setting with `get_cost: true` and **log the credits per image** in
+  `pipeline.md`. A gauntlet may generate dozens of images, so check `balance` before the run and treat
+  running out of credits as a boundary that parks the run.
+- Always send `use_unlim: false`. Never call a billing-confirm tool.
+- **Never hot-link** a Higgsfield CDN URL. The locked target must be a file inside `_gauntlet/<name>/`.
+- For several independent images (one per locked camera), use `generate_image_batch` → `jobs_wait` →
+  download each.
 
 If no image-generation tool is available **and** the user supplied no reference media, **stop and ask** for
 either a target image or an image-generation credential. Do not start a gauntlet against a prose bar.

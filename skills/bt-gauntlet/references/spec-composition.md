@@ -66,8 +66,10 @@ re-invocation — no host loop feature is required.
   discipline.
 - **Browser evidence:** chrome-devtools MCP on Claude Code; other hosts use their browser/screenshot tool.
   None available → parts are `unverified`, never passed.
-- **Image generation:** the toolkit's `kie-image` MCP (`generate_image`) where configured; any host image
-  tool otherwise. None available and no user-supplied reference → stop and ask (see `target-images.md`).
+- **Image generation:** the toolkit's `kie-image` MCP (`generate_image`) by default where configured.
+  Higgsfield MCP (`mcp__higgsfield__generate_image`) is also supported, via the upload → job → download
+  mapping in `target-images.md` §1a. Otherwise use any host image tool. None available and no user-supplied
+  reference → stop and ask (see `target-images.md`).
 - **Interview:** `AskUserQuestion` where the host has it; plain numbered questions otherwise.
 - **Unity / Blender CLIs:** shell tools, so they work on any host with a shell. A host with no shell cannot
   run the `unity` pipeline — say so rather than degrading silently.

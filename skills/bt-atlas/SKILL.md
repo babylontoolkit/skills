@@ -61,17 +61,37 @@ guess, substitute a different file, or continue with a partial setup. Tell the
 user exactly which input failed and why, and ask for a corrected path/URL.
 
 ## Tools
-- **Image generation**: use whichever image-generation tool is available by
-  default on the current platform (an MCP image-generation server such as
-  `kie-image-mcp`, a built-in model image-generation capability, or any other
-  configured image tool) — don't assume one specific provider. If the user
-  names a particular tool or model in their request (e.g. "use nano-banana-2",
-  "use Flux", "use imagen4"), use that one instead of the default. Whichever
-  tool is used, pass BOTH the base texture and the UV layout as reference
+- **Image generation**: pick the backend in this order:
+  1. the tool or model the user named (e.g. "use nano-banana-2", "use Flux", "use Higgsfield");
+  2. the **kie** image MCP (`kie-image-mcp`), the **default** where configured;
+  3. the **Higgsfield** MCP (`mcp__higgsfield__generate_image`) where configured;
+  4. the host's built-in image generation, or any other configured image tool.
+
+  Whichever tool is used, pass BOTH the base texture and the UV layout as reference
   images to it. Match `aspect_ratio` to the texture (usually `1:1`), request a
   resolution/size close to the texture size (e.g. `2K` for 2048px), and request
   PNG output. If no image-generation tool is available at all, tell the user
   and ask them to configure one before proceeding.
+
+  - **kie**: `generate_image` with `reference_paths: [<base.png>, <uv_layout.png>]`
+    (in that order), `out_path: <scratch>/raw/skin_var_NN.png`, `output_format: "png"`.
+  - **Higgsfield**: it cannot read local files and has no `out_path`.
+    1. **Upload both references once**: `media_upload {files:[{filename:"base.png"},{filename:"uv_layout.png"}]}`,
+       then `curl -f -X PUT --upload-file <file> '<upload_url>'` for each, then
+       `media_confirm {type:"image", media_ids:[…]}`. Reuse the two `media_id`s for every variant.
+    2. **Pick a model that takes several reference images**: `gpt_image_2_5` (default),
+       `nano_banana_2`, or `seedream_v4_5`. Never use `z_image`, which accepts no references. Pass
+       `medias: [{role:"image_references", value:<base id>}, {role:"image_references", value:<uv id>}]`,
+       with the base texture first, and `resolution: "2k"` for a 2048 texture.
+    3. **Preflight once** with `get_cost: true` and tell the user the per-variant credit cost before a
+       large batch. Always send `use_unlim: false`.
+    4. For several variants, use `generate_image_batch` (≤12 per call, `index` = variant number) and then
+       `jobs_wait`. For one variant, use `generate_image` then `job_status {jobId, sync:true}`.
+    5. **Download each result** from `results.rawUrl`:
+       `curl -fL -o <scratch>/raw/skin_var_NN.png '<rawUrl>'`. Step 5 composites local files only.
+       `composite_skin.py` resizes the output to the base texture's size itself, so an output at a
+       different size needs no extra step.
+    See the Babylon Toolkit reference `web-higgsfield-mcp.md` for the full tool list.
 - **Helper scripts** live in the `scripts/` folder next to this SKILL.md
   (need Python 3 + Pillow + numpy):
   - `scripts/uv_island_mask.py`  — build the island mask from the UV layout.
@@ -168,7 +188,10 @@ for just those indices.
 
 ## Notes & gotchas
 - Always pass BOTH base + UV layout as references to the generator; never rely on
-  the prompt alone to hold the layout.
+  the prompt alone to hold the layout. On Higgsfield that means two uploaded
+  `media_id`s in `medias`, not file paths.
+- Generated outputs (kie or Higgsfield) must end up as local files in `<scratch>/raw/`;
+  never reference a remote result URL from the finals or the engine project.
 - The mask is the safety net. If a variant's island content is shifted inside its
   island, the composite clips it to the island shape — re-prompt that variant
   rather than widening the mask.
