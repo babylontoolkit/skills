@@ -57,7 +57,7 @@ Emit one visible status line when this path is taken: `⚡ [bt-plan] Quick Plan 
 After writing `_specs/<feature-name>_plan.md`, **STOP**. Your final response must be a short summary of the plan plus the exact next-step hint below — and nothing else. Do not begin T1. Do not offer to "go ahead and start". If the user wants execution, they will invoke bt-execute themselves:
 
 ```
-Plan written to _specs/<feature-name>_plan.md
+Plan written to _specs/<feature-name>_plan.md — <n> tasks, estimated <total range> of agent time
 Run a single task with `bt-execute _specs/<feature-name>_plan.md T1`, or every task with `bt-execute _specs/<feature-name>_plan.md ALL` (add `--strict` for an adversarial verifier on every task).
 ```
 
@@ -116,7 +116,7 @@ The analysis is the same eight points; ask for **plan-grade detail** when runnin
 
 ### Heavy plan document
 
-Emit `✍️ [bt-plan] Writing draft _specs/<feature-name>_plan.md …` before writing, and `💾 [bt-plan] Draft written — _specs/<feature-name>_plan.md (<n> tasks)` once the file is saved. The document has **five required sections, in this order**. A plan missing any of them is invalid; do not produce one.
+Emit `✍️ [bt-plan] Writing draft _specs/<feature-name>_plan.md …` before writing, and `💾 [bt-plan] Draft written — _specs/<feature-name>_plan.md (<n> tasks)` once the file is saved. The document has **five required sections, in this order** (plus the `## Estimated execution time` section before the last). A plan missing any of them is invalid; do not produce one.
 
 **1. `## Codebase Analysis`** — exactly as in Step 2 (the Step 1 findings with `file:line` citations and the SPEC.md alignment note), plus the **test baseline** and, in Quick Plan mode, the **interview answers** that stand in for the spec.
 
@@ -182,7 +182,7 @@ Rules for heavy task blocks:
 
 The **SPEC.md write-back task** is required under the same conditions as in Step 2 and is still the LAST task. In a heavy plan, **write the SPEC.md content in the task** — the exact paragraphs to merge into each current-state section and the exact Decisions entries to append (your `## Decisions` entries, promoted to project scope) — using the heavy task block (Steps that name each SPEC.md section and the text to insert, a **Code** block holding the exact markdown, a **Verify** of `grep -n "<distinctive phrase>" SPEC.md` → one hit each), so the write-back records what was planned rather than what one fresh context remembers at the end.
 
-**5. `## How to execute this plan`** — the exact verbatim section from Step 2, unchanged.
+**5. `## How to execute this plan`** — the exact verbatim section from Step 2, unchanged, preceded by the `## Estimated execution time` section from Step 2.
 
 ### Cold-context audit (required in Heavy Plan mode, before the plan is final)
 
@@ -196,7 +196,7 @@ If no subagent tool is available, emit `➡️ [bt-plan] no subagent tool — se
 
 Emit `🧾 [bt-plan] Audit found <n> gaps across <m> tasks` (or `… found NO GAPS`). Then **resolve every reported gap by editing the plan** — add the missing decision to `## Decisions`, the missing code/signature/name to `## Design Reference`, the missing instruction to the task — and emit `🔧 [bt-plan] Resolved <n>/<n> gaps`. If the audit found more than 10 gaps, run it **once more** on the revised plan (`🕵️ [bt-plan] Second audit pass …`); stop after the second pass regardless, and list any gap you chose not to resolve, with why, in the plan's Codebase Analysis. A gap the audit reports that you cannot resolve without the user is a question for the user — ask it now. Re-writing the plan file after the audit is the one case where this skill writes it more than once; it is still the only file this skill ever writes.
 
-Finish with `💾 [bt-plan] Plan finalized — _specs/<feature-name>_plan.md (<n> tasks, <k> decisions)`, then report the number of tasks and decisions, the two or three most consequential decisions (with their D-numbers), anything you were unable to resolve, and the same next-step hint as Quick Plan mode. Then **STOP** — heavy or not, this skill never begins T1.
+Finish with `💾 [bt-plan] Plan finalized — _specs/<feature-name>_plan.md (<n> tasks, <k> decisions)`, then report the number of tasks and decisions, the estimated execution time, the two or three most consequential decisions (with their D-numbers), anything you were unable to resolve, and the same next-step hint as Quick Plan mode. Then **STOP** — heavy or not, this skill never begins T1.
 
 ---
 
@@ -336,6 +336,19 @@ If the feature is spec-impacting (`spec_impact: yes`, or your analysis found it 
 ```
 
 Make this the LAST task so it captures the true final state. If the feature is genuinely not spec-impacting (`spec_impact: no`), omit this task, but state in the Codebase Analysis that no SPEC.md change is required.
+
+### Estimated execution time (required, all modes)
+
+Directly **before** `## How to execute this plan`, write a `## Estimated execution time` section so the user knows up front whether this is hours or days of agent time. Estimate bt-execute's wall-clock time per phase, from what the phase actually does, using these calibration rates (Standard mode, one implementer + one independent verifier per phase):
+
+| Phase contents | Per phase |
+| --- | --- |
+| Code + Node/unit tests only | 15–25 min |
+| Adds a C#/native build, DLL rebuild or a full test chain | 30–45 min |
+| Adds Unity authoring / bake / export, or browser read-backs and screenshots | 45–90 min |
+| Visual / parity "fix until green" loop | 1–3 h |
+
+Write a small table (`Phase | Tasks | What makes it slow | Estimate`), then one **Total** line as a range in hours (and days if over ~16 h), including a 20–40 % allowance for fix loops, e.g. `**Total: ~5–8 h of unattended agent time (Standard mode); ~2–3× that with --strict.**` Name the single biggest uncertainty in one line. This is an estimate, not a pin: bt-execute never verifies against it.
 
 Finally, include this exact `## How to execute this plan` section verbatim in the document so the plan is self-describing no matter how it is later run:
 

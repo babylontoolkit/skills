@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.26)
+# Babylon Toolkit Desktop Agent (1.1.28)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
