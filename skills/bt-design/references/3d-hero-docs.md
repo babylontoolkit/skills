@@ -64,15 +64,15 @@ all beats                                 ffmpeg concat → journey.mp4
 **Which tool backs `generate_image` / `generate_video`?** These are generic
 calls, not a specific vendor. The skill routes them to whatever image/video
 generation is configured in your environment — KIE MCP servers (e.g.
-`kie-image-mcp` and `kie-video-mcp`, the default), Higgsfield MCP, the model's
-own built-in image/video generation, or any other configured image/video tool.
-The prompt just says "generate the footage"; the wiring picks the backend.
+`kie-image-mcp` and `kie-video-mcp`, the default), the Higgsfield CLI, the
+model's own built-in image/video generation, or any other configured image/video
+tool. The prompt just says "generate the footage"; the wiring picks the backend.
 `image_paths` / `reference_paths` / `out_path` are the KIE/Kling parameter names.
-On **Higgsfield**, `image_paths[0]` / `[1]` become `medias` roles `start_image` /
-`end_image` on `kling3_0` or `seedance_2_5`. Local frames are uploaded first
-(`media_upload` → PUT → `media_confirm`), and `out_path` becomes "poll
-`job_status`, then `curl` the result into `media/`". The full table is in
-`3d-hero-scroll.md` §2.
+On the **Higgsfield CLI** every call goes through the reference's
+`scripts/hf-generate.mjs` wrapper: `image_paths[0]` / `[1]` become
+`--start-image` / `--end-image` on `kling3_0` or `seedance_2_5`, reference images
+become `--image-references <file>` (uploaded automatically), and `out_path`
+becomes `--out media/<file>`. The full table is in `3d-hero-scroll.md` §2.
 
 **"Chain last-frame-to-first-frame" decoded:** Kling's `image_paths[0]` pins a
 clip's FIRST frame. The pipeline extracts clip N's LAST frame with ffmpeg and

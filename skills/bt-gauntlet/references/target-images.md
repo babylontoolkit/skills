@@ -27,7 +27,7 @@ the interview, and record it in `pipeline.md` so a resumed session uses the same
 
 1. **The user named a backend or model** → use it.
 2. **kie** (`kie-image` MCP) is configured → **default**.
-3. **Higgsfield** MCP (`mcp__higgsfield__*`) is configured → use it.
+3. The **Higgsfield CLI** is installed and signed in (`node_modules/.bin/higgsfield account status --json` works) → use it.
 4. Otherwise → the host's built-in image tool.
 
 **kie (default)** — see
@@ -41,27 +41,32 @@ generate_image(prompt, out_path, reference_paths?, model?, aspect_ratio?, resolu
 - `reference_paths` → the current-state screenshot for the refinement path (up to 14 files)
 - `aspect_ratio` → match the locked camera's aspect; `resolution: "2K"` or `"4K"`; `output_format: "png"`
 
-**Higgsfield** — see
-[Higgsfield MCP Server](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-higgsfield-mcp.md).
-It has no `out_path` and does not read local files. It returns a job, and you download the result. Map each
-kie-shaped call like this:
+**Higgsfield CLI** — see
+[Higgsfield CLI](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-higgsfield-cli.md).
+Install it locally (`npm i -D @higgsfield/cli`) and generate through the reference's download wrapper
+`scripts/hf-generate.mjs`, which saves the result to `--out` the way kie saves to `out_path`. The CLI itself only
+returns CDN URLs. Map each kie-shaped call like this:
 
-| kie shape | Higgsfield equivalent |
+| kie shape | Higgsfield CLI equivalent |
 |---|---|
-| `reference_paths: [local.png, …]` | Upload first: `media_upload {files:[{filename}]}` → `curl -f -X PUT --upload-file local.png '<upload_url>'` → `media_confirm {type:"image", media_ids:[…]}`. Then pass `medias: [{role:"image_references", value:"<media_id>"}]`. A previous Higgsfield output needs no upload: pass its `job_id` as the `value` |
-| `model` | A Higgsfield id that accepts references — `gpt_image_2_5` (default), `nano_banana_2`, `seedream_v4_5` (4K). `z_image` is the cheapest draft model but takes **no** references |
-| `resolution: "2K"` / `"4K"` | `resolution: "2k"` / `"4k"` (lower case, where the model supports it) |
+| `generate_image(prompt, out_path, …)` | `node scripts/hf-generate.mjs <model> --prompt "…" --out <out_path>` |
+| `reference_paths: [a.png, b.png]` | `--image-references a.png --image-references b.png` (repeat the flag; local paths are uploaded automatically). For a file reused every round, `higgsfield upload create a.png --json` once and pass its `id` |
+| `model` | A model that accepts references: `gpt_image_2_5` (default), `nano_banana_2`, `seedream_v4_5` (4K). `z_image` (0.15 credits) is the cheapest draft model but takes **no** references |
+| `aspect_ratio`, `resolution: "2K"` | `--aspect_ratio 16:9`, `--resolution 2k` (lower case, underscores, as `higgsfield model get <model>` prints them) |
 | `output_format: "png"` | Nothing to set. Image results are PNG |
-| `out_path` | `job_status {jobId, sync:true}` until `completed`, then `curl -fL -o <out_path> '<results.rawUrl>'` |
 
 Higgsfield rules for this loop:
-- **Preflight** each new model/setting with `get_cost: true` and **log the credits per image** in
-  `pipeline.md`. A gauntlet may generate dozens of images, so check `balance` before the run and treat
-  running out of credits as a boundary that parks the run.
-- Always send `use_unlim: false`. Never call a billing-confirm tool.
-- **Never hot-link** a Higgsfield CDN URL. The locked target must be a file inside `_gauntlet/<name>/`.
-- For several independent images (one per locked camera), use `generate_image_batch` → `jobs_wait` →
-  download each.
+- **Cost first.** `node scripts/hf-generate.mjs <model> --cost …` for each new model/setting, and **log the
+  credits per image** in `pipeline.md`. A gauntlet may generate dozens of images, so check
+  `higgsfield account status --json` before the run and treat running out of credits as a boundary that
+  parks the run.
+- **Sign-in is the user's.** If the CLI isn't signed in, start `higgsfield auth login` in the background and
+  have the user approve it in the browser. Select the workspace (`workspace list` → `workspace set <id>`)
+  before anything else.
+- **Never hot-link** a Higgsfield CDN URL. The locked target must be a file inside `_gauntlet/<name>/`,
+  which the wrapper guarantees.
+- For several independent images (one per locked camera), run the wrapper calls in parallel from the shell,
+  each with its own `--out`.
 
 If no image-generation tool is available **and** the user supplied no reference media, **stop and ask** for
 either a target image or an image-generation credential. Do not start a gauntlet against a prose bar.

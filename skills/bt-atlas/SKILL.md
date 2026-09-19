@@ -64,7 +64,7 @@ user exactly which input failed and why, and ask for a corrected path/URL.
 - **Image generation**: pick the backend in this order:
   1. the tool or model the user named (e.g. "use nano-banana-2", "use Flux", "use Higgsfield");
   2. the **kie** image MCP (`kie-image-mcp`), the **default** where configured;
-  3. the **Higgsfield** MCP (`mcp__higgsfield__generate_image`) where configured;
+  3. the **Higgsfield CLI** (`@higgsfield/cli`) where installed and signed in;
   4. the host's built-in image generation, or any other configured image tool.
 
   Whichever tool is used, pass BOTH the base texture and the UV layout as reference
@@ -75,23 +75,26 @@ user exactly which input failed and why, and ask for a corrected path/URL.
 
   - **kie**: `generate_image` with `reference_paths: [<base.png>, <uv_layout.png>]`
     (in that order), `out_path: <scratch>/raw/skin_var_NN.png`, `output_format: "png"`.
-  - **Higgsfield**: it cannot read local files and has no `out_path`.
-    1. **Upload both references once**: `media_upload {files:[{filename:"base.png"},{filename:"uv_layout.png"}]}`,
-       then `curl -f -X PUT --upload-file <file> '<upload_url>'` for each, then
-       `media_confirm {type:"image", media_ids:[…]}`. Reuse the two `media_id`s for every variant.
-    2. **Pick a model that takes several reference images**: `gpt_image_2_5` (default),
-       `nano_banana_2`, or `seedream_v4_5`. Never use `z_image`, which accepts no references. Pass
-       `medias: [{role:"image_references", value:<base id>}, {role:"image_references", value:<uv id>}]`,
-       with the base texture first, and `resolution: "2k"` for a 2048 texture.
-    3. **Preflight once** with `get_cost: true` and tell the user the per-variant credit cost before a
-       large batch. Always send `use_unlim: false`.
-    4. For several variants, use `generate_image_batch` (≤12 per call, `index` = variant number) and then
-       `jobs_wait`. For one variant, use `generate_image` then `job_status {jobId, sync:true}`.
-    5. **Download each result** from `results.rawUrl`:
-       `curl -fL -o <scratch>/raw/skin_var_NN.png '<rawUrl>'`. Step 5 composites local files only.
-       `composite_skin.py` resizes the output to the base texture's size itself, so an output at a
-       different size needs no extra step.
-    See the Babylon Toolkit reference `web-higgsfield-mcp.md` for the full tool list.
+  - **Higgsfield CLI**: see the Babylon Toolkit reference `web-higgsfield-cli.md`. Install it locally
+    (`npm i -D @higgsfield/cli`) and add the reference's download wrapper as `scripts/hf-generate.mjs` in
+    the project. The CLI only returns URLs; the wrapper saves the file.
+    1. **Upload both references once** and reuse the IDs for every variant, because every call that names
+       a local path re-uploads it:
+       `node_modules/.bin/higgsfield upload create <base.png> --json` and the same for `<uv_layout.png>`.
+       Each returns `{ "id", … }`.
+    2. **Use a model that takes several reference images**: `gpt_image_2_5` (default), `nano_banana_2`, or
+       `seedream_v4_5`. Never use `z_image`, which accepts no references. Repeat the flag, base first:
+       ```
+       node scripts/hf-generate.mjs nano_banana_2 --prompt "<prompt>" \
+            --image-references <base_id> --image-references <uv_id> \
+            --aspect_ratio 1:1 --resolution 2k --out <scratch>/raw/skin_var_NN.png
+       ```
+    3. **Cost first**: run the same command once with `--cost` in place of `--out` (`nano_banana_2` at
+       `2k` with references was 2 credits per image when verified). Tell the user the per-variant cost
+       before a large batch.
+    4. Run several variants as parallel wrapper calls from the shell, each with its own `--out`.
+    5. The wrapper downloads each result to `--out`. `composite_skin.py` resizes it to the base texture's
+       size itself, so an output at a different size needs no extra step.
 - **Helper scripts** live in the `scripts/` folder next to this SKILL.md
   (need Python 3 + Pillow + numpy):
   - `scripts/uv_island_mask.py`  — build the island mask from the UV layout.
@@ -188,8 +191,8 @@ for just those indices.
 
 ## Notes & gotchas
 - Always pass BOTH base + UV layout as references to the generator; never rely on
-  the prompt alone to hold the layout. On Higgsfield that means two uploaded
-  `media_id`s in `medias`, not file paths.
+  the prompt alone to hold the layout. On Higgsfield that means two
+  `--image-references` flags, base first.
 - Generated outputs (kie or Higgsfield) must end up as local files in `<scratch>/raw/`;
   never reference a remote result URL from the finals or the engine project.
 - The mask is the safety net. If a variant's island content is shifted inside its

@@ -37,7 +37,7 @@ Whatever is present is used verbatim; the intake resolves the rest (Step 1). **T
 Every piece of a 3D hero scroll belongs to exactly one tier. This is the rule that keeps the intake small and the output deterministic:
 
 - **Tier 1 — Invariants.** How the mechanic works. Owned by bt-design's reference and templates; never asked, never in the brief, never overridable: muted footage, the all-intra scrub encode, blob preload, veiled cuts, film-speed autoplay, cancel semantics, the `HS_CONFIG`/markup syntax, and the **verification protocol — which always runs, without being requested.**
-- **Tier 2 — Defaults.** Sensible values supplied silently; the user may override any of them in their input (recorded in the brief's `Overrides` section): aspect ratio (default 16:9), clip duration (**backend-derived — probe the configured video model's real output; never assume a number**), the 4-beat REVEAL → MOTION → SHIFT → FINALE arc, `sweep: page`, controls all-on (`sweep: page`) / HUD+PLAY (`sweep: hero`), the scroll-length formula, poster = first film frame, generation backend (**KIE MCP by default; Higgsfield MCP when that is what's configured or the user names it**; see bt-design `3d-hero-scroll.md` §2 for the Higgsfield mapping).
+- **Tier 2 — Defaults.** Sensible values supplied silently; the user may override any of them in their input (recorded in the brief's `Overrides` section): aspect ratio (default 16:9), clip duration (**backend-derived — probe the configured video model's real output; never assume a number**), the 4-beat REVEAL → MOTION → SHIFT → FINALE arc, `sweep: page`, controls all-on (`sweep: page`) / HUD+PLAY (`sweep: hero`), the scroll-length formula, poster = first film frame, generation backend (**KIE MCP by default; the Higgsfield CLI when that is what's set up or the user names it**; see bt-design `3d-hero-scroll.md` §2 for the Higgsfield mapping).
 - **Tier 3 — Creative slots.** The only things intake deals in — the eight slots below.
 
 If it's how the mechanic works → Tier 1. If it's a value that could legitimately differ per project → Tier 2. If it's a creative decision about *this* product → Tier 3.
@@ -62,7 +62,7 @@ Then resolve every unfilled slot by exactly one of two paths:
 - **Enough to fly** — the input contains a usable star (an idea sentence, or an image/video whose subject is clear): fill every remaining slot from its default, ask **nothing**, and proceed. This is the one-shot path.
 - **Not enough to fly** — empty input, or fragments with no discernible star: ask **only the unanswered questions** — inline, conversationally, as ONE compact numbered list (never one-at-a-time interrogation, never a structured question UI). Tell the user loose prose, partial answers, and "you pick" are all fine. What they answer is used; what they skip gets the default. Then proceed — do not re-confirm.
 
-**Footage feasibility check:** if there is no provided footage AND no image/video generation backend configured (KIE MCP — the default, Higgsfield MCP, built-in generation, …), STOP — this pattern is wrong without footage; recommend a static hero instead (per the bt-design reference intake).
+**Footage feasibility check:** if there is no provided footage AND no image/video generation backend configured (KIE MCP — the default, Higgsfield CLI, built-in generation, …), STOP — this pattern is wrong without footage; recommend a static hero instead (per the bt-design reference intake).
 
 ## Step 2 — Write the hero brief (the save file)
 

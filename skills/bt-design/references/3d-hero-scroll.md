@@ -40,7 +40,7 @@ memory in any framework; copy it and configure it.
    - **(a) Provided video** — skip to §3 (still needs the scrub re-encode).
    - **(b) Generate the footage** with whatever image/video generation is
      configured — KIE MCP servers (`kie-image-mcp` / `kie-video-mcp`, the
-     **default**), Higgsfield MCP, the model's own built-in image/video
+     **default**), the Higgsfield CLI, the model's own built-in image/video
      generation, or any other configured image/video tool — §2.
    - **(c) No footage possible** — this pattern is wrong; use a static hero.
 2. **Brand tokens** — map `--hs-bg / --hs-ink / --hs-dim / --hs-accent /
@@ -75,8 +75,8 @@ memory in any framework; copy it and configure it.
 
 The generation backend is pluggable — the pipeline below is the same whatever
 produces the frames. Choose the backend in this order: the one the user named →
-**KIE MCP servers** (`kie-image-mcp` / `kie-video-mcp`, the default) → **Higgsfield
-MCP** → the model's own built-in image/video generation → any other configured
+**KIE MCP servers** (`kie-image-mcp` / `kie-video-mcp`, the default) → the **Higgsfield
+CLI** → the model's own built-in image/video generation → any other configured
 image/video tool. The parameter names below (`reference_paths`, `image_paths`,
 `out_path`) are KIE/Kling's; map them to your backend (Higgsfield mapping below).
 
@@ -85,27 +85,32 @@ image/video tool. The parameter names below (`reference_paths`, `image_paths`,
 > first (per CLAUDE.md). Those servers read the key from `.env` — a file named
 > `env` is ignored.
 
-> **If using the Higgsfield MCP** (`mcp__higgsfield__*`): fetch the Agent
-> Reference's `web-higgsfield-mcp.md` sub-document first. Higgsfield has no
-> `out_path` and cannot read local files, so every KIE-shaped call maps like this:
+> **If using the Higgsfield CLI** (`@higgsfield/cli`): fetch the Agent
+> Reference's `web-higgsfield-cli.md` sub-document first. Install the CLI
+> locally (`npm i -D @higgsfield/cli`) and the reference's download wrapper as
+> `scripts/hf-generate.mjs`. The CLI only returns CDN URLs; the wrapper saves
+> each result to `--out`. KIE-shaped calls map like this:
 >
-> | KIE shape | Higgsfield |
+> | KIE shape | Higgsfield CLI |
 > |---|---|
-> | local `reference_paths` / `image_paths` | upload first: `media_upload` → `curl -f -X PUT --upload-file <f> '<upload_url>'` → `media_confirm {type:"image"}` → `media_id`. A previous Higgsfield output (anchor image, generated still) needs no upload; pass its `job_id` |
-> | anchor/reference image | `generate_image` `medias: [{role:"image_references", value}]` (`gpt_image_2_5` or `nano_banana_pro`) |
-> | `image_paths[0]` = first frame | `generate_video` `medias: [{role:"start_image", value}]` |
-> | `image_paths[1]` = last frame | `medias: [{role:"end_image", value}]` |
-> | Kling 3 `std`/`pro` | `model: "kling3_0"`, `mode: "std"|"pro"|"4k"`, `duration` 3–15, `aspect_ratio` 16:9 |
-> | general video | `model: "seedance_2_5"` (`duration` 4–30, `resolution` 480p/720p/1080p) |
-> | `out_path` | `job_status {jobId, sync:true}` until `completed` (video ~60–180 s), then `curl -fL -o clipN.mp4 '<result url>'` |
+> | `generate_image({ prompt, out_path })` | `node scripts/hf-generate.mjs gpt_image_2_5 --prompt "…" --aspect_ratio 16:9 --resolution 2k --out media/hero.png` (or `nano_banana_pro`) |
+> | `reference_paths: [hero.png]` | `--image-references media/hero.png` (a local path is uploaded automatically; repeat the flag for several) |
+> | `image_paths[0]` = first frame | `--start-image media/clip1-last.jpg` |
+> | `image_paths[1]` = last frame | `--end-image media/hero.png` |
+> | Kling 3 `std`/`pro` | `node scripts/hf-generate.mjs kling3_0 --mode std\|pro\|4k --duration <s> --aspect_ratio 16:9 --sound off …` |
+> | general video | `seedance_2_5 --duration <s> --resolution 720p\|1080p --generate_audio false …` |
+> | `out_path: "clipN.mp4"` | `--out media/clipN.mp4` (the wrapper waits: `--timeout 20m` default) |
 >
-> The scrub encode strips audio (`-an`), so turn generated audio **off**. That is
-> `sound: "off"` on `kling3_0` and `generate_audio: false` on `seedance_2_5`, and
-> it also lowers the credit cost. Preflight each clip with `get_cost: true`,
-> always send `use_unlim: false`, and tell the user the total credits for the
-> film before submitting it: a 4-clip film is the expensive part of this pattern.
-> The extracted last frame (`last.jpg`) is a local file, so it goes through
-> the upload step before it can pin the next clip's `start_image`.
+> Image results are **PNG**. The wrapper saves `--out hero.jpg` as `hero.png` and
+> reports the real path, so name anchors `.png` or convert them. The scrub encode
+> strips audio (`-an`), so turn generated audio **off**: `--sound off` on
+> `kling3_0` and `--generate_audio false` on `seedance_2_5`. It also lowers the
+> cost. Run every clip once with `--cost` in place of `--out` (a 5 s `kling3_0`
+> `std` clip with sound off was 7.5 credits when verified) and tell the user the
+> total for the film before submitting it: a 4-clip film is the expensive part
+> of this pattern. Sign-in is browser OAuth the user completes
+> (`higgsfield auth login`), and a workspace must be selected first
+> (`higgsfield workspace list` → `workspace set <id>`).
 
 1. **One hero anchor image first** (image model, e.g. nano-banana-pro, 16:9,
    2K). Every other asset references it (reference/anchor image input) so it is

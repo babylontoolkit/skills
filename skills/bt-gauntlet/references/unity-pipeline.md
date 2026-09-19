@@ -197,14 +197,15 @@ matching the Unity Avatar/Animator rig, and `add_leaf_bones=False` on FBX export
 
 **Textures are generated, not procedural.** Use `generate_image` for albedo, normals, roughness masks and
 detail maps. It goes to the backend recorded in `pipeline.md`: the toolkit's `kie-image` MCP by default, or
-Higgsfield MCP (upload references → job → download into `Assets/`, per `target-images.md` §1a). Substituting
+the Higgsfield CLI (`node scripts/hf-generate.mjs <model> … --out Assets/Textures/<map>.png`, per `target-images.md` §1a). Substituting
 procedural noise or flat colours for maps the target needs is a gate failure, and the commonest reason an
 asset reads as plastic.
 
-**Image → starting mesh (Higgsfield only).** When a model part starts from nothing and Higgsfield is
-configured, `generate_3d` (`image_to_3d`, or `multi_image_to_3d` from 2–4 views of the target) can turn the
-locked target's subject into a GLB blockout. Preflight with `get_cost: true`, download the GLB, then
-import it into Blender and refine it like any other source mesh: retopo, UVs, LODs, weights under the gates
+**Image → starting mesh (Higgsfield only).** When a model part starts from nothing and the Higgsfield CLI is
+set up, an image-to-3D model can turn the locked target's subject into a GLB blockout:
+`node scripts/hf-generate.mjs tripo_h3_1_image_to_3d --image-references <subject.png> --out <round-dir>/blockout.glb`
+(9 credits; `tripo_h3_1_multiview_to_3d` for 2–4 views). Run `--cost` first and log it. Confirm the result with
+`file blockout.glb` (`glTF binary`), then import it into Blender and refine it like any other source mesh: retopo, UVs, LODs, weights under the gates
 above. It is a head start on the silhouette, never a finished asset. Its topology and UVs will not pass the
 model rubric untouched.
 
