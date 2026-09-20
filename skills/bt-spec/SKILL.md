@@ -4,396 +4,151 @@ description: "The Babylon Toolkit Spec Skill creates a feature spec file and bra
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Bash(git switch:*), AskUserQuestion, Agent, Task
 ---
 
-You are helping to spin up a new feature spec for this application, from a short idea provided in the user input below. Always adhere to any rules or requirements set out in the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) when responding.
-
-Use the user’s message after the skill name as the `arguments`.
-
----
-
-# Invocation
+Turn a short feature idea into a spec file that `bt-plan` can plan from. Follow the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md). The user's message after the skill name is the `arguments`.
 
 ```
-/bt-spec [--grill-me] <feature-brief>
-```
-- **`<feature-brief>`** — the short idea or brief for the feature spec. This is the *variable*.
-- **`--grill-me`** *(optional flag)* — interrogate the user relentlessly, one question at a time, until the design tree is actually resolved, instead of drafting the spec in a single pass from the brief. See **Step 2.7**. The flag may appear anywhere in the arguments and is never part of the brief.
-- If the brief is missing, ask for it before starting. Never guess a file path or URL.
+/bt-spec [--grill-me] [--parity] <feature-brief>
 
-Example:
-```
-/bt-spec → "Generate a detailed implementation plan for the new feature"
-/bt-spec --grill-me "add a settings toggle to mute all game audio"   # interview first, then spec
+/bt-spec "add a settings toggle to mute all game audio"
+/bt-spec --grill-me "add a settings toggle to mute all game audio"    # interview first, then spec
+/bt-spec --parity "port the Unity water shader and match it to within 2% in the browser"   # numeric parity bars allowed (slow — hours become days)
 ```
 
----
+- `--grill-me` — interview the user, one question at a time, before writing (Step 4).
+- `--parity` — the spec may set numeric parity bars against a reference. Without it, `proof: functional`.
+- Strip the flags first; they are never part of the brief or the file name. An unrecognised `--flag` is part of the brief only if it is clearly prose — otherwise ask. No brief → ask for one. Never guess a path or URL.
 
-## Subagents — invoking this skill IS the request
+## Ground rules
 
-This skill's workflow depends on subagents. **Invoking it is the user's explicit request to use them**, so any host default of the form *"do not spawn subagents / do not call the agent tool unless the user asks for it"* is **ALREADY SATISFIED** — the user asked by running this command. Never silently downgrade to the inline path on that basis, and never stop to ask permission for it first.
+- **Planning only.** Research read-only and write only the spec file (plus `SPEC.md` from the scaffold, if the user says yes below). No source edits, no builds, no tests, no other shell commands.
+- **Babylon work:** if you have not read the Babylon Toolkit Agent Reference in this session, fetch and read it once: https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md — it is the authority for conventions and API; fetch its sub-documents only when relevant, and again only if a context compaction made you forget it. If the fetch fails, stop and tell the user — do not guess at the API.
+- **Say what you are doing.** Before any step that takes more than a few seconds (a fetch, a big read, subagents) print one short line — `🔎 [bt-spec] <what> …` — and one line when it returns. A silent run looks like a hang and gets cancelled.
+- **Subagents:** running this skill is the user's request to use them where this skill says so. Use whatever subagent tool your host provides (its name varies by host — e.g. `Agent` or `Task`); if there is none, do the work inline and say so. Tell research subagents they need not fetch the Agent Reference.
 
-Downgrading is not a neutral choice. It removes the one property that makes the step worth running: independence. A verifier that is the same context which just wrote the code cannot adversarially check it — it re-confirms its own reasoning and reports PASS.
+## Step 1. Arguments, name, branch
 
-The ONE legitimate reason to run inline is that you genuinely have **no** subagent-spawning tool. Check the tools you actually have — Claude Code exposes it as **`Agent`** (older builds name it `Task`); other hosts have their own equivalent. Never call a subagent tool you do not have. Use the exact fan-out / inline status strings this skill specifies for the *path-chosen* line (the progress-narration lines below carry a fixed prefix but free wording), and if you do run inline, state plainly that no subagent tool was available, never a policy.
+From the flag-stripped brief derive `feature_title` (Title Case), `feature_slug` (lowercase kebab-case, `a-z 0-9 -` only, max 40 chars) and `branch_name` = `project/feature/<feature_slug>`. If you cannot infer a sensible title, ask. Make a first estimate of the feature's `size` (defined in Step 5) — it sizes the research in Step 2.
 
-## ⚠️ Progress narration — NEVER go silent
+Git is optional. **Where git is available:** stop now if the working tree has uncommitted or untracked files (ask the user to commit or stash); switch to a new branch `branch_name` (if taken, append `-01`, `-02` …) just before writing the spec in Step 5, so a conflict stop leaves no empty branch behind. **Where it is not** (no binary, sandboxed host such as the Babylon Toolkit App Builder): skip this silently — the branch name recorded in the spec header is the deliverable. Do not mention git as missing.
 
-The user is watching a terminal, not your reasoning. Research and analysis in this skill routinely take several minutes, and **a silent span of more than about 30 seconds is indistinguishable from a hang or a crash** — users cancel runs on exactly that basis, throwing away all the work done so far. Silence is therefore a failure of this skill, not a neutral default. Narrate continuously, in short one-line status updates, from the first action to the final summary.
+## Step 2. Read the project
 
-**Hard rules:**
+- **`SPEC.md`** (repository root) is the project's source of truth for architecture, systems, conventions and decisions. Read its headings, Architecture, Conventions, and the systems this feature touches. The feature must fit it. **If the idea conflicts with SPEC.md, stop and tell the user before writing.** Verification procedures described in SPEC.md are tooling the feature may reuse, not requirements it inherits.
+- **If `SPEC.md` is missing or an empty stub, ask the user first** whether to create it from the scaffold at the end of this file. Yes → write it, then continue against it. No → continue, and note in the spec: `"No project SPEC.md content yet — following existing codebase conventions."`
+- **`DESIGN.md`** (only if the feature has UI): it is the single source of truth for design — never Figma or invented values. Cite the tokens and shared components the feature uses in 3–8 bullets. Missing → note `"No DESIGN.md design system found — follow the existing UI conventions already in the codebase."` No UI → say no design tokens apply.
+- **Research the codebase, sized to the feature.** Find the closest existing feature to mirror, the real conventions, and the integration points. For a `small` feature do this inline; fan out to up to 3 **read-only** subagents only for `medium` / `large` (they report findings and file paths, never draft the spec; if a finding contradicts SPEC.md, raise it with the user rather than resolving it silently). Record the result in the spec's `## Research Notes` so bt-plan starts from it.
 
-1. **Announce before every long action.** Before any tool call that can take more than a few seconds — fetching the Agent Reference, reading `SPEC.md` / `DESIGN.md` / a sibling skill, launching subagents, a broad search — emit one visible line saying what you are about to do and why. Example: `🔎 [bt-spec] Reading SPEC.md and DESIGN.md to find the sections this feature must conform to …`
-2. **Report after every result.** After each tool result, emit one line stating what you learned and what comes next, *before* the next tool call. The text between tool calls IS the progress display; a run of back-to-back tool calls with no text between them is a silent run.
-3. **Subagents get a line each, going out and coming back.** When fanning out, print one line per subagent naming what it is investigating (`🚀 [bt-spec] Subagent 1/3 → mapping project structure, build + dependencies`). Prefer the host's background / non-blocking launch mode where it exists (Claude Code's `Agent` with `run_in_background: true`), so each completion returns control to you and you can report it: `✅ [bt-spec] Subagent 1/3 done — <one-line finding>`. Never block on all subagents in silence and then report them together.
-4. **Waiting is also something to say.** If you are waiting on subagents with nothing else to do, say so once, naming what is still outstanding: `⏳ [bt-spec] Waiting on 2/3 research subagents (conventions to mirror, integration points) — typically 1–3 minutes …`. One line per wait, not repeated spam.
-5. **Mark the phase transitions.** Emit a line when research starts, when it completes, and when drafting begins — e.g. `🧩 [bt-spec] Research complete — <n> findings synthesized` followed by a **3–6 bullet research summary** (the key findings, with file paths) so the user can see what the run is based on, then `✍️ [bt-spec] Drafting the document …`.
-6. **Keep the lines short and uniform.** Format: `<emoji> [bt-spec] <what> — <detail>`. One line each. The prefix and emoji are fixed; the `<what>` / `<detail>` wording is yours. Do not dump findings, file contents, or tool output as progress — a status line says what happened, the document holds the detail.
-7. **A silent gap may never span more than a single tool call.** If one tool call is itself long (a subagent, a large fetch), the line *preceding* it must say what it is and roughly how long it is expected to take.
+## Step 3. Sibling-skill patterns
 
-This applies to every phase of this skill — the Agent Reference fetch, `SPEC.md`/`DESIGN.md` reads, the fan-out research, sibling-skill reads, interviewing, and drafting. When in doubt, say what you are doing.
+If the feature is built on a pattern owned by another skill (bt-design's 3D-Hero-Scroll, bt-atlas, bt-convert …), or the brief names a builder skill ("using bt-hero …", "using bt-prototype …"), **read that skill's SKILL.md and relevant reference before writing requirements.** *(Where skills load through a tool: `load_skill('<name>')`, then `read_skill_resource` with the paths it returns — never a guessed path. Where skills are files on disk: read them from the skills directory this skill was loaded from — e.g. `~/.claude/skills/`, `~/.agents/skills/`, or the project's `.claude/skills/` / `.agents/skills/`.)* For 3D-scroll / scroll-scrubbed / cinematic-hero features that is bt-design's `references/3d-hero-scroll.md`.
 
-## ⚠️ Required Reading Before Any Babylon Work
+- Record the pattern's behavioral config as explicit Functional Requirements, using the sub-skill's **own names and defaults, unchanged** (e.g. 3D-Hero-Scroll `sweep: page` — PLAY glides to the document bottom and END jumps there). State any override and why.
+- Keep a behavioral option separate from the feature's route/DOM scope — `sweep` is not "which page it lives on".
+- List which optional controls are in or out.
+- For a named builder skill, run **only its intake steps** here (bt-hero Steps 1–2 → the hero brief; bt-prototype Steps 1–2 → the `_directions.md` manifest) and fold the result in; resolve its questions now so nothing prompts later. The builder contributes intake only — this spec → plan → execute loop owns the build and the verification.
 
-For any task involving Babylon, BabylonJS, or the Babylon Toolkit, first ensure you have already fetched and read the Babylon Toolkit Agent Reference in the current remembered session/context:
+## Step 4. `--grill-me` (only with the flag)
 
-https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md
+Interview the user until the design is decided, after Steps 2–3 so questions are grounded in the real code:
 
-If you have not read it in this session/context, or you no longer remember it due to context loss/compaction, fetch and read it before scaffolding or writing code.
+- One question at a time (`AskUserQuestion` where available), your recommended answer first, labelled `(Recommended)`.
+- If the answer is in the repo, go find it instead of asking. Never ask what the brief, SPEC.md, DESIGN.md or a sibling skill already settles.
+- Go depth-first: resolve a decision before the questions that depend on it.
+- Write every answer into the spec (requirement, acceptance criterion or edge case) plus a `## Decisions` entry with the why and the rejected alternative.
+- Stop when only implementation choices remain, or when the user says "enough" — then put unexplored branches in `## Open Questions` with your recommended answer, and note in the spec that grilling ended early.
 
-Do not refetch the Agent Reference repeatedly during the same remembered session/context, including across spec, plan, and execute phases, if you are still aware of its contents.
+## Step 5. Classify, then write the spec
 
-Treat the Agent Reference as the authority for conventions, API, and patterns. It routes to deeper docs. Fetch linked subpages only when they are relevant to the task, and do not refetch a subpage in the same remembered session/context unless you no longer remember it.
+- **`spec_impact`** — `yes` if the feature adds or changes a system, convention, dependency or architectural decision in SPEC.md; else `no`. This decides whether the plan ends with an `Update SPEC.md` task.
+- **`size`** — `small` ≈ 1–2 hours by hand, one system; `medium` ≈ a day, a few systems; `large` ≈ multi-day, multi-system, or Unity/Blender/export pipeline work. Classify by the real work.
+- **`proof`** — `functional` (default) or `parity` (only with `--parity`, or when the brief itself states a numeric bar). Under `functional`, Acceptance Criteria are what a user would notice — it works, it looks and feels right (against DESIGN.md, or next to a reference when there is one), the console is clean — proven by tests and a look at the running result. Never invent numeric pixel thresholds, repeat counts, per-engine matrices or evidence archives: how a feature is proven is most of what it costs to build.
 
-If a required fetch fails, STOP and tell me. Do not guess at the API.
+Print `✍️ [bt-spec] Drafting _specs/<feature_slug>_spec.md …`, then write the spec to `_specs/<feature_slug>_spec.md` using the project's `FEATURE.md` template if it exists (add any header field or section below that it lacks), otherwise this structure. No implementation detail or code examples.
 
----
-
-## ⚠️ The Project Specification (SPEC.md) — read before drafting
-
-The project's **SPEC.md** at the repository root is the source of truth for the project: it defines the durable architecture, game systems, conventions, and decisions. **Read it before drafting any feature spec.**
-
-- Align the feature idea to the existing architecture, systems, and conventions in SPEC.md. The feature spec you produce must be derived from and constrained by SPEC.md.
-- **If the feature idea conflicts with SPEC.md** (contradicts an architectural decision, a system boundary, or a convention), STOP and flag the conflict to the user before writing the spec. Do not silently override the project spec.
-- **Classify the feature's `spec_impact`:** it is `yes` if implementing the feature would add or change a game system, a convention, a dependency, or an architectural decision recorded in SPEC.md — otherwise `no`. This drives whether the plan will include a SPEC.md write-back task, so classify honestly.
-- **Classify the feature's `size`:** `small` ≈ what a developer would do by hand in about 1–2 hours, touching one system; `medium` ≈ about a day, a few systems; `large` ≈ multi-day, multi-system, or Unity/Blender/export pipeline work. bt-plan sizes the plan (task count, phases, how much live QA) from this, and execution cost follows the plan — so classify by the real work, not by how important the feature feels.
-- **If SPEC.md is missing or is still a stub with no real content, STOP and ask the user FIRST — before generating the feature spec — whether to create a default project `SPEC.md` from the fallback scaffold** (the scaffold is defined in *Validate The Project Spec* under Step 4). Do not draft the feature spec until they answer.
-  - **If the user says yes:** create `SPEC.md` at the repository root from the fallback scaffold, then continue — treat the newly written SPEC.md as the source of truth and align the feature spec to it (this is the normal path; the project now has a spec to grow).
-  - **If the user says no:** continue **without** a project-level SPEC.md, and record this note in the feature spec: `"No project SPEC.md content yet — following existing codebase conventions."`
-
----
-
-## Planning mode — do not implement
-
-This command runs in PLANNING MODE. Research read-only and produce ONLY the spec document (plus, where git is available, its branch). Do NOT implement the feature, edit any existing application/source files, or run build, test, or other shell commands. The only files you may create are the feature spec markdown described below and — **only if the user opts in** when the project `SPEC.md` is missing/stub (see *The Project Specification* above) — the project `SPEC.md` written from the fallback scaffold. Creating that `SPEC.md` from the scaffold is the sole exception to "do not edit other files", and only with the user's yes.
-
-## High level behavior
-
-Your job will be to turn the user input above into:
-
-- A human friendly feature title in kebab-case (e.g. new-heist-form)
-- A safe branch name (e.g. project/feature/new-heist-form) — always RECORDED in the spec header; actually cut only where git is available
-- A detailed markdown spec file under the _specs/ directory
-
-Then save the spec file to disk and print a short summary of what you did.
-
-## Step 1. Check the working tree (only where git is available)
-
-**Git is optional for this skill, and its absence is normal — not a degraded environment.** Some hosts
-run this skill in a sandbox with no git binary and a restricted shell (for example the Babylon Toolkit
-App Builder, where the project's real branching and commits are performed by the host against the
-user's own repository, not from inside the sandbox). The spec file is the deliverable; the branch is a
-convenience where the tooling happens to support it.
-
-- **If git is available:** check the current branch and stop if the working directory has uncommitted,
-  unstaged, or untracked files. Tell the user to commit or stash before proceeding.
-- **If git is NOT available** (no binary, or the shell refuses the command): skip this step entirely and
-  continue to Step 2. Do not abort, do not ask the user to install anything, and do not report it as a
-  problem or a limitation — record the branch name as spec metadata as described in Step 3 and carry on.
-  Say nothing about git in your summary; the user asked for a spec, not a branch.
-
-## Step 2. Parse the arguments
-
-**First, extract and remove any flags — before deriving anything from the text.** Scan `arguments` for `--grill-me`; set `grill_me = true` if present, then **delete it from `arguments`** and collapse the surrounding whitespace. Everything below derives from the flag-stripped remainder. Skipping this produces a spec named `_specs/mute-game-audio-grill-me_spec.md`. Treat an unrecognised `--flag` as part of the brief only if the user clearly meant it as prose; otherwise ask.
-
-From the flag-stripped `arguments`, extract:
-
-1. `feature_title`  
-   - A short, human readable title in Title Case.  
-   - Example: "Card Component for Dashboard Stats".
-
-2. `feature_slug`  
-   - A git safe slug.  
-   - Rules:  
-     - Lowercase 
-     - Kebab-case 
-     - Only `a-z`, `0-9` and `-`  
-     - Replace spaces and punctuation with `-`  
-     - Collapse multiple `-` into one  
-     - Trim `-` from start and end  
-     - Maximum length 40 characters  
-   - Example: `card-component` or `card-component-dashboard`.
-
-3. `branch_name`  
-   - Format: `project/feature/<feature_slug>`  
-   - Example: `project/feature/card-component`.
-
-If you cannot infer a sensible `feature_title` and `feature_slug`, ask the user to clarify instead of guessing.
-
-## Step 2.4 Research the codebase read-only (fan out where possible)
-
-A spec that guesses at the codebase produces a plan that guesses at the codebase. Before drafting any
-requirement, investigate read-only: the project `SPEC.md` (in full), `DESIGN.md` where the feature has a
-UI, any sibling-skill protocol the feature is built on (Step 2.6), the closest existing feature to
-mirror, the real conventions in use, and the concrete integration points the feature will touch.
-
-This research can be **fanned out**. Emit one visible status line so the user sees the path chosen —
-either `🔀 [bt-spec] subagent tool detected — fanning out research to N read-only subagents` or
-`➡️ [bt-spec] no subagent tool — researching sequentially`. If a subagent-spawning tool is available
-(see *Subagents — invoking this skill IS the request* above), launch up to 3 **read-only** subagents and
-divide the targets among them — for example: one reads `SPEC.md` + `DESIGN.md` and reports the sections
-this feature must conform to; one finds the closest existing feature and extracts the conventions to
-mirror; one lists integration points, constraints, and existing dependencies. Each returns concise
-conclusions — findings and file paths, not file dumps — which you synthesize yourself.
-
-**Narrate the whole step** (see *Progress narration — NEVER go silent* above). This is the step that most
-often runs for minutes, so it is where the rule matters most. The required cadence:
-
-- One `🚀 [bt-spec] Subagent i/N → <what it investigates>` line per subagent as it is launched, and prefer
-  the background / non-blocking launch mode so completions return to you one at a time.
-- One `✅ [bt-spec] Subagent i/N done — <one-line finding>` line as each returns; a `⏳ [bt-spec] Waiting on
-  …` line if you are idle with subagents still outstanding.
-- On the sequential path, one `🔎 [bt-spec] …` line before each read/search and one result line after it.
-- When everything is in: `🧩 [bt-spec] Research complete — <n> findings synthesized`, followed by a 3–6
-  bullet research summary (key findings with file paths), before moving on to Step 2.5.
-
-Two hard rules, because this skill is planning-only: every subagent is **read-only** (it may read,
-search and report; it may NOT edit files, write files, or run build/test/shell commands), and **you**
-write the spec — a subagent never drafts spec content. Research subagents need not re-read the Agent
-Reference. If anything they report contradicts `SPEC.md`, that is a finding to raise with the user, not
-something to silently resolve.
-
-## Step 2.5 Apply the project design system (DESIGN.md)
-
-This project's design system is defined in the `DESIGN.md` file at the repository root. `DESIGN.md` is the single source of truth for all design decisions — do NOT pull styling from Figma, external links, or invent your own values. (Figma may be used in a separate process to author `DESIGN.md`, but specs reference `DESIGN.md`, never Figma directly.)
-
-If the feature has any UI or visual surface:
-
-1. Read `DESIGN.md`. If it is missing or has no real design system yet, record this note in the spec and continue: `"No DESIGN.md design system found — follow the existing UI conventions already in the codebase."`
-2. Identify the parts of the design system relevant to this feature and cite them, by name, in the spec — for example:
-   - Layout and spacing scale
-   - Typography tokens (font family, size, weight)
-   - Color tokens and semantic roles (primary, surface, border, error, etc.)
-   - Border radius, shadows, elevation
-   - Shared components, icons, buttons and inputs the feature should reuse
-3. Summarise these as 3 to 8 concise bullet points that reference the `DESIGN.md` tokens and components by name, so implementation stays consistent with the system.
-
-If the feature is purely non-visual (no UI), note that no design system tokens apply and continue.
-
-## Step 2.6 Honor sibling-skill patterns (read the sub-skill's protocol)
-
-Some features are built on a deterministic pattern **owned by a sibling skill** — e.g. bt-design's **3D-Hero-Scroll** (scroll-scrubbed cinematic hero), bt-atlas texture variants, bt-convert conversions. When the feature matches such a pattern, that sub-skill — not your own paraphrase of the brief — is the authority for how the feature must behave. Skipping this step is how a documented behavior silently disappears from the spec.
-
-1. **Detect the pattern — or an explicitly named builder skill.** Decide whether the feature matches a sibling-skill pattern. If it does, **read that sub-skill's SKILL.md and the relevant reference BEFORE drafting Functional Requirements.** *(How to read a sibling skill: where skills are loaded with a tool — the Babylon Toolkit App Builder platform — call `load_skill('<name>')`, then fetch its bundled references with `read_skill_resource` using the paths the load returns, never a guessed path. Where skills are files on disk — Claude Code — read `<name>/SKILL.md` and its `references/` from the same skills directory, `~/.claude/skills/` or the project's `.claude/skills/`. Skip the load for anything already in your context; on a tool host the per-response load budget is small, so spend it on the skills this feature actually needs.)* (For 3D-scroll / scroll-scrubbed / cinematic-hero features, read bt-design's `references/3d-hero-scroll.md`.) **If the brief explicitly names a sibling _builder_ skill** — e.g. "…**using bt-hero** to create …" or "…**using bt-prototype** --count:25 …" — read that skill's SKILL.md and run **its own intake step** (bt-hero Steps 1–2 → a hero brief; bt-prototype Steps 1–2 → the `_directions.md` manifest), then fold that output into this spec. The builder contributes intake only; this spec loop owns the build and verification. Resolve any of the builder's intake questions here, at spec time, so nothing prompts downstream.
-2. **Capture the required behavioral config verbatim.** Record the pattern's required config/behavior as explicit Functional Requirements, using the sub-skill's **own names and defaults, unchanged** — do not rename, omit, or invent defaults. Example (3D-Hero-Scroll): `sweep: page|hero`, default **`page`** — PLAY glides through to the document bottom and END jumps there, and the whole landing page is swept and must share the film's design system. If the sub-skill specifies a default, the spec inherits it unless the brief explicitly overrides it (state the override and why).
-3. ⚠️ **Never collapse a sub-skill's behavioral setting into a route/DOM-scope classifier.** A feature's *scope* (which route or surface it targets) is a **different axis** from a sub-skill's *behavioral options*. Keep them separate and name the behavior with the sub-skill's own term. Concretely: a 3D-hero's `sweep` is NOT "which page the feature lives on" — record `sweep` as its own requirement; do **not** fold it under a "reach / scope / routing" heading, where it will be lost or inverted.
-4. **List optional controls in/out.** Record which of the pattern's optional controls/features are included or omitted (with the sub-skill's defaults), so the plan and execute phases can verify them.
-
-If the feature matches no sibling-skill pattern, note that and continue.
-
-## Step 2.7 `--grill-me` — interrogate until the design is decided (ONLY when the flag is present)
-
-Run this step **only if `grill_me` is true**. Skip it entirely otherwise — the default one-shot path is unchanged.
-
-Without the flag this skill drafts a spec from a short brief in a single pass, and every decision it could not make lands in `## Open Questions` — a section nothing downstream is obligated to read or resolve. Grill mode replaces that guessing with a real interview, and its output lands in the sections that *are* read: `## Functional Requirements`, `## Acceptance Criteria`, `## Possible Edge Cases`, and the `## Decisions` log.
-
-Run this **after Step 2.4**, so every question is grounded in the real codebase rather than generic, and **after Step 2.6**, so a sibling skill's own intake questions are folded into this one interview instead of being asked twice.
-
-**The loop:**
-
-> Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one by one. For each question provide your recommended answer. Ask the questions one at a time. If a question can be answered by exploring the codebase, explore the codebase instead.
-
-The rules that make that loop work:
-
-1. **One question at a time.** Use `AskUserQuestion` where you have it, with your recommended answer as the FIRST option, labelled `(Recommended)`. Never batch a wall of questions, and never move on past a question the user has not answered.
-2. **Explore before you ask.** If the answer is discoverable in the repo — an existing convention, how the closest prior feature did it, a dependency already present — go find it and offer what you found as the recommendation, rather than spending a question on it. Reuse the Step 2.4 findings first; a read-only subagent is the right tool only when the search is genuinely broad. Say so while you do it — `🔎 [bt-spec] Checking the codebase for <X> before asking …` — so a pause between questions never reads as the interview having stalled.
-3. **Depth-first down the design tree.** Resolve a branch's dependencies before opening the next branch — a decision that invalidates three later questions must be asked *before* them. Name the branch you are on, so the user can see the shape of what remains.
-4. **Never ask what is already settled.** The brief, `SPEC.md`, `DESIGN.md`, and a named sibling skill's documented defaults are answers, not questions. Confirm one of them in a single line only where this feature would plausibly override it.
-5. **Record as you go.** Write every answer into the spec body — as a requirement, an acceptance criterion, or an edge case — *plus* a `## Decisions` entry carrying the *why* and the rejected alternative. An answer that exists only in this transcript is gone the moment the plan phase opens a fresh context.
-6. **Stop when the tree is resolved, not when you run out of questions.** You are done when every remaining unknown is genuinely an implementation choice for bt-plan, or something only the user can decide later. Say so explicitly, then continue to Step 3.
-7. **The user can end it at any time** — "that's enough", "you decide the rest". Honor that immediately: record each unexplored branch in `## Open Questions` *with your recommended answer*, note in the spec that grilling ended early, and continue.
-
-**What must be true when this step ends:** `## Decisions` is non-empty and every entry carries a rationale, and `## Open Questions` holds only genuinely-undecided items — never something the user already answered.
-
-## Step 3. Record the branch name (and switch to it where git is available)
-
-The `branch_name` derived from the `arguments` is **always** recorded in the spec header, so the plan
-and execute phases have a stable name to refer to regardless of host.
-
-- **If git is available:** before making any content, switch to a new branch using that name. If the name
-  is already taken, append a version number: e.g. `project/feature/card-component-01`
-- **If git is NOT available:** the recorded name in the spec header IS the deliverable for this step. This
-  is the expected outcome on such hosts — do not mention it as missing, unavailable, or a fallback.
-
-## Step 4. Draft the spec content
-
-Emit `✍️ [bt-spec] Drafting _specs/<feature_slug>_spec.md …` before writing, and `💾 [bt-spec] Spec written — _specs/<feature_slug>_spec.md` once the file is saved.
-
-Create a markdown spec document that Plan mode can use directly and save it in the _specs folder as `<feature_slug>_spec.md`. Use the exact structure as defined in the feature spec template file @FEATURE.md located at the project root. **If that project template predates grill mode and has no `## Decisions` section, append one anyway whenever `grill_me` is true** (using the shape in the fallback template below, placed directly before `## Open Questions`) — the rationale must be recorded regardless of which template the project ships. The template includes required `spec_impact` and `size` header fields (**if the project's FEATURE.md predates `size`, add the `size:` line under `spec_impact:` anyway**) and a `Project Spec Alignment` section — fill both in from your SPEC.md read above (cite the SPEC.md sections the feature relies on, describe how it fits the architecture, and for `spec_impact: yes` state exactly what will change in SPEC.md and in which section). Do not add technical implementation details such as code examples. If the feature spec template file is missing, create a new feature spec file with the following sections:
-```
-# Feature Spec Template
-
-> This is the template bt-spec uses to author `_specs/<feature_slug>_spec.md`.
-> Copy this structure verbatim. A feature spec is derived **from** and constrained
-> **by** the project [SPEC.md](SPEC.md) — the `Project Spec Alignment` section and
-> the `spec_impact` header field are required, not optional.
-
----
-
+```markdown
 # Spec for <feature-name>
 
 branch: project/feature/<feature-name>
 design_system: DESIGN.md
-spec_impact: <yes|no>   # yes if this feature adds/changes a system, convention, dependency, or architectural decision in SPEC.md
-size: <small|medium|large>   # small ≈ 1–2 h by hand, one system; medium ≈ a day; large ≈ multi-day / multi-system / pipeline — drives plan size
+spec_impact: <yes|no>
+size: <small|medium|large>
+proof: <functional|parity>
 
 ## Summary
-<one-paragraph description of the feature>
+<one paragraph>
 
-## Project Spec Alignment (from SPEC.md — REQUIRED)
-- SPEC.md sections this feature relies on or must conform to: <cite by name, e.g. "Game Systems › Inventory", "Conventions">
-- How this feature fits the existing architecture: <...>
-- **spec_impact = yes** → what will change in SPEC.md and which section(s): <architecture / system / convention / decision / dependency + the new state>
-- **spec_impact = no** → confirm this feature introduces no architectural, system, convention, or dependency change.
-- Conflicts with SPEC.md (if any): <describe; these must be resolved/flagged before planning>
+## Project Spec Alignment (from SPEC.md)
+- SPEC.md sections this feature relies on: <by name>
+- How it fits the architecture: <...>
+- spec_impact = yes → what will change in SPEC.md, and where: <...>   (or: confirms no architectural change)
+- Conflicts with SPEC.md (if any): <...>
 
 ## Functional Requirements
-- ...
-<!-- If this feature is built on a sibling-skill pattern (e.g. bt-design
-     3D-Hero-Scroll), record that pattern's REQUIRED behavioral config here as
-     explicit requirements, using the sub-skill's own names + defaults verbatim
-     (e.g. `sweep: page` — PLAY/END sweep to the document bottom). Keep such
-     behavior SEPARATE from the feature's route/DOM scope; never fold a
-     behavioral setting under a "reach/scope/routing" heading. (See bt-spec
-     Step 2.6.) -->
+- ...   <!-- sibling-skill behavioral config goes here verbatim, separate from route/scope -->
 
-## Design System Reference (from DESIGN.md, only if the feature has UI)
-- DESIGN.md tokens/components this feature uses: ...
-- Layout / spacing / typography notes: ...
-- Key visual constraints: ...
-- Sibling-skill behavioral config (if any), e.g. 3D-Hero-Scroll `sweep`: ...
+## Design System Reference (only if the feature has UI)
+- DESIGN.md tokens/components used: ...
 
 ## Possible Edge Cases
 - ...
 
 ## Acceptance Criteria
+- ...   <!-- what a user would notice; numeric parity bars only when proof: parity -->
+
+## Decisions   <!-- required with --grill-me -->
+- **<decision>.** <why.> Rejected: <alternative> (<why not>).
+
+## Open Questions   <!-- only genuinely undecided items -->
 - ...
 
-## Decisions  _(the "why" — REQUIRED when run with `--grill-me`)_
-<!-- Mirrors SPEC.md's Decisions log, at feature scope. One entry per settled
-     design decision: what was chosen, why, and what was rejected. bt-plan reads
-     the feature spec in full, so this is how a decision's rationale survives into
-     the plan phase instead of being relitigated there — and for
-     spec_impact: yes features it feeds the final `Update SPEC.md` task directly. -->
-- **<decision>.** <why — the deciding constraint or the precedent in the codebase.>
-  Rejected: <alternative> (<why not>). → <FR-n, AC-n>
-
-## Open Questions
-<!-- ONLY genuinely-undecided items. Anything answered during grilling belongs in
-     Functional Requirements / Acceptance Criteria / Possible Edge Cases plus a
-     Decisions entry above — never parked here. -->
+## Research Notes   <!-- key files, the pattern to mirror, integration points — with paths -->
 - ...
 
 ## Testing Guidelines
-Create a test file(s) in the ./tests folder for the new feature, and create meaningful tests for the following named cases (each with its expected outcome), without going too heavy — cover the Acceptance Criteria and the listed edge cases, not exhaustive probing:
+Create test file(s) in ./tests for these named cases, without going heavy:
 - <case> → <expected outcome>
 ```
 
-### Validate The Project Spec
+## Step 6. Report
 
-This is the **fallback scaffold** referenced by the prompt-first decision in *The Project Specification* (top of this skill). When the project's **SPEC.md** is missing or is still a stub and **the user answered yes**, write exactly this content to `SPEC.md` at the repository root *before* drafting the feature spec, then align the feature to it. If the user answered **no**, skip creating it and record the "No project SPEC.md content yet…" note in the feature spec instead. The default project spec scaffold:
 ```
+Branch: <branch_name>
+Spec file: _specs/<feature_slug>_spec.md
+Title: <feature_title>
+```
+
+Do not print the spec unless asked.
+
+## Project SPEC.md scaffold (used only when the user says yes in Step 2)
+
+```markdown
 # Project Spec
 
-> **This is the source of truth for the project.** It defines the durable,
-> cross-feature architecture, systems, conventions, and decisions. Feature specs
-> in `_specs/` are derived **from** and constrained **by** this document.
->
-> **Read this before speccing, planning, or executing any feature.** If a request
-> conflicts with this spec, flag it before proceeding. When a landed feature
-> changes anything below, update this file to match what was built.
-
----
+> The source of truth for this project: its durable architecture, systems, conventions and decisions.
+> Feature specs in `_specs/` are derived from and constrained by this file. It describes the **product** —
+> what exists and why — never how a feature was verified (capture protocols, tool lists, ledgers).
 
 ## Architecture & Module Layout  _(current-state — replace/merge)_
-_Top-level structure, entry points, how the app is built and run. How modules are
-organized and depend on each other._
-
 - _(Seed placeholder — replaced on first real content.)_
 
 ## Game Systems  _(current-state — replace/merge)_
-_Each system, its responsibility, and its boundaries (what it owns vs. what it
-delegates). One subsection per system._
-
-- _(Seed placeholder — replaced on first real content.)_
+- _(Seed placeholder — one subsection per system: what it owns, what it delegates.)_
 
 ## Conventions  _(current-state — replace/merge)_
-_Naming, file/folder organization, script-component patterns, state management,
-styling, error handling, testing patterns actually used in this repo._
-
 - Prefer ESM imports throughout.
 - Use Babylon Toolkit script component patterns rather than ad-hoc BabylonJS wiring, per the Agent Reference.
 - Keep game systems modular.
 
 ## Decisions  _(append-only log)_
-_Architectural decisions and their rationale — the "why", so future features don't
-relitigate settled choices. Append new entries; supersede rather than delete._
-
-- _(Record decisions here as they are made, newest last.)_
+- _(Newest last. To reverse a decision, add a new entry that supersedes it.)_
 
 ## Dependencies  _(current-state — replace/merge)_
-_Runtime and build dependencies with versions, and why each is here. Nothing new
-lands without an entry._
-
 - **BabylonJS** — engine.
 - **Babylon Toolkit** — Unity-style script components, scene management.
 
----
-
 ## How to update this spec
-
-This file is an initial **seed scaffold**. Sections carry a mode tag in their
-heading — follow it exactly when writing back:
-
-- **`(current-state — replace/merge)`** — Architecture, Game Systems, Conventions,
-  Dependencies. These describe *what is true now*. On the first real content,
-  **remove the seed placeholder** and write the actual content. On later features,
-  **merge/replace** so the section keeps matching the shipped code — never leave
-  stale text, never let it contradict reality.
-- **`(append-only log)`** — Decisions. **Append** a new entry (newest last);
-  preserve history. To reverse a past decision, add a new entry that supersedes it
-  — do not delete the old one.
-
-Add a new Game System as its own subsection under Game Systems. Record every new
-dependency (with version + why) under Dependencies as part of the task that
-introduces it.
-
-## How this spec stays true (the spec-driven loop)
-
-- **bt-spec (read down):** reads this file, aligns the feature to it, flags
-  conflicts, and records a `spec_impact` classification in the feature spec.
-- **bt-plan (read down):** treats this file as a required analysis input; the plan
-  must conform. For spec-impacting features it appends an explicit
-  **`Update SPEC.md`** task so the write-back is tracked.
-- **bt-execute (write up):** reads this file before each task, flags any divergence
-  from reality, and runs the `Update SPEC.md` task through the same verifier gate
-  as every other task — this file is never allowed to silently drift.
+- `(current-state — replace/merge)` sections say what is true now: replace seed placeholders with real content, then keep them matching the shipped code.
+- `(append-only log)`: append, never delete.
+- Add each new Game System as its own subsection; record every new dependency (version + why) in the task that introduces it.
+- bt-spec reads this file and aligns the feature to it; bt-plan conforms to it and adds an `Update SPEC.md` task for spec-impacting features; bt-execute runs that task through the same verifier as every other task.
 ```
-
-## Step 5. Final output to the user
-
-After the file is saved, respond to the user with a short summary in this exact format:
-
-Branch: <branch_name>
-Spec file: _specs/<feature_slug>_spec.md
-Title: <feature_title>
-
-Do not repeat the full spec in the chat output unless the user explicitly asks to see it. The main goal is to save the spec file and report where it lives and what branch name to use.

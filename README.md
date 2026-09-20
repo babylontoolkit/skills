@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.32)
+# Babylon Toolkit Desktop Agent (1.1.33)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -125,8 +125,8 @@ happens to be named `bt-something` is safe.
 
 | Skill | Command | What it does |
 |-------|---------|--------------|
-| [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. |
-| [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive. |
+| [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. Add `--grill-me` to be interviewed first, `--parity` to allow numeric parity bars in the acceptance criteria. |
+| [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive, and `--parity` for numeric parity gates instead of the default functional proof. |
 | [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task, a range (`T3-T7`, `T12-`, `NEXT:3`) or all remaining tasks from a plan/spec; with no task id it runs the next unchecked task. Add `--auto-pilot` for an unattended overnight run that never stops for human input, and `--strict` for an adversarial verifier on every task. |
 | [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. |
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
@@ -175,6 +175,15 @@ subagent re-fetching the Agent Reference.
 /bt-execute --strict @_specs/<feature>_plan.md ALL
 /bt-execute --auto-pilot --strict @_specs/<feature>_plan.md ALL
 ```
+
+Proof is sized the same way. By default a feature is proven **functionally**: tests, cheap
+reference-value fixtures where a reference exists, and for anything on screen a look at the
+running result in the browser — against the spec and `DESIGN.md`, or beside a reference image
+when there is one — judged by the independent verifier — with no ledgers, md5 records, archived
+capture trees or standing gate suites unless the brief asks. Numeric parity gates (pixel
+thresholds, repeats, every engine on every criterion) are opt-in: `/bt-spec --parity …` or
+`/bt-plan --parity …`. Every plan ends with an `## Estimated execution time` section that splits
+**build** from **prove** hours, so you can see before running it where the time will go.
 
 `--strict` restores full rigor: an adversarial verifier on **every task** (mutation checks,
 oracles, re-deriving from the plan as it sees fit), live QA on every task with a rendered or
