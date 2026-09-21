@@ -85,6 +85,9 @@ proof: <functional|parity>
 
 ## Functional Requirements
 - ...   <!-- sibling-skill behavioral config goes here verbatim, separate from route/scope -->
+<!-- State the outcome, not the machinery: "an unfinished build never reaches a folder the
+     user looks at", not "a nine-step gated promotion script with archives and md5 records".
+     The plan picks the cheapest mechanism that gets the outcome. -->
 
 ## Design System Reference (only if the feature has UI)
 - DESIGN.md tokens/components used: ...
@@ -139,8 +142,9 @@ Do not print the spec unless asked.
 - Use Babylon Toolkit script component patterns rather than ad-hoc BabylonJS wiring, per the Agent Reference.
 - Keep game systems modular.
 
-## Decisions  _(append-only log)_
-- _(Newest last. To reverse a decision, add a new entry that supersedes it.)_
+## Decisions  _(the decisions that still bind — one or two lines each)_
+- _(Newest last. When a decision is superseded, fold what still matters into the sections
+  above and drop the old entry; the feature's own spec keeps the full rationale and history.)_
 
 ## Dependencies  _(current-state — replace/merge)_
 - **BabylonJS** — engine.
@@ -148,7 +152,7 @@ Do not print the spec unless asked.
 
 ## How to update this spec
 - `(current-state — replace/merge)` sections say what is true now: replace seed placeholders with real content, then keep them matching the shipped code.
-- `(append-only log)`: append, never delete.
+- `Decisions` holds only what still binds the current design, briefly. A decision's full rationale, its rejected alternatives and its history live in that feature's spec in `_specs/`, not here — this file must stay short enough to read before every feature.
 - Add each new Game System as its own subsection; record every new dependency (version + why) in the task that introduces it.
 - bt-spec reads this file and aligns the feature to it; bt-plan conforms to it and adds an `Update SPEC.md` task for spec-impacting features; bt-execute runs that task through the same verifier as every other task.
 ```
