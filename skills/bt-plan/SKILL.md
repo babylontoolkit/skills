@@ -77,18 +77,21 @@ Print `✍️ [bt-plan] Writing _specs/<feature-name>_plan.md …`. The file has
   - Verify level: standard
 ```
 
-**`## Estimated execution time`** — **agent time, computed from the measured rates below — never from how long a developer would take.** An agent writes a 500-line module with its tests in about ten minutes; what costs time is running things. Count, per phase:
+**`## Estimated execution time`** — **agent time, from the measured rates below — never from how long a developer would take, and never by adding up activities.** Exports, captures and browser looks are *not* separate multi-minute line items: they happen inside a task's own run and are already inside the per-task rate. Counting them separately is how a 10-hour plan gets estimated at 45 hours.
 
-| What the phase contains | Measured agent time |
+Count only three things:
+
+| Unit | Measured agent time |
 | --- | --- |
-| each code + unit-test task (any language) | 5–10 min |
-| each task that also rebuilds a native/C# library or runs a full test chain — once per task, however many builds it runs | + 10–20 min |
-| each Unity / Blender **Editor operation** — one authoring pass, one bake, one export, one capture (count a job that authors dozens of objects as 2–3) | + 15–30 min |
-| each live look — one **scene × engine page session**, not one screenshot; a build that exists only to serve a look is already inside this rate | + 10–20 min |
-| a visual "adjust until it looks right" loop — only where the plan says it expects to iterate on a picture | + 45–90 min |
-| the phase's independent verifier (counts under Prove) | + 5–10 min |
+| each task (code + its tests, including any build, export, capture or look it needs) | 15–25 min |
+| each phase's independent verifier | 5–15 min |
+| each fix-loop round you expect (a task with real unknowns usually needs 1–3) | 15–30 min |
 
-Write a table `Phase | Tasks | Build | Prove | Estimate` (Build = code and tests; Prove = exports, captures, looks, adjust-until-right), then one **Total** = the sum plus 20–40 % for fix loops, in hours (days only if over ~16 h), the `--strict` multiplier (~2–3×), what would cut Prove if it exceeds Build, and the biggest uncertainty. If the total exceeds ~1 h per task, re-check it against the table. Usual causes: developer-hours thinking in the Build column; ceremony the brief did not ask for; or per-task captures that rule 5 says to batch. If the cost is load-bearing work the brief *did* ask for, say so in one line and keep the number. An estimate, never a pin.
+`Total ≈ tasks × 20 min + phases × 10 min + expected fix rounds × 20 min`, then **+20 %** margin. A task sits at the top of its range — not above it — when it authors Unity/Blender content, rebuilds a native library, or needs a live look. Multiply by ~2 for `proof: parity` (numeric gates and repeat captures), and by ~2–3 for `bt-execute --strict`.
+
+**Calibration anchor (2026-09-21, measured from commit and transcript timestamps):** the 27-task, 8-phase `shuriken-particle-system` plan — three Unity projects, nine promotions, a full shader pass, trails, lights, collision and mesh particles — ran in **10 h 02 m** unattended, 0 deferred, 180 tests green. That is 18 min per task including everything, with one phase (T15–T16) taking 146 min because it needed three fix rounds. The formula above predicts 10.3 h for it.
+
+Write a table `Phase | Tasks | What makes it slow | Estimate`, then one **Total** line in hours (days only if over ~16 h), the `--strict` multiplier, and the biggest uncertainty in one line. If the total lands above ~40 min per task, the estimate is wrong before the plan is: re-check it against the three units above. An estimate, never a pin.
 
 **`## How to execute this plan`** — this text verbatim:
 
