@@ -77,21 +77,27 @@ Print `✍️ [bt-plan] Writing _specs/<feature-name>_plan.md …`. The file has
   - Verify level: standard
 ```
 
-**`## Estimated execution time`** — **agent time, from the measured rates below — never from how long a developer would take, and never by adding up activities.** Exports, captures and browser looks are *not* separate multi-minute line items: they happen inside a task's own run and are already inside the per-task rate. Counting them separately is how a 10-hour plan gets estimated at 45 hours.
+**`## Estimated execution time`** — **agent time, from the calibration below — never developer-hours, and never by adding up activities.** Builds, exports, captures and browser looks are *not* separate line items: they happen inside a task's own run and are already inside the per-task rate. Counting them separately is how a 10-hour plan gets estimated at 45 hours.
 
-Count only three things:
+`Total ≈ tasks × 17 min + phases × 10 min`, then give a range of **±30 %**. Nothing else is added:
 
-| Unit | Measured agent time |
-| --- | --- |
-| each task (code + its tests, including any build, export, capture or look it needs) | 15–25 min |
-| each phase's independent verifier | 5–15 min |
-| each fix-loop round you expect (a task with real unknowns usually needs 1–3) | 15–30 min |
+- **Do not budget fix rounds.** Measured across five completed plans: 4 fix rounds in 63 tasks — about one per 16 tasks. Add one round (20 min) only if the plan names a genuine unknown, and never more than one per plan. Defensively budgeting a round or two per phase was the single largest source of over-estimation.
+- **Do not add a further margin.** The ±30 % is the margin.
+- A task sits near the **top** of the range when it is parity work against a reference, drives two engines, or authors Unity/Blender content; near the **bottom** when it is ordinary code with unit tests. Multiply by ~2 for `proof: parity` only if the plan really carries numeric gates, and by ~2–3 for `bt-execute --strict`.
 
-`Total ≈ tasks × 20 min + phases × 10 min + expected fix rounds × 20 min`, then **+20 %** margin. A task sits at the top of its range — not above it — when it authors Unity/Blender content, rebuilds a native library, or needs a live look. Multiply by ~2 for `proof: parity` (numeric gates and repeat captures), and by ~2–3 for `bt-execute --strict`.
+**Calibration (measured 2026-09-23 from commit + transcript timestamps, five completed plans, 63 tasks, 23 phases, 20.6 h total, 0 deferred):**
 
-**Calibration anchor (2026-09-21, measured from commit and transcript timestamps):** the 27-task, 8-phase `shuriken-particle-system` plan — three Unity projects, nine promotions, a full shader pass, trails, lights, collision and mesh particles — ran in **10 h 02 m** unattended, 0 deferred, 180 tests green. That is 18 min per task including everything, with one phase (T15–T16) taking 146 min because it needed three fix rounds. The formula above predicts 10.3 h for it.
+| Plan | Tasks | Phases | Actual | min/task |
+| --- | --- | --- | --- | --- |
+| auto-exposure-parity | 8 | 3 | 1 h 19 | 9.9 |
+| procedural-skybox | 8 | 3 | 2 h 12 | 16.5 |
+| camera-antialiasing-parity | 11 | 4 | 2 h 56 | 16.0 |
+| camera-antialiasing-taa | 9 | 5 | 4 h 08 | 27.5 |
+| shuriken-particle-system (3 Unity projects, 9 promotions) | 27 | 8 | 9 h 59 | 22.2 |
 
-Write a table `Phase | Tasks | What makes it slow | Estimate`, then one **Total** line in hours (days only if over ~16 h), the `--strict` multiplier, and the biggest uncertainty in one line. If the total lands above ~40 min per task, the estimate is wrong before the plan is: re-check it against the three units above. An estimate, never a pin.
+The formula predicts these within ±25 % except auto-exposure-parity, which came in twice as fast as any formula would guess. Every one of these plans estimated itself **2–4.5× too high**, so distrust a large number before you distrust a small one.
+
+Write a table `Phase | Tasks | What makes it slow | Estimate`, then one **Total** line in hours (days only if over ~16 h), the `--strict` multiplier, and the biggest uncertainty in one line. If the total lands above ~30 min per task, the estimate is wrong before the plan is: re-check it. An estimate, never a pin.
 
 **`## How to execute this plan`** — this text verbatim:
 
