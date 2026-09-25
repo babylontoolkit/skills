@@ -1,6 +1,6 @@
 ---
 name: bt-gauntlet
-description: "The Babylon Toolkit Gauntlet Skill runs a loop-engineering gauntlet: builders versus fresh harsh critics, scored against a LOCKED target image from LOCKED cameras, looping until a success condition, boundary, or stall rule stops it. Two deliverable kinds share one loop — BabylonJS / Babylon Toolkit web games, and anything authored in Unity (game levels and the individual assets in them: baked GI, IBL, reflection probes, terrain, fog, tonemapping, materials, models), with headless Blender as the tool for low-level model work. Unity plus the Toolkit exporter is the content-creation surface and asset manager, shipping interactive glTF that BabylonJS loads; iteration stays inside Unity on camera snapshots and the export is a deliberate checkpoint, not a per-round tax. Fully RESUMABLE: each job lives in its own _gauntlet/<name>/ workspace, so the user can stop any time (daily limits, calling it a night) and continue weeks later in a brand-new session with `/bt-gauntlet --resume <name>`. Use for a long-running, self-improving build of an ambitious game artifact, level, or asset (e.g. `/bt-gauntlet build me a rain-soaked neon alley level at the fidelity of this reference image`)."
+description: "The Babylon Toolkit Gauntlet Skill runs a loop-engineering gauntlet: builders versus fresh harsh critics, scored against a LOCKED target image from LOCKED cameras, looping until a success condition, boundary, or stall rule stops it. Two deliverable kinds share one loop — BabylonJS / Babylon Toolkit web games, and anything authored in Unity (game levels and the individual assets in them: baked GI, IBL, reflection probes, terrain, fog, tonemapping, materials, models), with headless Blender as the tool for low-level model work. Unity plus the Toolkit exporter is the content-creation surface and asset manager, shipping interactive glTF that BabylonJS loads; iteration stays inside Unity on camera snapshots, relying on Unity→Babylon parity, with export + browser checkpoints at milestones rather than every round. Fully RESUMABLE: each job lives in its own _gauntlet/<name>/ workspace, so the user can stop any time (daily limits, calling it a night) and continue weeks later in a brand-new session with `/bt-gauntlet --resume <name>`. Use for a long-running, self-improving build of an ambitious game artifact, level, or asset (e.g. `/bt-gauntlet build me a rain-soaked neon alley level at the fidelity of this reference image`)."
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch(domain:raw.githubusercontent.com), Agent, Task
 ---
 
@@ -98,13 +98,13 @@ The loop may not start until **every slot of the chosen template is filled**. Th
 Interview batches:
 
 0. **NAME** — Confirm the job's slug. It becomes `_gauntlet/<name>/` and must not collide with an existing job.
-1. **DELIVERABLE KIND + DELIVERABLE** — Which of the three kinds is this: a **web game**, a **Unity level for export**, or a **Blender model**? Then what exactly ships (playable browser demo, one polished level, a hero asset with LODs...)? Module style: ES6/ESM default; UMD only if explicitly demanded. New project or existing? Target folder. **Read the matching pipeline reference now** and run its prerequisite gate before going further — a failed gate (no Pro licence, no GUI bootstrap, no Blender) changes what is worth agreeing to.
+1. **DELIVERABLE KIND + DELIVERABLE** — Which of the three kinds is this: a **web game**, a **Unity level for export**, or a **Blender model**? Then what exactly ships (playable browser demo, one polished level, a hero asset with LODs...)? Module style: ES6/ESM default; UMD only if explicitly demanded. New project or existing? Target folder. **Read the matching pipeline reference now** and run its prerequisite gate before going further — a failed gate (no Pro licence, no toolkit bootstrap, no rendering Editor for snapshots, no Blender) changes what is worth agreeing to.
 2. **OBJECTIVE** — The exact outcome that must become true, as one testable sentence. Rewrite with the user until it is inspectable.
 3. **THE TARGET + CAMERAS** — Per `references/target-images.md`: does the user have reference media, is there an existing artifact to refine, or do we generate the target? Agree the target image(s), run the **reachability pass** (Reachable / Approximable / **OUT OF REACH**), and agree the **locked cameras** — one per target, three to five, including a detail crop. Settle the **image-generation backend** too (kie by default, the Higgsfield CLI if it is installed and signed in or the user asks for it — `target-images.md` §1a) and record it in `pipeline.md`. Plus numeric benchmarks: target FPS @ resolution, max load time, draw-call / texture / triangle budgets. If the user has no benchmark, making a defensible one is part of the interview, not skipped.
 4. **RUBRIC + PASS THRESHOLD** — Confirm the rubric axes from `references/critic-rubrics.md` (or amend them for this job) and the score a part must reach to pass. Default: **8.0 / 10 plus every hard gate green.**
 5. **SUCCESS CONDITION** — When is the loop DONE? (e.g. "every part scores ≥8/10 from a fresh critic; sustained 60 FPS @1080p in Chrome; zero console errors; the final integration critic passes"). Success and failure defined separately.
 6. **BOUNDARIES** — Time/cost expressed in **rounds and attempts, not wall-clock** (wall-clock cannot survive a two-week pause; counters can): max total rounds, max attempts per part before a forced strategy change, max consecutive no-improvement rounds. Permission gates: no deploy, no purchases/paid services, no credentials, no destructive ops, no contacting anyone — without explicit approval. For `unity`: the **bake tier policy** (how many rounds at preview tier before a production bake). Escalation rules: what blocks and waits for the user.
-7. **Kind specifics** — For `web-game`: genre & camera, physics (Havok default), input, audio, asset pipeline, scene scale, target browsers, and explicit scope cuts. For `unity`: which scene (that is where the work is authored, rendered and judged), render pipeline, terrain in scope?, existing lighting to preserve, whether Blender model work is in scope (and if so which assets, in-place or new path, tri budget, texel density, rig to match), the bake tier policy, and the checkpoint cadence (round 1 + when done, by default). The Editor runs in **copilot mode** — `-nographics` cannot render the in-loop snapshots. What finally gets exported — the whole level, or an individual asset as a container — is the user's call at checkpoint time, not something to decide now.
+7. **Kind specifics** — For `web-game`: genre & camera, physics (Havok default), input, audio, asset pipeline, scene scale, target browsers, and explicit scope cuts. For `unity`: which scene (that is where the work is authored, rendered and judged), render pipeline, terrain in scope?, existing lighting to preserve, whether Blender model work is in scope (and if so which assets, in-place or new path, tri budget, texel density, rig to match), the bake tier policy, and the **milestone checkpoints** (round 1, each major part group as it passes, and the end — by default). The Editor runs **with graphics** (never `-nographics`) and with the GPU Resident Drawer off, or its snapshots show only the sky. The level is authored like a full Unity game level and relies on Unity→Babylon parity; checkpoints confirm it. What finally gets exported — the whole level, or an individual asset as a container — is the user's call at checkpoint time, not something to decide now.
 
 8. **Loop mechanics** — confirm `--template` choice, rounds-per-session default, and any parts the user wants prioritized first.
 
@@ -140,7 +140,7 @@ _gauntlet/<name>/
 1. **Inspect** the current state: `progress.md` + `pipeline.md` + the actual project — plus `components.md` when supplied assets carry component metadata (write it now if it is owed and missing).
 2. **Select** the highest-impact unmet criterion — normally the top entries of the **standing gap list** from the last critic, respecting user priorities from the brief.
 3. **Build** — make one coherent improvement, through the deliverable kind's build surface. **Template A:** fan out builder subagents only for *genuinely independent* parts; **keep tightly coupled systems under one sequential owner** (broad fan-out performs WORSE than sequential ownership for coupled visual systems). **Template B:** single-track. When a stall tier is active, obey it — incremental tweaks are forbidden and the round must carry a `STRATEGY:` line.
-4. **Verify with the real artifact** — run the pipeline's verify recipe and capture evidence **from the locked cameras** into `_gauntlet/<name>/evidence/`: screenshots plus whatever metrics that pipeline can measure in-loop. **Use the pipeline's cheap in-loop mode every round** — for `unity` that is a Unity camera snapshot, *not* a bake-export-serve-browser round trip; the expensive engine verification is a deliberate checkpoint (round 1, and when the work is done), never a per-round tax. **Screenshots are required for visual parts.** If the host cannot produce the evidence, mark the part `unverified` — it can NEVER be flipped to `- [x]` on the builder's word.
+4. **Verify with the real artifact** — run the pipeline's verify recipe and capture evidence **from the locked cameras** into `_gauntlet/<name>/evidence/`: screenshots plus whatever metrics that pipeline can measure in-loop. **Use the pipeline's cheap in-loop mode every round** — for `unity` that is a Unity camera snapshot, *not* a bake-export-serve-browser round trip; the expensive engine verification is a deliberate checkpoint (round 1, each milestone, and when the work is done), never a per-round tax. **Screenshots are required for visual parts.** If the host cannot produce the evidence, mark the part `unverified` — it can NEVER be flipped to `- [x]` on the builder's word.
 
 5. **Criticize (fresh context)** — spawn a harsh critic subagent per `references/critic-rubrics.md`. It receives the loop card, the part's spec, the target, the evidence, the metrics, **the previous round's screenshot and verdict**, and the pipeline's extra inputs — **never the builder's rationale**. It returns a **scored rubric**, the **FULL prioritized gap list** (not one gap), every **hard gate** as pass/fail, a regression note, and PASS/FAIL. It grades pixels, numbers and behaviour — never effort or intent.
 6. **Record** — append `rounds/round-NN.md` with the score and the whole gap list; update `progress.md`: on PASS flip the part to `- [x]`; on FAIL log the top gap and increment the attempt counter; update the best/last scores and the stall tier. Persist BEFORE the next round.
@@ -180,9 +180,9 @@ generate_image(
 
 **Interview settles:** kind `unity`; three locked cameras (`gauntlet_hero` down the alley, `gauntlet_side` across the puddles, `gauntlet_detail` on a sign); pass threshold 8.0; budgets 60 FPS @1080p, ≤900 draws; bake policy *preview until round 8, then production*.
 
-**The reachability pass matters here.** Screen-space reflections in the target have no export key — the declared approach becomes *a reflection probe per puddle group plus a wet-mask material*, recorded as **Approximable**. True volumetric light shafts go to `OUT OF REACH`; height fog stands in. Without this the critic names "no SSR" every round forever.
+**The reachability pass matters here.** URP has no screen-space reflections to export — the declared approach becomes *a reflection probe per puddle group plus a wet-mask material*, recorded as **Approximable**. True volumetric light shafts go to `OUT OF REACH`; height fog stands in. Without this the critic names "no SSR" every round forever.
 
-**Round 1** runs the prerequisite gate (`bt_status` → `pro : True` or park), writes `pipeline.md`, authors the blockout via `eval_file`, creates the LightingSettings asset (`NewScene → build → SaveScene → assign → MarkSceneDirty → SaveOpenScenes`), places the three `gauntlet_*` cameras, and decomposes into the P1–P11 part checklist.
+**Round 1** runs the prerequisite gate (`bt_status` → `pro : True` or park), writes `pipeline.md`, authors the blockout via `run_script` builders, creates the LightingSettings asset (`NewScene → build → SaveScene → assign → MarkSceneDirty → SaveOpenScenes`), places the three `gauntlet_*` cameras, and decomposes into the P1–P11 part checklist.
 
 Round 1 also runs the **one calibration checkpoint** — a single export + browser load — to prove the whole chain works before investing 12 rounds, and to record what actually crosses the export boundary.
 
@@ -190,16 +190,17 @@ Round 1 also runs the **one calibration checkpoint** — a single export + brows
 
 ```bash
 # bake (preview tier) only if this round touched anything GI-dependent
-unity command eval 'UnityEditor.Lightmapping.BakeAsync(); return "started";' --project-path "$PROJ"
-unity command eval 'return UnityEditor.Lightmapping.isRunning;' --project-path "$PROJ"   # poll to False
+unity command bake_lighting --project-path "$PROJ"
+until unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null | grep -q completed; do sleep 5; done
 
 # snapshot each locked camera straight to PNG — no export, no server, no browser
-unity command eval_file /tmp/snap-hero.cs --project-path "$PROJ"    # -> evidence/round-NN-p7-hero.png
+unity command capture_game_view --camera gauntlet_hero --width 1920 --height 1080 --project-path "$PROJ" \
+  --result-only | jq -r .base64 | base64 -d > _gauntlet/neon-alley/evidence/round-NN-p7-hero.png
 ```
 
 Seconds, not minutes. The critic scores hero + side + detail against their targets and returns the full gap list.
 
-**The export runs twice in the whole job:** the round-1 calibration, and the final pass — production bake, export the finished scene, serve it, and let the integration critic judge the real deliverable while the perf, console and export-boundary gates are measured for real. *Did `reflectionprobeintensity` actually cross, or did the round only move a Unity slider?* — that question gets answered there, not forty times over.
+**The export runs at milestones, not every round:** the round-1 calibration; a checkpoint each time a part group passes (landform, light rig + GI bake + probes, materials + dressing, atmosphere + post); and the final pass — production bake, export the finished scene, serve it, and let the integration critic judge the real deliverable while the perf, console and export-boundary gates are measured for real. *Did `reflectionprobeintensity` actually cross, or did the round only move a Unity slider?* — each milestone answers that for the parts it covers, instead of forty times over or only at the very end.
 
 **Parks** at round 12 with `/bt-gauntlet --resume neon-alley`. Weeks later that resumes cold: re-read the workspace, re-launch the Editor, re-run the gate, continue at `NEXT ACTION`.
 
@@ -229,7 +230,7 @@ generate_image(
 4. **Capture the baseline score.** Round 1's critic scores the untouched level against the target. That number is the floor — every later round is measured against it, and a regression below it is a gate failure, not a preference.
 5. Bake tiering matters more here than anywhere, because the scene is already heavy: preview tier for the convergence rounds, one production bake before the integration critic — and with the export out of the loop, the bake is the only per-round cost left, so skip it entirely on rounds that change nothing GI-dependent.
 
-Because the scene was authored in the GUI it already has a LightingSettings asset — but **always pass `--scene`** at checkpoint exports anyway, or a fresh Editor session silently exports the template's default scene instead. Note this pipeline needs a **copilot-mode resident Editor**: `-nographics` has no graphics device and cannot render the in-loop snapshots.
+Because the scene was authored in the GUI it already has a LightingSettings asset — but **always pass `--scene`** at checkpoint exports anyway, or a fresh Editor session silently exports the template's default scene instead. Note this pipeline needs an Editor that can render for the in-loop snapshots: never `-nographics`, and the GPU Resident Drawer off (`unity-pipeline.md` § 1).
 
 ## Example 3 — A high-fidelity model, polished in Blender and shipped as an interactive prefab
 
@@ -240,7 +241,7 @@ It needs a rigidbody, an LOD group and the Animator wired up. Reference is the a
 turntable.
 ```
 
-**Interview settles:** kind `unity`, with Blender model work in scope; **write mode IN PLACE** so the GUID and importer settings survive every round; the **render scene** is `Assets/Scenes/Level01.unity` — the level the mech actually lives in, so it is judged under the lighting it will really have (a dedicated lookdev scene only if the asset has no home yet), with its rig frozen for the run; four locked `gauntlet_*` cameras in it including a detail crop; model root `Props/Mech`; budgets 45k tris, 512 px/m texel density; checkpoints at round 1 and the finish.
+**Interview settles:** kind `unity`, with Blender model work in scope; **write mode IN PLACE** so the GUID and importer settings survive every round; the **render scene** is `Assets/Scenes/Level01.unity` — the level the mech actually lives in, so it is judged under the lighting it will really have (a dedicated lookdev scene only if the asset has no home yet), with its rig frozen for the run; four locked `gauntlet_*` cameras in it including a detail crop; model root `Props/Mech`; budgets 45k tris, 512 px/m texel density; checkpoints at round 1, after the Blender parts pass, and at the finish.
 
 **Blender hands off to Unity and stops there.** Blender does geometry, UVs, bakes and skinning, editing the FBX in place; Unity assigns materials, colliders, the LODGroup, the Animator and the Babylon Toolkit script components — Blender cannot write `extras.metadata.components`, and under a community licence Unity won't either. After the hand-off the mech is just an asset in `Level01`.
 
@@ -251,7 +252,8 @@ cp "$FBX" "$FBX.bak"          # the write is destructive — always
 blender --background --factory-startup --python-exit-code 1 \
         --python /tmp/round-07-bevels.py -- "$FBX" "$FBX"    # same path in and out
 unity command eval 'UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport); return "ok";' --project-path "$PROJ"
-unity command eval_file /tmp/snap-hero.cs --project-path "$PROJ"   # -> evidence/round-07-p2-hero.png
+unity command capture_game_view --camera gauntlet_hero --width 1920 --height 1080 --project-path "$PROJ" \
+  --result-only | jq -r .base64 | base64 -d > _gauntlet/hero-mech/evidence/round-07-p2-hero.png
 ```
 
 Without `--python-exit-code 1` a crashed script exits `0` and the loop records a failed round as a success. Without in-place writing, every round mints a new GUID and quietly detaches the model from every scene that used it. Both are hard gates.
@@ -279,6 +281,47 @@ thing done at AAA quality—from textures to physics to anything you could think
 ```
 
 The interview turns that into a filled loop card built with **BabylonJS + the Babylon Toolkit, not ThreeJS** — and, because "AAA quality" is not a bar, into a locked target image, locked cameras, a rubric and a pass threshold before a single round runs.
+
+## Example 5 — A design-heavy kart-racing level, built in Unity, verified at milestones
+
+```
+/bt-gauntlet --name:candy-circuit --rounds:40 Build a Mario Kart style race track — a bright
+candy-themed circuit with a jump, a tunnel, boost pads and scenery everywhere. Karts must drive it.
+```
+
+**Unity is the level editor; BabylonJS runs the race.** The track is authored in Unity the way a Unity game level would be — and relies on Unity→Babylon parity rather than exporting every round.
+
+**Interview settles:**
+- kind `unity`, with four locked cameras: start grid, the jump, the tunnel exit, and a detail crop on a boost pad;
+- budgets: 60 FPS @1080p desktop, and a mobile tier with a draw-call ceiling;
+- **milestones:**
+  - M1 landform + track spline;
+  - M2 light rig + GI bake + probes;
+  - M3 materials + set dressing;
+  - M4 atmosphere + post-processing;
+  - M5 gameplay components.
+
+**Parts:**
+
+| Part | Owns |
+|---|---|
+| Landform | terrain, road mesh along the spline, banking |
+| Blockout + composition | sightlines at each locked camera, readable turns |
+| Materials | candy PBR, emissive boost pads |
+| Light rig | Mixed sun, Baked practicals in the tunnel |
+| GI bake | lightmaps + shadowmask, `LightProbeGroup` along the racing line for the karts |
+| Reflection probes | baked, box-projected in the tunnel |
+| Atmosphere + post | fog, a Volume with ACES and bloom |
+| Physics | road and wall colliders, boost-pad triggers |
+| Karts | Rigidbody chassis, `WheelCollider`s + `RaycastWheel`s |
+| Gameplay | the racing starter's `RaceTrackManager`, `CheckpointManager`, `VehicleInputController` (human + AI autopilot), `StandardCarController` |
+| Perf | the draw-call and FPS budgets |
+
+**The rhythm:**
+- **Most rounds stay in Unity:** a `run_script` builder, a preview bake when GI changed, and locked-camera snapshots.
+- **When a milestone's parts pass, run a checkpoint:** export (`--geometryOnly false`), serve, load the same cameras in the browser, and have the critic say which side of the export any gap is on.
+- **M5 is judged driving:** a kart actually laps the track in the browser.
+- **The integration pass** runs the production bake and the full perf gates, desktop and mobile.
 
 ---
 

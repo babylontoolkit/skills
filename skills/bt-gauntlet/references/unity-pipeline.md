@@ -1,8 +1,19 @@
 # Pipeline: `unity`
 
 **Deliverable:** anything authored in Unity and shipped through the Babylon Toolkit exporter as interactive
-glTF — a whole game level, or an individual asset in it. Baked GI, IBL, reflection probes, terrain, fog and
-tonemapping for scenes; geometry, UVs, PBR maps, LODs and skinning for models.
+glTF — a whole game level, or an individual asset in it. Baked GI, IBL, light and reflection probes, terrain,
+fog, post-processing volumes, physics, the Recast navmesh, Animator state machines and gameplay components for
+scenes; geometry, UVs, PBR maps, LODs and skinning for models.
+
+> ### Unity is the editor; BabylonJS is the engine
+>
+> Nothing here builds a Unity game or player. The level is authored in the Unity Editor exactly as a detailed
+> Unity game level would be — a Mario Kart-style track, a harbour, a landscape — and exported to glTF, where the
+> toolkit runtime recreates every subsystem. **The goal is Unity→Babylon parity.** So build the level in Unity,
+> judge it in Unity every round, and **count on the parity** — confirming it with browser checkpoints at
+> **milestones** (§ 6.B), not every round. How each feature crosses (directly, by a bake, or by a toolkit
+> equivalent) is the Agent Reference's
+> [Unity Authoring Recipes](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-authoring-recipes.md) §0.
 
 > ### Unity is the content-creation tool and the asset manager. Blender is a tool inside it.
 >
@@ -17,9 +28,10 @@ tonemapping for scenes; geometry, UVs, PBR maps, LODs and skinning for models.
 > and it is judged there, lit by that scene. Blender **cannot** write components — those come from Unity,
 > and only under a Pro licence.
 >
-> **The loop stays in Unity. Do NOT export every round.** Evidence is a Unity camera snapshot —
-> `Camera.Render()` straight to a PNG from the locked camera. A bake → export → dev-server → browser round
-> trip on every iteration costs minutes and tells the critic nothing extra about the art.
+> **The loop stays in Unity. Do NOT export every round.** Evidence is a Unity camera snapshot of the locked
+> camera (§ 6.A). A bake → export → dev-server → browser round trip on every iteration costs
+> minutes and tells the critic nothing extra about the art. **Do export at milestones** — round 1, whenever a
+> major part group passes, and the final integration pass — so parity is confirmed as the level grows.
 >
 > **Export when you are ready** — the user's call, by prompt or from the Unity Export buttons: the whole
 > scene as a **game level** (`selection == null`, full scene metadata), or one asset as an **asset
@@ -28,6 +40,7 @@ tonemapping for scenes; geometry, UVs, PBR maps, LODs and skinning for models.
 
 > **Required reading before round 1.** Fetch and read the Agent Reference's
 > [Unity Exporter Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-cli.md)
+> and [Unity Authoring Recipes](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-authoring-recipes.md)
 > in full — and, for any round that touches Blender, the
 > [Blender Headless CLI Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-blender-cli.md).
 > Section numbers below (§4B, §8, §10 …) refer to whichever is named. Builder subagents must be given them
@@ -46,11 +59,11 @@ unity command bt_status --project-path "$PROJ"
 
 | Must be true | Why it is fatal |
 |---|---|
-| `pro : True` | **Community silently drops Terrain**, plus Rigidbody, Animator, AudioSource, NavMeshAgent, CharacterController, ParticleSystem, Canvas, VideoPlayer, **PostProcess volumes** and **LOD groups**. The export still succeeds and still writes scene metadata — it just quietly omits them. See §0. |
+| `pro : True` | **Community silently drops Terrain**, every physics and collision block, the Animator state machine, AudioSource, NavMeshAgent, CharacterController, ParticleSystem, Canvas, VideoPlayer, **PostProcess volumes**, camera AA and **LOD groups**. The export still succeeds and still writes scene metadata — it just quietly omits them. See §0. |
 | An Editor is reachable | `unity command` needs a live Editor (§6). |
-| **A graphics device is available** | In-loop evidence is a real Unity render. `-nographics` has **no** graphics device and cannot render, so this pipeline runs in **copilot mode** (a resident Editor) or batchmode *with* graphics — never `-nographics`. Verify on round 1 by taking one snapshot and confirming the PNG is non-empty. |
+| **The Editor can render the locked cameras** | In-loop evidence is a real Unity render. `-nographics` has no graphics device. With the URP **GPU Resident Drawer** on, camera captures showed **only the skybox** (a failed drawer registration hides every renderer). Run the Editor **with graphics** (copilot resident Editor, or a GUI Editor via `unity open` + `set_autotick --enable true`) and the drawer **off**: `unity command eval 'return RenderPathTools.DisableResidentDrawerReport();'` (the §4B bootstrap does it). Verify on round 1 that the snapshot shows **scene geometry**, not just sky. |
 | All three packages installed | `com.unity.pipeline` + `org.khronos.unitygltf` + `com.babylontoolkit.editor` (§4.1). |
-| Scene Exporter panel bootstrapped once, in a GUI session | Seeds layers, FreeImage, shader list and root namespace, and writes `package.json` (§5.1). **A cold machine that has never run the GUI cannot start a gauntlet.** |
+| Scene Exporter bootstrap has run | Seeds layers, FreeImage, shader list and root namespace, and writes `package.json` (§5.1). Headless is fine: the `bt-bootstrap.cs` script (§4B) replicates the panel's `OnEnable`. |
 | `npm install` run in the project root | Any build with `CompileProjectScript` needs the local `tsc` (§5.2). |
 | `unity list --format json \| grep bt_` returns the eight `bt_*` commands | The shipped CLI bridge (`com.babylontoolkit.editor` 9.22.3+, §11). If empty: `recompile` + `recompile_status`. |
 | `baking : False` | A lightmap bake in progress hard-blocks every export. |
@@ -83,16 +96,16 @@ blender -b --factory-startup --python-exit-code 1 \
 ```markdown
 # Pipeline — unity
 Unity project : /abs/path/UnityProject
-Editor mode   : copilot (resident GUI)   <- REQUIRED; -nographics cannot render
+Editor mode   : copilot (graphics on, GPU Resident Drawer off)   <- REQUIRED; -nographics cannot render
 Editor version: 6000.5.10f1
 Toolkit       : 9.22.3   licence: professional
 Scene         : Assets/Scenes/Level01.unity     <- authored, rendered and judged here
 Export root   : /abs/path/UnityProject/Export
 Dev server    : http://localhost:8888   (started via bt_devserver_start)
-Player page   : /index.html?scene=level01.gltf  (needs a web-project build — § 6.B)
+Player page   : /index.html?scene=Level01.gltf  (needs a web-project build — § 6.B)
 Bake tier     : preview | production
-Capture mode  : unity-snapshot (in-loop)  ·  export+browser (checkpoints only)
-Checkpoints   : round 1 calibration done [y/n] · last checkpoint round N
+Capture mode  : unity-snapshot (in-loop)  ·  export+browser (milestone checkpoints)
+Checkpoints   : round 1 calibration done [y/n] · milestones: <part groups> · last checkpoint round N
 Blender       : 5.1.2 (/Applications/Blender.app/Contents/MacOS/Blender)  [if in scope]
 Model assets  : Assets/Models/mech.fbx  — write mode IN PLACE, backup mech.fbx.bak
 ```
@@ -108,8 +121,15 @@ Everything runs against the **live active scene** through the CLI. The Editor ke
 sync; raw file edits cannot.
 
 ```bash
-unity command eval_file /tmp/round-12-lighting.cs --project-path "$PROJ" --format json
+# builders: a real .cs file (using directives allowed), run with a long timeout — Unity Editor Commands §5.1
+unity command run_script --file AgentScripts/Round12Lighting.cs --entry Round12Lighting.Build \
+  --timeout_ms 300000 --timeout 300 --project-path "$PROJ" --format json
+# one-liners: unity command eval '...'   (no using directives; ~5 s main-thread limit)
 ```
+
+Prefer the typed commands (`create_gameobject`, `set_component_properties`, `set_lighting_settings`,
+`bake_lighting`, `create_animator_controller`, …) where one exists. Check `data.result.success` on
+`run_script` — a compile error still returns an outer `success: true`.
 
 > ⚠️ **Never hand-edit `.unity`, `.prefab` or `.asset` YAML while a live Editor is reachable.** fileIDs and
 > GUIDs are easy to get wrong, the Editor will not see the change until a reimport, and it is very easy to
@@ -237,12 +257,18 @@ Round 1 records the checklist in `progress.md`. A job takes the scene block, the
 | **Blockout & composition** | major masses, silhouette, sightlines, framing at each locked camera | geometry |
 | **Set dressing & scatter** | props, clutter, decals, LOD groups | geometry, LOD (**Pro-gated**) |
 | **Materials & surfacing** | albedo/roughness/metallic/normal, texel density, wear | materials, textures |
-| **Light rig** | sun angle + colour temp, practicals, shadow distance and softness | `light`, `sunposition`, `sunrotation` |
-| **GI / lightmap bake** | lightmapper, resolution, bounces, denoiser, AO, UV padding | `ambientlightmap`, `lightmaplevel`, lightmap textures |
+| **Light rig** | sun (Mixed) angle + colour temp, Baked fills and practicals, shadow distance and softness | `light` components, `sunposition`, `sunrotation` — Baked lights cross as lightmaps + probes |
+| **GI / lightmap bake** | lightmapper, mixed-lighting mode, resolution, bounces, denoiser, AO, UV padding | `lightmapbakemode`, `shadowmaskmode`, lightmap + shadowmask textures |
+| **Light probes** | `LightProbeGroup` / APV coverage wherever dynamic objects move | `lightprobes` + `<scene>.lightprobes.bin`, `TOOLKIT.LightProbeNetwork` |
 | **IBL / skybox / ambient** | skybox material or cubemap, ambient mode/source, SH, sky reflections | `skybox`, `skyreflections`, `createpolynomials`, `ambientlighting`, `ambientskymode`, `ambientskysource`, `ambientskycolor`, `ambientgroundcolor`, `ambientlightintensity` |
 | **Reflection probes** | placement, resolution, box projection, intensity | `reflectionprobeintensity` |
 | **Atmosphere & fog** | fog type/mode/colour/density, height fog, volumetrics | `fogtype`, `fogmode`, `fogcolor`, `fogdensity`, `fogstart`, `fogend`, `fogvolumetric`, `fogbaseheight`, `fogmaximumheight`, `fogmeanfreepath`, `foganisotropy` |
 | **Image processing** | exposure, tonemapping, gamma, clear colour | `exposure`, `tonemapping`, `gammacorrection`, `imageprocessing`, `clearcolor` |
+| **Post-processing volumes** | grade, bloom, vignette, DOF, AA on the camera | `TOOLKIT.PostProcessor` components (the whole colour grade baked to a LUT), camera `antialiasing` (**Pro-gated**) |
+| **Navigation** | walkable surfaces, agent radius/height/slope, the toolkit **Recast** bake | `navigation.prebaked` → `scenes/<scene>.nav.bin` |
+| **Physics & colliders** | colliders, rigidbodies, physics materials, triggers, vehicles (`RaycastWheel`) | node `physics` / `collision`, `TOOLKIT.RigidbodyPhysics` (**Pro-gated**) |
+| **Animation & FX** | Animator controllers, particles, audio sources | `TOOLKIT.AnimationState`, `ShurikenParticles`, `AudioSource` (**Pro-gated**) |
+| **Gameplay components** | TypeScript script components (e.g. the racing starter's checkpoints, track manager, kart controllers) | `extras.metadata.components` `script` entries |
 | **Perf & budget** | draw calls, texture format, lightmap memory, render groups | `webptextures`, `ktxtextures`, `webplightmaps`, `ktxlightmaps`, `rendergroups`, `freezeactivemeshes`, `prewarmup`, `performancepriority` |
 
 ### Asset parts (Blender + Unity)
@@ -271,9 +297,12 @@ Two modes. **Almost every round uses mode A.**
 #### 1. Bake
 
 ```bash
-unity command eval 'UnityEditor.Lightmapping.BakeAsync(); return "started";' --project-path "$PROJ"
-unity command eval 'return UnityEditor.Lightmapping.isRunning;' --project-path "$PROJ"   # poll to False
+unity command bake_lighting --project-path "$PROJ"
+until unity command lighting_bake_status --project-path "$PROJ" --result-only 2>/dev/null | grep -q completed; do sleep 5; done
+unity command save_scene --project-path "$PROJ"
 ```
+
+(`--result-only` prints the status as a JSON-encoded string — match `completed` without quotes.)
 
 **Bake tiering is the dominant cost** now that the export is out of the loop. Converge on a **preview** tier
 (low lightmap resolution, few bounces, fast/no denoiser); switch to **production** only for the final rounds
@@ -283,36 +312,23 @@ entirely on rounds that change nothing GI-dependent (a roughness tweak, a prop m
 
 #### 2. Snapshot the locked camera
 
-Render the actual camera through the actual pipeline, straight to a PNG. No export, no server, no browser.
+Render the actual camera through the actual pipeline, straight to a PNG (§ 1). No export, no server, no
+browser. `capture_game_view` renders a named camera through URP; without `--save_path` it returns the PNG
+inline, so decode it to wherever the evidence lives (a `--save_path` would land under `Assets/` and be imported):
 
-```csharp
-// eval_file: snapshot one locked camera to disk
-string camName = "gauntlet_hero";
-string outPath = "/abs/_gauntlet/<name>/evidence/round-12-p7-hero.png";
-int w = 1920, h = 1080;
-
-var go = UnityEngine.GameObject.Find(camName);
-if (go == null) throw new System.Exception("locked camera missing: " + camName);
-var cam = go.GetComponent<UnityEngine.Camera>();
-
-var rt = new UnityEngine.RenderTexture(w, h, 24, UnityEngine.RenderTextureFormat.ARGB32);
-rt.antiAliasing = 8;
-var prevTarget = cam.targetTexture; var prevActive = UnityEngine.RenderTexture.active;
-cam.targetTexture = rt;
-cam.Render();
-UnityEngine.RenderTexture.active = rt;
-var tex = new UnityEngine.Texture2D(w, h, UnityEngine.TextureFormat.RGB24, false);
-tex.ReadPixels(new UnityEngine.Rect(0, 0, w, h), 0, 0);
-tex.Apply();
-UnityEngine.RenderTexture.active = prevActive; cam.targetTexture = prevTarget;
-System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outPath));
-System.IO.File.WriteAllBytes(outPath, tex.EncodeToPNG());
-UnityEngine.Object.DestroyImmediate(tex); rt.Release(); UnityEngine.Object.DestroyImmediate(rt);
-return "wrote " + outPath + " bytes=" + new System.IO.FileInfo(outPath).Length;
+```bash
+unity command capture_game_view --camera gauntlet_hero --width 1920 --height 1080 \
+  --project-path "$PROJ" --result-only | jq -r .base64 | base64 -d \
+  > "_gauntlet/<name>/evidence/round-12-p7-hero.png"
+file "_gauntlet/<name>/evidence/round-12-p7-hero.png"      # PNG image data, 1920 x 1080
 ```
 
-Repeat per locked camera. **Check the returned byte count** — a zero-length or tiny PNG means no graphics
-device (§ 1), not a dark scene.
+> Do not hand-roll `Camera.Render()` into a `RenderTexture` from `eval`: under URP in a batch Editor that
+> wrote an **all-black** frame, while `capture_game_view` of the same camera rendered the lit scene
+> (verified, Unity 6000.5.10f1).
+
+Repeat per locked camera. **Look at the image** — an empty file means no graphics device, and a sky-only
+frame means the GPU Resident Drawer is on (§ 1), not a dark or empty scene.
 
 #### 3. Collect what Unity can measure
 
@@ -324,23 +340,31 @@ BabylonJS perf gate**; they catch a scene going wildly heavy, they do not predic
 
 That is the whole in-loop verify. Seconds, not minutes.
 
-### 6.B Checkpoint verification — export + browser (rare, deliberate)
+### 6.B Checkpoint verification — export + browser (at milestones)
 
-Run a checkpoint **only** at round 1 (calibration — proves the chain works before investing 40 rounds, and
-records what actually crosses the export boundary), and when the work is done. An optional every-N cadence
-exists; set it in the loop card, **off by default**.
+Checkpoints confirm the Unity→Babylon parity the loop relies on. Run one:
+
+1. **At round 1** — calibration: proves the chain works before investing 40 rounds, and records what actually
+   crosses the export boundary.
+2. **At each milestone** — when a major **part group** passes: landform + terrain, blockout + composition, light
+   rig + GI bake + probes, materials + set dressing, post-processing + atmosphere, gameplay components. Agree the
+   milestone groups in the interview and record them in `pipeline.md`.
+3. **At the end** — the integration pass (production bake).
+
+Between milestones the loop stays in Unity. A fixed every-N cadence also exists; set it in the loop card, off by
+default.
 
 **What you export is the user's call — by prompt, or from the Unity Export buttons.**
 
 #### Game level (the default)
 
 ```bash
-unity command bt_export_level --scene Assets/Scenes/Level01.unity --project-path "$PROJ" --timeout 900
+unity command bt_export_level --scene Assets/Scenes/Level01.unity --geometryOnly false --project-path "$PROJ" --timeout 900
 unity command bt_devserver_start --project-path "$PROJ"
 jq '.scenes[0].extras.metadata
-    | {license, skybox, ambientlighting, ambientskymode, ambientlightmap, lightmaplevel,
-       reflectionprobeintensity, exposure, tonemapping, fogmode, fogvolumetric, sunposition}' \
-  "$PROJ/Export/scenes/level01.gltf" > evidence/checkpoint-NN-metadata.json
+    | {license, renderpipeline, lightmapbakemode, shadowmaskmode, skybox, lightprobes, navigation,
+       ambientlighting, ambientskymode, exposure, tonemapping, fogmode, sunposition}' \
+  "$PROJ/Export/scenes/Level01.gltf" > evidence/checkpoint-NN-metadata.json
 ```
 
 `selection == null` gates the **entire scene-metadata block** — skybox, ambient/IBL, SH, reflection probe
@@ -379,8 +403,8 @@ given with no `scenes/` subfolder. Correct for a container; wrong for anything m
 | URL | Serves |
 |---|---|
 | `http://localhost:8888/index.html` | the generated web project, default scene |
-| `http://localhost:8888/index.html?scene=level01.gltf` | the player pointed at one scene (**file name, not a path**) |
-| `http://localhost:8888/scenes/level01.gltf` | the raw exported asset |
+| `http://localhost:8888/index.html?scene=Level01.gltf` | the player pointed at one scene (**file name, not a path**) |
+| `http://localhost:8888/scenes/Level01.gltf` | the raw exported asset |
 | `http://localhost:8888/containers/mech.glb` | an asset container written to an explicit folder |
 
 ### 6.C What the Unity snapshot cannot tell you
@@ -449,16 +473,25 @@ boundary the gap is on**:
 
 ---
 
-## 8. Scope the target to what can actually cross the boundary
+## 8. Scope the target — most of Unity crosses
 
-The 73-key metadata list **is** the export surface for scene-level look. Anything the target image depends on
-that has no key — screen-space reflections, SSGI/SSAO, custom render passes, bespoke volume stacks — does not
-survive, and a critic that keeps raising it will name the same gap forever.
+The goal is parity, and most of a Unity level crosses. Volumes (grade baked to a LUT, bloom, vignette, DOF,
+motion blur, film grain, lens distortion, chromatic aberration), HDRP SSAO/SSR, lightmaps in every mixed-lighting
+mode, light probes, baked reflection probes, IBL, fog, terrain, Animator state machines, particles, physics and
+the Recast navmesh all carry. The short list that does **not** is the Agent Reference's Unity Authoring Recipes
+§22, each item with a Babylon-side substitute:
+- URP renderer features (SSAO, custom passes);
+- Panini projection and screen-space lens flare;
+- realtime GI and realtime reflection probes;
+- cookies, Timeline, VFX Graph, and trail/line renderers.
 
-During the interview's target-reachability pass, walk the target against that key list and record whatever
-cannot cross in the loop card's **`OUT OF REACH`** slot. Critics are instructed not to raise gaps against it.
-Where an effect can be *approximated* on the BabylonJS side instead (a reflection probe standing in for SSR,
-baked contact shadows for SSAO), record that as the approach rather than as out of reach.
+During the interview's target-reachability pass, check the target against that list:
+- Something that can be *approximated* on the BabylonJS side (a baked reflection probe for SSR, a Babylon
+  SSAO2 pipeline from a script component for URP SSAO) goes in **Approximable**, with that approach.
+- Only what has no substitute goes in **`OUT OF REACH`**. Critics are instructed not to raise gaps against it.
+
+A gap found at a checkpoint that none of this explains is a **toolkit parity gap**. Record it with both frames
+for the toolkit instead of re-authoring the scene around it.
 
 > The precise URP/HDRP boundary is worth **measuring on your first real export** rather than assuming. Export
 > one scene with the effects you care about, dump `scenes[0].extras.metadata`, and record what actually
@@ -487,4 +520,8 @@ baked contact shadows for SSAO), record that as the approach rather than as out 
 | Every scene reference to a model broke | wrote to a new path, or delete-then-recreate | edit in place; never remove the `.meta` |
 | Model imports at 1/100 scale or on its side | FBX unit mismatch, or a generated asset's orientation | `transform_apply` after fixing scale/rotation |
 | Unity Hub cannot open the project | copilot mode leaves a resident Editor holding the lock | `bt-stop-editor.sh <ProjectPath>` (§4B.3) |
-| `unity command` cannot connect | Safe Mode, or a batch Editor invisible to `status` | `unity pipeline list`; gate on `unity command`, not `unity status` |
+| `unity command` cannot connect | Safe Mode, a sandboxed shell blocking loopback, or several Editors (`AMBIGUOUS_EDITOR`) | `unity pipeline list`; pass `--project-path`; gate on `unity command` |
+| Snapshot shows only the sky | The URP GPU Resident Drawer is on | `RenderPathTools.DisableResidentDrawerReport()` (reloads the scene) — § 1 |
+| A Baked light "missing" from the export | Expected — Baked lights cross as lightmaps + light probes | Nothing to fix; but its **children** were skipped too — never parent under a Baked light |
+| Dynamic objects flat in the browser | No light-probe network: no active `SceneController`, ambient not Skybox, no IBL bake, or no probe group | Fix and re-bake (Recipes §5) |
+| No navigation in the export | Unity's navmesh was baked, not the toolkit Recast surface | Bake `UniRcNavMeshSurface` (Recipes §12) |
