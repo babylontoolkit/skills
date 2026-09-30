@@ -45,7 +45,7 @@ Examples
   bt-agent install --project
   bt-agent doctor
   bt-agent update
-  bt-agent bridge --server https://<your App Builder>
+  bt-agent bridge --install-service --pair <code from the Unity Bridge dialog>
 `;
 
 function parseArgs(argv) {
@@ -379,8 +379,11 @@ function main() {
           printDoctor(result);
           console.log(
             result.bridge.paired
-              ? `  bridge  paired with ${result.bridge.server}`
-              : '  bridge  not paired (bt-agent bridge --server <url>)'
+              ? `  bridge  paired with ${result.bridge.servers.join(', ')}`
+              : '  bridge  not paired (copy the install command from the Unity Bridge dialog in the App Builder)'
+          );
+          console.log(
+            `  bridge  service: ${result.bridge.service}${result.bridge.serviceRunning === true ? ' (running)' : result.bridge.serviceRunning === false ? ' (not running)' : ''}`
           );
           console.log(
             `  bridge  unity CLI ${result.bridge.unityCli ? 'found' : 'not found'}; ${result.bridge.blender ? 'Blender ' + result.bridge.blender : 'Blender not found'}`

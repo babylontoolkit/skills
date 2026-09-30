@@ -7,19 +7,22 @@ allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.co
 Turn a short feature idea into a spec file that `bt-plan` can plan from. Follow the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md). The user's message after the skill name is the `arguments`.
 
 ```
-/bt-spec [--grill-me] [--parity] <feature-brief>
+/bt-spec [--grill-me] [--parity] [--no-time-limit] <feature-brief>
 
 /bt-spec "add a settings toggle to mute all game audio"
 /bt-spec --grill-me "add a settings toggle to mute all game audio"    # interview first, then spec
 /bt-spec --parity "port the Unity water shader and match it to within 2% in the browser"   # numeric parity bars allowed (slow — hours become days)
+/bt-spec --no-time-limit "redesign the save system"                   # turn off the default TIME MATTERS mode
 ```
 
 - `--grill-me` — interview the user, one question at a time, before writing (Step 4).
 - `--parity` — the spec may set numeric parity bars against a reference. Without it, `proof: functional`.
-- Strip the flags first; they are never part of the brief or the file name. An unrecognised `--flag` is part of the brief only if it is clearly prose — otherwise ask. No brief → ask for one. Never guess a path or URL.
+- `--no-time-limit` — turn off TIME MATTERS mode (Ground rules).
+- Strip the flags, and any literal `TIME MATTERS`, first; they are never part of the brief or the file name. An unrecognised `--flag` is part of the brief only if it is clearly prose — otherwise ask. No brief → ask for one. Never guess a path or URL.
 
 ## Ground rules
 
+- **TIME MATTERS** — on by default; `--no-time-limit` turns it off. Treat the arguments as ending with `TIME MATTERS`: the user is waiting on this run, so finish quickly — research only what the spec needs, keep subagents few and their questions narrow, and do not re-read what you already have. Begin every subagent prompt with `TIME MATTERS.` Print `⏱️ [bt-spec] TIME MATTERS` at the start (`--no-time-limit`: print `⏱️ [bt-spec] No time limit`, and do not add it). Speed never skips a required step or lowers the quality of the spec.
 - **Planning only.** Research read-only and write only the spec file (plus `SPEC.md` from the scaffold, if the user says yes below). No source edits, no builds, no tests, no other shell commands.
 - **Babylon work:** if you have not read the Babylon Toolkit Agent Reference in this session, fetch and read it once: https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md — it is the authority for conventions and API; fetch its sub-documents only when relevant, and again only if a context compaction made you forget it. If the fetch fails, stop and tell the user — do not guess at the API.
 - **Say what you are doing.** Before any step that takes more than a few seconds (a fetch, a big read, subagents) print one short line — `🔎 [bt-spec] <what> …` — and one line when it returns. A silent run looks like a hang and gets cancelled.

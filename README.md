@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.38)
+# Babylon Toolkit Desktop Agent (1.1.42)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -125,47 +125,78 @@ happens to be named `bt-something` is safe.
 ## Unity Bridge (App Builder)
 
 `bt-agent bridge` connects this computer to the Babylon Toolkit App Builder, so the builder's
-chat can drive the Unity Editor and Blender installed here.
+chat can open, create, edit and export Unity projects and drive Blender installed here.
+
+Open the Unity Bridge dialog in the App Builder (the cube icon in the chat box), type your App
+Builder projects folder (the one you picked for your projects in the App Builder), copy the one command
+it then shows, and run it once in a terminal. The command points the helper at the Unity folder inside
+your App Builder projects folder, where Unity projects live beside the `Apps` folder of apps (the
+Unity Bridge dialog fills it in):
 
 ```bash
-bt-agent bridge --server https://<your App Builder>
+npx @babylonjs-toolkit/agent bridge --install-service --pair K7QM-2XWD --projects "/Users/you/Projects/Unity"
 ```
 
-The first run pairs the computer by code: the terminal prints an 8-character code, and you
-enter it in the App Builder (open your project, click the cube icon in the chat box). The
-device credential is saved to `~/.babylon-toolkit/bridge.json`, readable by you only, and
-later runs connect straight away. `--server` can also come from `BTK_BRIDGE_SERVER`; the
-Unity Bridge dialog in the App Builder shows the exact command to paste.
+`--projects` is required with `--install-service` — the service runs at login, so the folder is never
+guessed from where the command happened to run. A folder that does not exist is created. A later
+reinstall without `--projects` keeps the folders stored by the first one.
+
+The command carries a single-use install code (valid for 10 minutes) that pairs this computer with
+your account — you never type a code anywhere. `--install-service` then copies the helper to
+`~/.babylon-toolkit/service/` and starts it now and every time you log in (a launchd agent on
+macOS, a systemd user unit on Linux, a Startup-folder script on Windows). It logs to
+`~/.babylon-toolkit/bridge.log` (rotated at 5 MB). Run the command again to change the settings —
+it re-installs and restarts the service. `bt-agent bridge --uninstall-service` stops it and stops
+starting it at login; the pairing is kept until `bt-agent bridge logout`.
+
+The App Builder can list the Unity projects in the projects folder, open one, or create a new one
+there — the project it opened or created last is the one every other Unity and Blender job works on.
+Run in the terminal (without `--install-service`) and without `--projects`, the bridge uses the folder
+it runs in — or, started inside a Unity project, that project's parent, with that project open. Only folder and project NAMES are sent to the App Builder, never a path.
+
+The helper talks to the production App Builder by default. `--server <url>` (or `BTK_BRIDGE_SERVER`)
+points it at another one — the dialog adds it to the command for you when it is needed. `--server`
+may be repeated to serve several App Builders at once (for example a local development server and
+production): each is paired once, with its own install code, and they share one job queue and one
+current project, so two builders never drive Unity at the same time.
 
 | Option | Effect |
 |--------|--------|
-| `--server <url>` | The App Builder's address — `https://`, or `http://localhost` for development |
-| `--unity <path>` | A Unity project to serve (repeatable) |
+| `--pair <code>` | The install code from the Unity Bridge dialog |
+| `--install-service` | Pair, then start the bridge now and at every login |
+| `--uninstall-service` | Stop the service and remove it (the pairing is kept) |
+| `--server <url>` | Another App Builder — `https://`, or `http://localhost` for development (repeatable) |
+| `--projects <folder>` | A Unity projects folder (repeatable; created if missing) — with the App Builder, the Unity folder inside your App Builder projects folder (the Unity Bridge dialog fills it in). Required for `--install-service`; default only when running in the terminal: this folder, or its parent inside a Unity project |
+| `--unity <path>` | Also serve this Unity project (repeatable); the first one starts as the current project |
 | `--blender <path>` | The Blender executable to use |
-| `--no-scripts` | Never run scripts on this computer, whatever the App Builder allows |
+| `--no-scripts` | Never run C# or Python scripts on this computer, whatever Allow scripts says |
 
-`bt-agent bridge status` shows which App Builder this computer is paired with, and
-`bt-agent bridge logout --server <url>` unpairs it and deletes the credential.
+Without `--install-service`, `bt-agent bridge [--pair <code>]` runs the bridge in the terminal until
+Ctrl-C. With no stored pairing and no `--pair`, it says so and exits: copy the install command from
+the Unity Bridge dialog. `bt-agent bridge status` shows the App Builders this computer is paired with
+and whether the service is installed; `bt-agent bridge logout [--server <url>]` unpairs it (all App
+Builders by default) and deletes the credentials. `bt-agent doctor` reports the service state too.
+Credentials and service settings live in `~/.babylon-toolkit/bridge.json`, readable by you only.
 
 Everything the App Builder asks for falls into one of three tiers, and this computer enforces
 them itself:
 
 | Tier | What it covers | When it runs |
 |------|----------------|--------------|
-| allowed | Reading the project and ordinary edits | Straight away |
-| scripts | Running C# or Python scripts | Only when you allowed scripts for the project, and never with `--no-scripts` |
+| allowed | Listing, opening and creating projects in the projects folder; reading the project and ordinary edits | Straight away |
+| scripts | Running C# or Python scripts | Only when **Allow scripts** is on for this computer in the App Builder's Unity Bridge dialog (on by default), and never with `--no-scripts` |
 | consent | Deleting, moving, renaming, building, changing project settings | Only after you approve it in the chat |
 
-The bridge runs only while this command runs — install never starts it. `bt-agent install`
-and `bt-agent update` never start, pair or schedule the bridge; press Ctrl-C to stop it.
+The service is opt-in: `bt-agent install`, `bt-agent update` and the npm postinstall never start,
+pair or schedule the bridge.
 
 ## Skills
 
 | Skill | Command | What it does |
 |-------|---------|--------------|
-| [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. Add `--grill-me` to be interviewed first, `--parity` to allow numeric parity bars in the acceptance criteria. |
-| [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive, and `--parity` for numeric parity gates instead of the default functional proof. |
-| [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task, a range (`T3-T7`, `T12-`, `NEXT:3`) or all remaining tasks from a plan/spec; with no task id it runs the next unchecked task. Add `--auto-pilot` for an unattended overnight run that never stops for human input, and `--strict` for an adversarial verifier on every task. |
+| [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. Add `--grill-me` to be interviewed first, `--parity` to allow numeric parity bars in the acceptance criteria. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
+| [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive, and `--parity` for numeric parity gates instead of the default functional proof. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
+| [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task, a range (`T3-T7`, `T12-`, `NEXT:3`) or all remaining tasks from a plan/spec; with no task id it runs the next unchecked task. Add `--auto-pilot` for an unattended overnight run that never stops for human input, and `--strict` for an adversarial verifier on every task. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
 | [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. |
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
 | [`bt-landing`](skills/bt-landing/SKILL.md) | `/bt-landing` | Re-design the landing page, splash screen, preloader and custom overlays. |

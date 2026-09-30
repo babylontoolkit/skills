@@ -8,6 +8,7 @@ const path = require('path');
 
 const { executeBlender, PREAMBLE, NO_BLENDER } = require('../lib/bridge/blender/run');
 const { discoverBlender } = require('../lib/bridge/blender/discover');
+const { SCRIPTS_OFF, SCRIPTS_DISABLED_LOCALLY } = require('../lib/bridge/unity/guard');
 
 function scratch(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-bridge-blender-'));
@@ -28,18 +29,19 @@ const quietLog = { op: () => {} };
 const dispatchOf = (op, extra = {}) => ({
   jobId: 'job1',
   op: { kind: 'blender.script', source: 'print(1)', inputs: [], outputs: [], timeoutSeconds: 60, ...op },
-  unityProjectKey: 'k1',
+ 
   allowScripts: true,
   consentGranted: false,
   ...extra,
 });
 
-async function run(t, op, { answer, blender = BLENDER, P = project(t) } = {}) {
+async function run(t, op, { answer, blender = BLENDER, P = project(t), extra, noScripts } = {}) {
   const calls = [];
   const events = [];
-  await executeBlender(dispatchOf(op), {
+  await executeBlender(dispatchOf(op, extra), {
     project: P,
     blender,
+    noScripts,
     emit: async (e) => void events.push(e),
     log: quietLog,
     runProcess: async (file, args, opts) => {
@@ -95,10 +97,66 @@ test('an existing Assets/Knight.fbx output → Assets/Knight.fbx~ exists before 
   assert.equal(final.result.ok, true);
 });
 
+test('declaring Knight.fbx AND Knight.fbx~ as outputs → one backup (Knight.fbx~ = old bytes), never Knight.fbx~~', async (t) => {
+  const P = project(t);
+  const knight = path.join(P.root, 'Assets', 'Knight.fbx');
+  fs.writeFileSync(knight, 'old');
+  let seen = null;
+  await run(t, { outputs: ['Assets/Knight.fbx', 'Assets/Knight.fbx~'] }, {
+    P,
+    answer: () => {
+      seen = { backup: fs.readFileSync(`${knight}~`, 'utf8'), doubled: fs.existsSync(`${knight}~~`) };
+      fs.writeFileSync(knight, 'new');
+    },
+  });
+  assert.deepEqual(seen, { backup: 'old', doubled: false });
+});
+
+test('a Knight.fbx~ left by an earlier job and declared as an output is never backed up to Knight.fbx~~', async (t) => {
+  const P = project(t);
+  const tilde = path.join(P.root, 'Assets', 'Knight.fbx~');
+  fs.writeFileSync(tilde, 'earlier backup');
+  let doubled = null;
+  await run(t, { outputs: ['Assets/Knight.fbx~'] }, {
+    P,
+    answer: () => {
+      doubled = fs.existsSync(`${tilde}~`);
+      fs.writeFileSync(tilde, 'rewritten');
+    },
+  });
+  assert.equal(doubled, false);
+});
+
 test('output ../x.obj → refused, nothing run', async (t) => {
   const { calls, refused } = await run(t, { outputs: ['../x.obj'] });
   assert.ok(refused);
   assert.equal(calls.length, 0);
+});
+
+test('D58: Allow scripts off → refused with the dialog sentence; Blender never runs', async (t) => {
+  const { calls, refused } = await run(t, {}, { extra: { allowScripts: false } });
+  assert.equal(
+    refused.reason,
+    'Scripts are off for this computer — the user can turn on Allow scripts in the Unity Bridge dialog (the cube icon in the App Builder).'
+  );
+  assert.equal(refused.reason, SCRIPTS_OFF);
+  assert.equal(calls.length, 0);
+});
+
+test('D58: --no-scripts → its own sentence, even with Allow scripts on; Blender never runs', async (t) => {
+  for (const allowScripts of [true, false]) {
+    const { calls, refused } = await run(t, {}, { extra: { allowScripts }, noScripts: true });
+    assert.equal(refused.reason, 'Scripts are disabled on this computer (--no-scripts) — the Allow scripts switch has no effect; the user must re-run the install command from the Unity Bridge dialog without --no-scripts.');
+    assert.equal(refused.reason, SCRIPTS_DISABLED_LOCALLY);
+    assert.equal(calls.length, 0);
+  }
+});
+
+test('D58 control: Allow scripts on and no --no-scripts → Blender runs', async (t) => {
+  const { calls, refused, final } = await run(t, {}, { extra: { allowScripts: true }, noScripts: false });
+  assert.equal(refused, undefined);
+  assert.equal(calls.length, 1);
+  assert.equal(final.result.ok, true);
 });
 
 test('no Blender → refused with the --blender hint', async (t) => {
@@ -135,4 +193,15 @@ test('a ../../Assets jobId never reaches runProcess and deletes nothing', async 
   assert.equal(calls.length, 0);
   assert.deepEqual(events, []);
   assert.ok(fs.existsSync(path.join(P.root, 'Assets', 'Keep.txt')));
+});
+
+test('after a Blender job, the empty .bridge/blender and .bridge folders are removed; other content stays', async (t) => {
+  const { P } = await run(t, {});
+  assert.equal(fs.existsSync(path.join(P.root, '.bridge')), false);
+  const P2 = project(t);
+  fs.mkdirSync(path.join(P2.root, '.bridge', 'out'), { recursive: true });
+  fs.writeFileSync(path.join(P2.root, '.bridge', 'out', 'keep.png'), 'x');
+  await run(t, {}, { P: P2 });
+  assert.equal(fs.existsSync(path.join(P2.root, '.bridge', 'blender')), false);
+  assert.equal(fs.readFileSync(path.join(P2.root, '.bridge', 'out', 'keep.png'), 'utf8'), 'x');
 });

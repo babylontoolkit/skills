@@ -7,19 +7,21 @@ allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.co
 Turn a feature spec into `_specs/<feature-name>_plan.md`: an ordered checklist of tasks that `bt-execute` runs. Follow the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md). The user's message after the skill name is the `arguments`.
 
 ```
-/bt-plan [--heavy] [--parity] <feature-spec> <optional-brief>
+/bt-plan [--heavy] [--parity] [--no-time-limit] <feature-spec> <optional-brief>
 
 /bt-plan @_specs/mute-game-audio_spec.md
 /bt-plan "add a settings toggle to mute all game audio"     # no spec file → Quick Plan: short interview, then plan
 /bt-plan --heavy @_specs/feature_spec.md                    # decision-complete plan for a long or cheaper-model run
 /bt-plan --heavy --parity @_specs/feature_spec.md           # numeric parity gates against the reference (slow)
+/bt-plan --no-time-limit @_specs/feature_spec.md            # turn off the default TIME MATTERS mode
 ```
 
-- `--heavy` — Heavy Plan mode (below). `--parity` — plan numeric parity proof; also on when the spec says `proof: parity`. Strip flags first; they are never part of the brief.
+- `--heavy` — Heavy Plan mode (below). `--parity` — plan numeric parity proof; also on when the spec says `proof: parity`. `--no-time-limit` — turn off TIME MATTERS mode (Ground rules). Strip flags, and any literal `TIME MATTERS`, first; they are never part of the brief.
 - Spec file (± brief) → plan from it. **Brief only → Quick Plan.** Neither → ask for a brief. Never guess a path or URL.
 
 ## Ground rules
 
+- **TIME MATTERS** — on by default; `--no-time-limit` turns it off. Treat the arguments as ending with `TIME MATTERS`: the user is waiting on this run, so finish quickly — research only what the plan needs, keep subagents few and their questions narrow, and do not re-read what you already have. Begin every subagent prompt with `TIME MATTERS.` Print `⏱️ [bt-plan] TIME MATTERS` at the start (`--no-time-limit`: print `⏱️ [bt-plan] No time limit`, and do not add it). Speed never skips a required step, the Heavy Plan cold-context audit, or anything the plan needs to be complete.
 - **Planning only — in every mode.** Research read-only; the plan file is the only file you write. Never implement a task, edit source, or run builds/tests — not even a trivial first task. Writing the plan is the last action; the user runs `bt-execute` separately.
 - **Babylon work:** if you have not read the Babylon Toolkit Agent Reference in this session, fetch and read it once: https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md — the authority for conventions and API; fetch sub-documents only when relevant, and again only if a context compaction made you forget it. If the fetch fails, stop and tell the user — do not guess at the API.
 - **Say what you are doing.** Before any step that takes more than a few seconds print one short line — `🔎 [bt-plan] <what> …` — and one when it returns; one line per subagent going out and coming back. A silent run looks like a hang and gets cancelled.

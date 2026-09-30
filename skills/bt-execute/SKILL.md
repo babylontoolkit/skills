@@ -7,7 +7,7 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch(domain:raw.githubus
 Run tasks from a plan: build each one with its tests, have an independent verifier check it, and only then tick its box. Follow the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md). The user's message after the skill name is the `arguments`.
 
 ```
-/bt-execute [--auto-pilot] [--strict] <plan> [task] [brief]
+/bt-execute [--auto-pilot] [--strict] [--no-time-limit] <plan> [task] [brief]
 
 /bt-execute @plan.md                         # NEXT: the next unchecked task
 /bt-execute @plan.md T4                      # one task
@@ -17,15 +17,17 @@ Run tasks from a plan: build each one with its tests, have an independent verifi
 /bt-execute @plan.md "mind the physics layer"    # a brief shapes HOW, never WHICH task
 /bt-execute --strict @plan.md ALL            # adversarial verifier on every task
 /bt-execute --auto-pilot @plan.md ALL        # unattended; combine with --strict if wanted
+/bt-execute --no-time-limit @plan.md ALL     # turn off the default TIME MATTERS mode
 ```
 
-- Strip `--auto-pilot` / `--strict` first (anywhere in the arguments, never part of the brief). `<plan>` is required — if missing, ask (auto-pilot: say so and end). Never guess a path.
+- Strip `--auto-pilot` / `--strict` / `--no-time-limit`, and any literal `TIME MATTERS`, first (anywhere in the arguments, never part of the brief). `<plan>` is required — if missing, ask (auto-pilot: say so and end). Never guess a path.
 - `[task]` is the token right after the plan, only if it is `T<id>`, `T<a>-T<b>`, `T<a>-`, `NEXT`, `NEXT:<n>` or `ALL` (case-insensitive). Otherwise it is part of the brief, and the task defaults to `NEXT` (`ALL` under auto-pilot). Never ask which task to run.
 - A range is a slice of the checklist **in file order** (sub-tasks like `T3.1` between the endpoints included). An unknown id → list the available ids and stop. A reversed range → error; never swap it. Tasks outside the slice are never touched.
 - Tasks already `- [x]` are skipped — that is what makes every mode resumable. Nothing left to do → say so and stop. Except in `ALL` / range / `NEXT:<n>` runs, do one task and do not continue to the next.
 
 ## Ground rules
 
+- **TIME MATTERS** — on by default; `--no-time-limit` turns it off. Treat the arguments as ending with `TIME MATTERS`: the user is waiting on this run, so finish quickly — follow the *Work fast* rules below to the letter, take the direct route to each task's Acceptance, and do not re-read what you already have. Begin every implementer and verifier prompt with `TIME MATTERS.` Print `⏱️ [bt-execute] TIME MATTERS` at the start (`--no-time-limit`: print `⏱️ [bt-execute] No time limit`, and do not add it). Speed never relaxes tests, the independent verifier, live checks, or "tick only on PASS".
 - **Scope.** Implement only the selected task(s). No "while I'm here" work on other tasks. Ambiguous, or blocked by an unfinished task → stop and tell the user *(auto-pilot: decide and log it)*.
 - **Read the docs once.** For Babylon work, if you have not read the Agent Reference this session, fetch it once — https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md — plus only the sub-documents the plan's tasks need. It is the authority for conventions and API. Fetch fails → stop and tell the user *(auto-pilot: retry 3×, then continue on what you know and log it)*. Read the plan's checklist and the parts of `SPEC.md` the tasks touch; re-read after a context compaction.
 - **SPEC.md** constrains how you build. If the code and SPEC.md disagree, stop and tell the user *(auto-pilot: decide which is right, fix SPEC.md in the same task, log it)*. When a task changes architecture, a system, a convention or a dependency, SPEC.md must end up matching — normally the plan's final `Update SPEC.md` task; if the plan has none, do it anyway; a new dependency is recorded in SPEC.md by the task that introduces it. Follow SPEC.md's "How to update this spec". **Write the product, never the procedure** — no capture protocols, tool lists, ledgers or gates: recorded there, they become a bar every later feature must clear.
