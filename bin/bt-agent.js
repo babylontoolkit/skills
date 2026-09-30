@@ -24,6 +24,7 @@ Commands
   uninstall    Remove what this tool installed, and nothing else
   doctor       Verify the install; prints INSTALL OK or INSTALL FAILED
   targets      List the available targets and their paths
+  bridge       Connect this computer to the App Builder (Unity/Blender); see bt-agent bridge --help
 
 Options
   --project            Install into the current directory instead of $HOME
@@ -44,6 +45,7 @@ Examples
   bt-agent install --project
   bt-agent doctor
   bt-agent update
+  bt-agent bridge --server https://<your App Builder>
 `;
 
 function parseArgs(argv) {
@@ -248,6 +250,13 @@ function printTargets(mode) {
 }
 
 function main() {
+  if (process.argv[2] === 'bridge') {
+    require('../lib/bridge/cli')
+      .runBridgeCli(process.argv.slice(3))
+      .then((code) => process.exit(code), (error) => { console.error(error.message); process.exit(1); });
+    return;
+  }
+
   let opts;
   try {
     opts = parseArgs(process.argv.slice(2));
@@ -366,7 +375,17 @@ function main() {
       case 'doctor': {
         const result = doctor(common);
         if (opts.json) console.log(JSON.stringify(result, null, 2));
-        else printDoctor(result);
+        else {
+          printDoctor(result);
+          console.log(
+            result.bridge.paired
+              ? `  bridge  paired with ${result.bridge.server}`
+              : '  bridge  not paired (bt-agent bridge --server <url>)'
+          );
+          console.log(
+            `  bridge  unity CLI ${result.bridge.unityCli ? 'found' : 'not found'}; ${result.bridge.blender ? 'Blender ' + result.bridge.blender : 'Blender not found'}`
+          );
+        }
         process.exit(result.ok ? 0 : 1);
         break;
       }

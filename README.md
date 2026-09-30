@@ -31,6 +31,7 @@ up the skills, instructions and configuration.
 | `bt-agent uninstall` | Remove what it installed — and nothing else |
 | `bt-agent doctor` | Verify the install; prints `INSTALL OK` or lists what is missing |
 | `bt-agent targets` | Show every target and the paths it writes to |
+| `bt-agent bridge` | Connect this computer to the App Builder so it can drive Unity and Blender |
 
 | Option | Effect |
 |--------|--------|
@@ -120,6 +121,43 @@ yourself is detected and left alone. Every modified file is backed up to `<file>
 Skill folders are tracked in `~/.babylon-toolkit/install-manifest.json`, so `update` and
 `uninstall` only ever touch folders this package installed — a skill you wrote yourself that
 happens to be named `bt-something` is safe.
+
+## Unity Bridge (App Builder)
+
+`bt-agent bridge` connects this computer to the Babylon Toolkit App Builder, so the builder's
+chat can drive the Unity Editor and Blender installed here.
+
+```bash
+bt-agent bridge --server https://<your App Builder>
+```
+
+The first run pairs the computer by code: the terminal prints an 8-character code, and you
+enter it in the App Builder (open your project, click the cube icon in the chat box). The
+device credential is saved to `~/.babylon-toolkit/bridge.json`, readable by you only, and
+later runs connect straight away. `--server` can also come from `BTK_BRIDGE_SERVER`; the
+Unity Bridge dialog in the App Builder shows the exact command to paste.
+
+| Option | Effect |
+|--------|--------|
+| `--server <url>` | The App Builder's address — `https://`, or `http://localhost` for development |
+| `--unity <path>` | A Unity project to serve (repeatable) |
+| `--blender <path>` | The Blender executable to use |
+| `--no-scripts` | Never run scripts on this computer, whatever the App Builder allows |
+
+`bt-agent bridge status` shows which App Builder this computer is paired with, and
+`bt-agent bridge logout --server <url>` unpairs it and deletes the credential.
+
+Everything the App Builder asks for falls into one of three tiers, and this computer enforces
+them itself:
+
+| Tier | What it covers | When it runs |
+|------|----------------|--------------|
+| allowed | Reading the project and ordinary edits | Straight away |
+| scripts | Running C# or Python scripts | Only when you allowed scripts for the project, and never with `--no-scripts` |
+| consent | Deleting, moving, renaming, building, changing project settings | Only after you approve it in the chat |
+
+The bridge runs only while this command runs — install never starts it. `bt-agent install`
+and `bt-agent update` never start, pair or schedule the bridge; press Ctrl-C to stop it.
 
 ## Skills
 
