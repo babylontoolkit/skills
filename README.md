@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.44)
+# Babylon Toolkit Desktop Agent (1.1.46)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -32,6 +32,7 @@ up the skills, instructions and configuration.
 | `bt-agent doctor` | Verify the install; prints `INSTALL OK` or lists what is missing |
 | `bt-agent targets` | Show every target and the paths it writes to |
 | `bt-agent bridge` | Connect this computer to the App Builder so it can drive Unity and Blender |
+| `bt-agent diskinfo` | Show where your disk space is going — read-only, macOS, Windows and Linux |
 
 | Option | Effect |
 |--------|--------|
@@ -43,6 +44,22 @@ up the skills, instructions and configuration.
 | `--no-self-update` | `update` only: reinstall the bundled files; do not fetch npm |
 | `--dry-run` | Print what would happen and change nothing |
 | `--json` | Machine-readable output |
+
+### Disk usage report
+
+```bash
+bt-agent diskinfo                 # print the report and save Desktop/disk-report-YYYY-MM-DD-HHMM.txt
+bt-agent diskinfo --no-save       # print only
+bt-agent diskinfo --out report.txt
+bt-agent diskinfo --json          # machine-readable
+```
+
+One read-only pass over your home folder and the main system folders (`/Applications`, `/Library`,
+`/usr/local` … on macOS; `Program Files`, `ProgramData` on Windows). It reports the volumes, the
+largest folders, known space hogs (Unity editors and caches, Xcode DerivedData and simulators,
+npm / Yarn / pnpm / pip / NuGet caches, Docker and WSL disks, VS Code's C++ cache, Steam, backups,
+Trash / Recycle Bin), every `node_modules`, the Unity `Library/` and Unreal `Intermediate/` folders
+that rebuild themselves, the largest files, and suggested cleanup commands. Nothing is deleted or run.
 
 ### Updating
 
