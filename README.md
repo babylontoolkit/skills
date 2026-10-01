@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.42)
+# Babylon Toolkit Desktop Agent (1.1.44)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -267,9 +267,13 @@ implementer writes the tests and the independent verifier judges them.
 ```
 
 Auto-pilot is for running a 50-task plan overnight. There is no one to ask, so `bt-execute`
-makes every call itself — from the plan's Decisions, then the Babylon Toolkit Agent Reference
-(Unity → interactive glTF → BabylonJS script components), then the codebase, then senior-developer
-default — and logs each one. Nothing is relaxed on quality: every task still has passing tests
+owns the whole pipeline — code, UI, shaders, generated art and audio, Blender, Unity, export,
+build, dev server and visual QA — and makes every call itself: it first looks the answer up in the
+brief, plan, spec and `SPEC.md`, then the Babylon Toolkit Agent Reference (Unity → interactive glTF
+→ BabylonJS script components), then the codebase, then senior-developer default — and logs each
+one. It never asks a question and never ends its
+turn until the requested range, or every task, is done; it stops early only for a missing plan, a
+bad range, a stop point named in the brief, or you telling it to stop. Nothing is relaxed on quality: every task still has passing tests
 and goes through an independent verifier, and a box only flips on a genuine PASS.
 What changes is that a failure never halts the run: a failing task gets a bounded fix loop (3
 attempts, 5 under `--strict`), is then marked `⏭️ DEFERRED (auto-pilot): <reason>` in the plan, and the run moves
