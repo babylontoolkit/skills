@@ -33,6 +33,7 @@ up the skills, instructions and configuration.
 | `bt-agent targets` | Show every target and the paths it writes to |
 | `bt-agent bridge` | Connect this computer to the App Builder so it can drive Unity and Blender |
 | `bt-agent diskinfo` | Show where your disk space is going — read-only, macOS, Windows and Linux |
+| `bt-agent kill` | Free a port or range of ports, stop processes by id, or list listening ports — macOS, Windows and Linux |
 
 | Option | Effect |
 |--------|--------|
@@ -60,6 +61,33 @@ largest folders, known space hogs (Unity editors and caches, Xcode DerivedData a
 npm / Yarn / pnpm / pip / NuGet caches, Docker and WSL disks, VS Code's C++ cache, Steam, backups,
 Trash / Recycle Bin), every `node_modules`, the Unity `Library/` and Unreal `Intermediate/` folders
 that rebuild themselves, the largest files, and suggested cleanup commands. Nothing is deleted or run.
+
+### Freeing ports
+
+```bash
+bt-agent kill --port 4444              # stop whatever is listening on port 4444
+bt-agent kill --port 4444 8888         # several ports (or 4444,8888)
+bt-agent kill --port 8000-8010         # an inclusive range
+bt-agent kill --pid 51234              # stop a process by id (or 51234,51240)
+bt-agent kill --list                   # every listening port with its process id and name
+bt-agent kill --list 3000-3999         # just these ports; stops nothing
+bt-agent kill --list --pid 51234       # the ports that process listens on
+bt-agent kill --port 4444 --force      # skip the polite request and force-kill at once
+bt-agent kill --pid 51234 --force      # the same for a process id (-9 works too)
+```
+
+Exactly one of `--port`, `--pid` or `--list` says what the values are, so a bare
+number is never guessed to be a port or a process id.
+
+Use it when a dev server is still holding its port and you need to restart it. With
+`--port`, only processes *listening* on a port are matched, so a browser tab connected to your dev
+server is left alone. On macOS and Linux each process gets SIGTERM, then SIGKILL if
+it is still running after 3 seconds. On Windows the process and its children are
+force-killed with `taskkill /T /F`. Afterwards the ports are checked again, and any
+process a watcher (nodemon, pm2 …) has already restarted is reported. Ports are found
+with `lsof` on macOS, `ss` (or `lsof`) on Linux, and `netstat` on Windows. A process
+owned by another user needs `sudo`. bt-agent will not stop itself, the system init
+process, or the Windows System process.
 
 ### Updating
 

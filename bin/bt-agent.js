@@ -26,6 +26,7 @@ Commands
   targets      List the available targets and their paths
   bridge       Connect this computer to the App Builder (Unity/Blender); see bt-agent bridge --help
   diskinfo     Show where your disk space is going (read-only); see bt-agent diskinfo --help
+  kill         Free ports / stop processes, or list listening ports; see bt-agent kill --help
 
 Options
   --project            Install into the current directory instead of $HOME
@@ -47,6 +48,8 @@ Examples
   bt-agent doctor
   bt-agent update
   bt-agent diskinfo
+  bt-agent kill --port 4444
+  bt-agent kill --list
   bt-agent bridge --install-service --pair <code from the Unity Bridge dialog>
 `;
 
@@ -262,6 +265,13 @@ function main() {
   if (process.argv[2] === 'diskinfo') {
     require('../lib/diskinfo/cli')
       .runDiskInfoCli(process.argv.slice(3))
+      .then((code) => process.exit(code), (error) => { console.error(error.message); process.exit(1); });
+    return;
+  }
+
+  if (process.argv[2] === 'kill') {
+    require('../lib/kill/cli')
+      .runKillCli(process.argv.slice(3))
       .then((code) => process.exit(code), (error) => { console.error(error.message); process.exit(1); });
     return;
   }
