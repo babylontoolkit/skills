@@ -133,7 +133,7 @@ Each prototype subagent gets: its **direction**, the **theme**, the **world anch
 3. **Produce assets** via any mix of the available workflows: Pinterest pulls for reference, **GPT Image 2** for stills, **KIE MCP servers (default) / the Higgsfield CLI (Kling, Seedance, etc.)** for motion/video, hand-authored WebGL/SVG/CSS. All assets stay faithful to the world anchor and live in the prototype's folder. **On Higgsfield, every generation goes through the reference's `scripts/hf-generate.mjs` wrapper** with `--out _prototypes/<NN-slug>/<file>`: the CLI alone only returns a CDN URL, and a prototype must never hot-link one. Local reference images are passed as file paths (`--image-references`, `--start-image`, `--end-image`) and uploaded automatically.
 4. **3D-hero-scroll directions:** follow *The 3D-hero-scroll batch rule* below.
 5. Run its own **iteration passes** (Step 4) before returning.
-6. **Write clean, readable code.** Every file follows the Coding Practices: clean, strictly typed TypeScript, meaningful full-word names (never one- or two-letter names or obfuscation), and code a human developer can read and maintain. The chosen prototype becomes the user's real front end, so its code must be maintainable.
+6. **Write clean, readable code.** Every file follows the Coding Practices: clean, professional TypeScript or JavaScript in the project's own language; meaningful full-word names, never one- or two-letter names or obfuscation; well-structured, readable, maintainable code for human developers; meaningful JSDoc on every class, function, method and public member. The chosen prototype becomes the user's real front end, so its code must be maintainable.
 
 ## The 3D-hero-scroll batch rule
 

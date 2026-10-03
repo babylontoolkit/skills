@@ -100,7 +100,7 @@ threshold AND every gate passes.**
 | **Perf** | the loop card's FPS / draw-call / load-time / memory budget is missed |
 | **Console** | any error in the browser console (warnings are reported, not fatal, unless the card says otherwise) |
 | **Component authority** | a protected `TOOLKIT.*` component was reimplemented, bypassed or deleted without the full replacement-evidence checklist in the round journal |
-| **Coding practices** | any code the round created or changed breaks the Agent Reference's **Coding Practices — ENFORCED**: needless `any` or loose typing, one- or two-letter or obfuscated names (outside the allowed loop counters, axis/`uv` names, toolkit aliases and names that bind to exported data), dead code or leftover `console.log`, or code a developer new to the project could not read and maintain. Quote the offending lines |
+| **Coding practices** | any code the round created or changed breaks the Agent Reference's **Coding Practices — ENFORCED**: TypeScript or JavaScript that is not clean and professional (needless `any` or loose typing, JavaScript without JSDoc type tags, code converted to the other language unasked), one- or two-letter or obfuscated names (outside the allowed loop counters, axis/`uv` names, toolkit aliases and names that bind to exported data), dead code or leftover `console.log`, a missing or meaningless JSDoc block on a class, function, method or public member, or code a developer new to the project could not read and maintain. Quote the offending lines |
 | **Camera lock** | the evidence was not captured from the transform recorded in `cameras.md` |
 | **Pipeline gate** | whatever the deliverable kind's pipeline reference declares (export-boundary integrity, GUID survival, licence tier …) |
 
