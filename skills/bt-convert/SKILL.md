@@ -8,6 +8,9 @@ Your goal is to convert source code to Babylon Toolkit based TypeScript. Always 
 * Create new typescript (.ts) files for converted code
 * Make sure to convert all source code, do **not** omit anything (methods, properties, comments, etc), convert everything according to instructions
 * If an interface is only referenced (not defined in the source code being converted), do **not** generate the interface, just reference it
+* Follow the Agent Reference's **Coding Practices — ENFORCED** in every converted file: clean, strictly typed TypeScript; meaningful full-word names, never one- or two-letter names or obfuscation; readable, maintainable code for human developers
+* Keep the source's public and serialized names (classes, methods, properties, fields) in camelCase, because exported Unity metadata binds to them by name. Give meaningful names to every local, parameter and helper the conversion introduces, and rename obfuscated or minified locals in the source to meaningful names
+* Before finishing, re-read every converted file against the Coding Practices and fix every violation
 
 ---
 

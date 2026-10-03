@@ -126,13 +126,14 @@ If the user wants a genuine faithful rebuild of **one specific** award-winning s
 
 Build the N prototypes **in parallel via subagents** — if a subagent-spawning/workflow tool is available (Claude Code's `Task`/Agent, a Workflow, or the host's equivalent), launch one per prototype (cap concurrency to what the host allows; queue the rest). If no subagent tool is available, build them sequentially yourself. Never call a subagent tool you don't have.
 
-Each prototype subagent gets: its **direction**, the **theme**, the **world anchor** (screenshots + extracted palette/mood/silhouettes), the **`--type`**, and the **asset workflows** available. It must:
+Each prototype subagent gets: its **direction**, the **theme**, the **world anchor** (screenshots + extracted palette/mood/silhouettes), the **`--type`**, and the **asset workflows** available, plus the full text of the Agent Reference's **Coding Practices — ENFORCED**. It must:
 
 1. **Own its folder.** Create `_prototypes/<NN-slug>/` and put **everything self-contained inside it** — markup, styles, scripts, and all generated/downloaded assets. No shared globals; a prototype is copy-out-able on its own.
 2. **Build to the Fable bar for its lens** — advanced 3D tactics, otherworldly animation, exceptional palette, novel type. Not a template with the colors swapped; a distinct, *mind-blowing* execution of that direction for this game. **Full-bleed console UI by default** (bt-design's *Layout Philosophy*): fill the whole viewport edge-to-edge like a console dashboard / game menu, not a centered fixed-width website — unless this direction is the noted contained exception.
 3. **Produce assets** via any mix of the available workflows: Pinterest pulls for reference, **GPT Image 2** for stills, **KIE MCP servers (default) / the Higgsfield CLI (Kling, Seedance, etc.)** for motion/video, hand-authored WebGL/SVG/CSS. All assets stay faithful to the world anchor and live in the prototype's folder. **On Higgsfield, every generation goes through the reference's `scripts/hf-generate.mjs` wrapper** with `--out _prototypes/<NN-slug>/<file>`: the CLI alone only returns a CDN URL, and a prototype must never hot-link one. Local reference images are passed as file paths (`--image-references`, `--start-image`, `--end-image`) and uploaded automatically.
 4. **3D-hero-scroll directions:** follow *The 3D-hero-scroll batch rule* below.
 5. Run its own **iteration passes** (Step 4) before returning.
+6. **Write clean, readable code.** Every file follows the Coding Practices: clean, strictly typed TypeScript, meaningful full-word names (never one- or two-letter names or obfuscation), and code a human developer can read and maintain. The chosen prototype becomes the user's real front end, so its code must be maintainable.
 
 ## The 3D-hero-scroll batch rule
 
