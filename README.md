@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.50)
+# Babylon Toolkit Desktop Agent (1.1.51)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -242,6 +242,7 @@ pair or schedule the bridge.
 | [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. Add `--grill-me` to be interviewed first, `--parity` to allow numeric parity bars in the acceptance criteria. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
 | [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive, and `--parity` for numeric parity gates instead of the default functional proof. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
 | [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task, a range (`T3-T7`, `T12-`, `NEXT:3`) or all remaining tasks from a plan/spec; with no task id it runs the next unchecked task. Add `--auto-pilot` for an unattended overnight run that never stops for human input, and `--strict` for an adversarial verifier on every task. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
+| [`bt-recon`](skills/bt-recon/SKILL.md) | `/bt-recon` | Deep-dive existing code — a subsystem named in a brief, or the whole codebase — and write an evidence-cited technical grounding spec (`_specs/<slug>_recon.md`) plus, when it has UI, a plain-language user guide (`_specs/<slug>_guide.md`). Built for taking over undocumented code; `bt-spec` and `bt-plan` read the recon as grounding. Includes an observe-only live pass when the brief gives a URL; `--refresh` updates a recon after code changes. |
 | [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. |
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
 | [`bt-landing`](skills/bt-landing/SKILL.md) | `/bt-landing` | Re-design the landing page, splash screen, preloader and custom overlays. |
