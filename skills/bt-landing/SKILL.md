@@ -85,6 +85,8 @@ REDESIGN — do not reskin — all three surfaces to the SAME design language as
 
 **The splash must NEVER be derived from the default Babylon splash (centered logo + spinner) — recoloring the default IS the failure.** Think out of the box: design the loading experience as a scene in this game's world, with a progress metaphor native to THIS game — a racer's start-lights counting down, a fuel gauge filling, a platformer's level assembling tile by tile, a warp drive charging — driven by the real progress value, not a bare bar under a logo. Atmosphere worth watching: staggered reveals, ambient motion, flavor text in the game's voice. There is no limit to what you can do here.
 
+**Loading progress you can show.** The runtime reports every loading state a splash can show: the scene download (`GameManager.EventBus` `"OnLoadProgress"`), then the asset preloader (a status line naming one heavy system at a time — terrain, skins, animations, navigation, water, ray tracing — a steady detail line, and one combined scene fraction) and the shader compile (both on `SceneManager.OnLoaderStatusObservable`); the splash stays up until the scene is really ready. The full table of states, the events and an example handler are in the Agent Reference [`ui-design-system.md`](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/ui-design-system.md), section *Loading progress you can show*. **You have full creative freedom.** These are the states the runtime reports, and the default splash screens show them as a status line, a bar and a corner detail line. A custom splash may present them in any way that fits the design — different wording, layout, animation, illustration, a single combined bar, per-system indicators, or none of the raw text at all. Do give the player a sense of real progress during heavy loading: show something that moves with the load (a bar, stage names, counts), never an endless "please wait".
+
 **ENGINE CONTRACT — splash element IDs are LAW (STRONGLY ENFORCED, zero exceptions):** the engine's runtime code shows and hides the splash screen and writes its label/status text by looking up these EXACT DOM ids/names — it cannot find renamed elements, and if it can't find them the splash NEVER hides and the scene underneath is never revealed:
 
 - `xbabylonjsSplashScreen` — the main splash screen panel (the root element the engine shows/hides)
@@ -102,7 +104,7 @@ Any redesign of the splash MUST keep every one of these elements present with it
 **Keep ONLY each surface's wiring; replace ALL of the visuals:**
 
 - `loading.tsx` re-exports `babylonLogo` / `spinnerLogo` that `splash.tsx` imports — keep those exports (or update `splash.tsx`'s import to match).
-- `splash.tsx` keeps its `GameManager.EventBus` `"OnLoadProgress"` subscription — that is REAL load progress; drive your metaphor from it.
+- `splash.tsx` keeps its `GameManager.EventBus` `"OnLoadProgress"` subscription and its `SceneManager.OnLoaderStatusObservable` subscription (both removed on cleanup) — together they are the REAL load progress; drive your metaphor from them.
 - `overlay.tsx` keeps `pointer-events: none` on its container so input reaches the canvas; only genuinely interactive elements get `pointer-events: auto`.
 - Never delete image files from disk (`public/babylon.png` + `public/spinner.png` are framework-required, whatever your design shows).
 - `src/chrome/**` runs in the viewer context, so it MAY import `GameManager`/`EventBus` and `useUnifiedNavigation` — through `'../babylon/…'` paths (Step 0).
