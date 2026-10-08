@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.51)
+# Babylon Toolkit Desktop Agent (1.1.52)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -326,8 +326,9 @@ attempts, 5 under `--strict`), is then marked `⏭️ DEFERRED (auto-pilot): <re
 on; deferred tasks get one more pass at the end. Each verified task is committed as a checkpoint
 on the current branch (an `autopilot/<plan>` branch is created if you are on `main`; nothing is
 ever pushed), and a `<plan>_autopilot.md` run log next to the plan records every task outcome,
-decision and deferral for you to read in the morning. Re-running the same command resumes and
-re-attempts anything deferred.
+decision and deferral for you to read in the morning, plus clock times per phase and per task
+(interactive runs log the clock times too) so bt-plan's time estimates can be recalibrated from
+real runs. Re-running the same command resumes and re-attempts anything deferred.
 
 One thing the skill cannot do is answer the host's tool-permission prompts — start the session
 in a non-prompting permission mode (Claude Code auto / bypass-permissions) and leave Unity,

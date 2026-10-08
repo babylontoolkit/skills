@@ -83,25 +83,32 @@ Print `✍️ [bt-plan] Writing _specs/<feature-name>_plan.md …`. The file has
 
 **`## Estimated execution time`** — **agent time, from the calibration below — never developer-hours, and never by adding up activities.** Builds, exports, captures and browser looks are *not* separate line items: they happen inside a task's own run and are already inside the per-task rate. Counting them separately is how a 10-hour plan gets estimated at 45 hours.
 
-`Total ≈ tasks × 17 min + phases × 10 min`, then give a range of **±30 %**. Nothing else is added:
+Rate each task by the **kind of work it does** (classify tasks, not the plan — most plans mix kinds), sum, then give a range of **−30 % / +40 %**. Nothing else is added — no per-phase overhead (it did not show up in the measurements):
 
-- **Do not budget fix rounds.** Measured across five completed plans: 4 fix rounds in 63 tasks — about one per 16 tasks. Add one round (20 min) only if the plan names a genuine unknown, and never more than one per plan. Defensively budgeting a round or two per phase was the single largest source of over-estimation.
-- **Do not add a further margin.** The ±30 % is the margin.
-- A task sits near the **top** of the range when it is parity work against a reference, drives two engines, or authors Unity/Blender content; near the **bottom** when it is ordinary code with unit tests. Multiply by ~2 for `proof: parity` only if the plan really carries numeric gates, and by ~2–3 for `bt-execute --strict`.
+| Kind | min/task | What puts a task here |
+| --- | --- | --- |
+| **Code** | 8 | Code + tests, at most a quick browser look or one small scripted export. |
+| **Live** | 18 | Proven by running it: live external APIs, browser game builds, live memory or perf runs in one engine, a visual match to a reference image. |
+| **Unity / parity / GPU** | 35 | Authoring or re-exporting Unity content, measured parity against Unity Play mode, GPU shader backends, perf A/B across beds, exporter DLL + runtime changed together. |
 
-**Calibration (measured 2026-09-23 from commit + transcript timestamps, five completed plans, 63 tasks, 23 phases, 20.6 h total, 0 deferred):**
+- **Do not budget fix rounds.** They are inside the rates: across the 2026-10 runs about one task in four needed a second attempt, and every one of those is already in the numbers. Defensively budgeting rounds per phase was the single largest source of over-estimation in the first calibration.
+- **Do not add a further margin.** The range is the margin. Do not discount for parallel phases either — the rates are wall-clock with bt-execute's usual parallelism.
+- **Outsized work:** a task that builds a compiler or transpiler, or must prove coverage across many Unity sample projects, runs about **2×** the Unity rate (shadergraph-transpiler-complete-coverage: 72 min/task). Multiply by ~2 for `proof: parity` only if the plan really carries numeric gates, and by ~2–3 for `bt-execute --strict` (neither measured yet).
+- **The estimate covers the plan as written.** Tasks added mid-run cost far more than planned ones — unity-terrain-system-parity's 17 planned tasks took about 6 h, the 9 added during the run about 21 h. Say so in the biggest-uncertainty line when the scope is still moving.
 
-| Plan | Tasks | Phases | Actual | min/task |
-| --- | --- | --- | --- | --- |
-| auto-exposure-parity | 8 | 3 | 1 h 19 | 9.9 |
-| procedural-skybox | 8 | 3 | 2 h 12 | 16.5 |
-| camera-antialiasing-parity | 11 | 4 | 2 h 56 | 16.0 |
-| camera-antialiasing-taa | 9 | 5 | 4 h 08 | 27.5 |
-| shuriken-particle-system (3 Unity projects, 9 promotions) | 27 | 8 | 9 h 59 | 22.2 |
+**Calibration (measured 2026-10-07 from transcript + commit timestamps; 21 clean bt-execute runs across Runtime and AgentWorkspace, 242 tasks, waits on the user and planning subagents excluded):**
 
-The formula predicts these within ±25 % except auto-exposure-parity, which came in twice as fast as any formula would guess. Every one of these plans estimated itself **2–4.5× too high**, so distrust a large number before you distrust a small one.
+| Kind | Plans (min/task) | Median |
+| --- | --- | --- |
+| Code | effort-selector 5 · scene-loading-progress 7 · unity-gzip-sidecar-binaries 10 · texture-image-deduplication 11 | 8.5 |
+| Live | auto-exposure-parity 10 · procedural-skybox 16 · camera-antialiasing-parity 16 · no-unbilled-usage 16 · kie-sound 16 · tool-loop 17 · media-gateways 18 · managed-agents-engine 21 · scene-dispose-memory-leaks 25 | 16.5 |
+| Unity / parity / GPU | shuriken-particle-system 22 · unity-gui-pipeline-parity 23 · unity-export-parity-gaps 27 · camera-antialiasing-taa 28 · hdrp-raster-parity-followup 31 · hdrp-complete-parity 37 · terrain-performance 38 · hdrp-raytracing-polyfill 40 | 29 |
 
-Write a table `Phase | Tasks | What makes it slow | Estimate`, then one **Total** line in hours (days only if over ~16 h), the `--strict` multiplier, and the biggest uncertainty in one line. If the total lands above ~30 min per task, the estimate is wrong before the plan is: re-check it. An estimate, never a pin.
+These rates put 17 of the 21 runs inside the −30 % / +40 % range and 20 of 21 within 0.6–1.6× (the old flat `tasks × 17 + phases × 10`: 13 of 21 within 0.6–1.6×), and the misses ran fast, not slow. Under the flat rate, plans estimated themselves about **2.5× too high** when the work was mostly code and up to **2× too low** when it was Unity, parity or GPU work — wrong in both directions, so classify every task.
+
+To recalibrate later, read the `⏱` lines bt-execute writes to each `<plan>_autopilot.md` — they carry the plan's estimate, active minutes per phase and per run, and waits already separated out.
+
+Write a table `Phase | Tasks | Kind (code / live / Unity) | What makes it slow | Estimate`, then one **Total** line in hours (days only if over ~16 h), the `--strict` multiplier, and the biggest uncertainty in one line. If the total averages above ~40 or below ~6 min per task, the estimate is wrong before the plan is: re-check it. An estimate, never a pin.
 
 **`## How to execute this plan`** — this text verbatim:
 
