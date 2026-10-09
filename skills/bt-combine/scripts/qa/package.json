@@ -1,0 +1,9 @@
+{
+  "name": "bt-combine-qa",
+  "private": true,
+  "type": "module",
+  "description": "Browser and glTF checks for the bt-combine skill. Installed into <project>/_combine/.qa-tools, never into the Unity project's own package.json.",
+  "dependencies": {
+    "puppeteer-core": "23.11.1"
+  }
+}

@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.52)
+# Babylon Toolkit Desktop Agent (1.1.54)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -251,6 +251,7 @@ pair or schedule the bridge.
 | [`bt-design`](skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. |
 | [`bt-hero`](skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. |
 | [`bt-atlas`](skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. |
+| [`bt-combine`](skills/bt-combine/SKILL.md) | `/bt-combine` | Analyse a Unity scene and merge the static meshes and LOD groups that can safely be merged (packed lightmap UVs, LOD clusters with corrected switch distances), on a copy of the scene — then re-bake, export and verify against the original in Unity and the browser. |
 
 Every tool derives the slash-command from the **folder name** (`bt-spec/` → `/bt-spec`) and reads
 the frontmatter `name` + `description` to decide when the skill applies. The `allowed-tools`
@@ -362,7 +363,7 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 > for everything else (Codex, Copilot, Gemini CLI, Antigravity). By default use the
 > GLOBAL (per-user home) locations; use the project-local locations only when the user
 > explicitly asks for a project install. Copy **whole folders** into each — the
-> `bt-atlas/scripts/` assets must be present in every location.
+> `bt-atlas/scripts/` and `bt-combine/scripts/` assets must be present in every location.
 
 
 # Babylon Toolkit Loop Engineering (Gauntlet Loop)
