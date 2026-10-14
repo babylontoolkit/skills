@@ -1,5 +1,5 @@
 /**
- * bt-combine export stats: compares exported .gltf scenes — drawn mesh nodes, meshes, primitives (draw calls before
+ * bt-optimize export stats: compares exported .gltf scenes — drawn mesh nodes, meshes, primitives (draw calls before
  * LOD selection), materials, textures, drawn vertices and the size on disk of the .gltf plus its buffers.
  *
  * Usage:

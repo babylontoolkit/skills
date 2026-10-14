@@ -1,6 +1,6 @@
 ---
 name: bt-recon
-description: "The Babylon Toolkit Recon Skill deep-dives existing code — a subsystem named in a brief, or the whole codebase — and writes a comprehensive, evidence-cited technical grounding spec (`_specs/<slug>_recon.md`) plus, when the scope has UI, a plain-language user guide (`_specs/<slug>_guide.md`), for maintaining inherited or undocumented code and grounding future bt-spec features. Use when asked to document, reverse-engineer, explain, map or take over existing code (e.g. `bt-recon the &session=camera system`, `bt-recon the whole codebase`). Not a diff or bug review."
+description: "The Babylon Toolkit Recon Skill deep-dives existing code — a subsystem named in a brief, or the whole codebase — and writes a comprehensive, evidence-cited technical grounding spec (`.agents/recon/<slug>_recon.md`) plus, when the scope has UI, a plain-language user guide (`.agents/recon/<slug>_guide.md`), for maintaining inherited or undocumented code and grounding future bt-spec features. Use when asked to document, reverse-engineer, explain, map or take over existing code (e.g. `bt-recon the &session=camera system`, `bt-recon the whole codebase`). Not a diff or bug review."
 allowed-tools: Read, Grep, Glob, Write, Bash(git log:*), Bash(git show:*), Bash(git blame:*), Bash(git rev-parse:*), Bash(git ls-files:*), Bash(git diff:*), WebFetch(domain:raw.githubusercontent.com), AskUserQuestion, Agent, Task
 ---
 
@@ -8,26 +8,26 @@ Run reconnaissance on existing code nobody has documented — one subsystem or t
 
 ```
 /bt-recon [--guide|--no-guide] [--no-live] [--quick] [--out <dir>] <brief>
-/bt-recon --refresh @_specs/<slug>_recon.md
+/bt-recon --refresh @.agents/recon/<slug>_recon.md
 
 /bt-recon "the default camera system"
 /bt-recon "the save/load pipeline"
 /bt-recon "the whole codebase"
 /bt-recon --no-guide "the physics layer helpers in src/physics"
-/bt-recon --refresh @_specs/session-camera_recon.md       # update an existing recon after code changes
+/bt-recon --refresh @.agents/recon/session-camera_recon.md       # update an existing recon after code changes
 ```
 
 - `--guide` — always write the user guide. `--no-guide` — never write it. Neither → write it when the scope has UI — anything a person operates (Step 8).
 - `--no-live` — skip the live pass (Step 5) even when the brief gives a URL.
 - `--quick` — a lighter recon: one reader per slice, no coverage audit (Step 6). The output keeps the same sections.
-- `--out <dir>` — write the outputs to `<dir>` instead of `_specs/`.
+- `--out <dir>` — write the outputs to `<dir>` instead of `.agents/recon/`.
 - `--refresh @<recon file>` — update an existing recon against what changed since it was written (Refresh mode, at the end).
 - Strip the flags first; they are never part of the brief or the file name. No brief → ask for one. Never guess a path or URL.
 
 ## Ground rules
 
 - **Thorough by default.** Unlike the other bt-* skills, recon has no TIME MATTERS default: the whole point is that nothing is missed. Print `🔬 [bt-recon] Deep recon` at the start (`--quick`: `⚡ [bt-recon] Quick recon`). Still do not re-read what you already have.
-- **Read-only on the project.** Research only. The files you write are the recon doc, the guide, and screenshots under `_specs/<slug>_recon/` — nothing else. No source edits, no builds, no installs, no tests, no shell commands beyond the read-only `git` commands above.
+- **Read-only on the project.** Research only. The files you write are the recon doc, the guide, and screenshots under `.agents/recon/<slug>_recon/` — nothing else. No source edits, no builds, no installs, no tests, no shell commands beyond the read-only `git` commands above.
 - **Evidence or it is unknown.** Every factual claim cites `path:line` (or `path:start-end`) and carries one confidence tag: `[code]` read in the source · `[live]` seen in the running app · `[history]` from git history · `[inferred]` deduced, with the reason in the same line. Anything you cannot establish goes in `## Unknowns` with what would settle it. Never fill a gap with a plausible guess — an inherited system is exactly where a confident wrong guess does the most damage.
 - **Write the system, not the review process.** The recon describes what the code does and why. It never records how the recon was carried out (subagent counts, tool lists, audit logs).
 - **Babylon work:** if the scope uses BabylonJS or the Babylon Toolkit and you have not read the Babylon Toolkit Agent Reference in this session, fetch and read it once: https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md — it is the authority for the API and conventions the code is built on, so it tells you what is toolkit behavior and what is project code. Fetch its sub-documents only when relevant. If the fetch fails, stop and tell the user.
@@ -43,7 +43,7 @@ From the flag-stripped brief derive `recon_title` (Title Case, e.g. `Session Cam
 
 Note any URL (it enables the live pass), and any audience or emphasis hints ("focus on the CMS endpoints") — emphasis deepens a section, it never drops one. If you cannot infer a sensible title, ask.
 
-If `_specs/<recon_slug>_recon.md` already exists, ask whether to refresh it (Refresh mode) or replace it. Never overwrite it silently.
+If `.agents/recon/<recon_slug>_recon.md` already exists, ask whether to refresh it (Refresh mode) or replace it. Never overwrite it silently.
 
 ## Step 2. Locate and map the scope
 
@@ -91,7 +91,7 @@ Runs when the brief gives a URL and your host has a browser tool (e.g. the Chrom
 **Observe-only, without exception.** Never click Save, Delete, Publish, Submit, Upload or anything whose handler (from Step 3) writes data. Never send, replay or let the page send a request that changes data on a real backend (POST / PUT / PATCH / DELETE) through an action of yours. Open, tab, hover, toggle a panel's visibility, pan or orbit the view — fine. Requests the page makes on its own while loading are observed, never triggered. A write path stays documented from the code and tagged `[code]`.
 
 1. Open the URL, wait for the app to settle, and screenshot the initial state.
-2. Open each panel, dialog and mode that safe navigation reaches (the Step 3 UI inventory is your checklist) and screenshot each one to `_specs/<slug>_recon/<nn>-<panel-slug>.png`.
+2. Open each panel, dialog and mode that safe navigation reaches (the Step 3 UI inventory is your checklist) and screenshot each one to `.agents/recon/<slug>_recon/<nn>-<panel-slug>.png`.
 3. Record the network requests the page makes: real endpoint URLs, status codes, and the response shapes of the reads (field names and types — never copy secrets, tokens or personal data into the docs).
 4. Record console errors and warnings.
 5. Reconcile: upgrade each claim the run confirmed to `[live]`; flag every contradiction between code and runtime in the doc — a contradiction usually means a stale code path or a different deployed build, and is worth recording either way.
@@ -108,16 +108,16 @@ Fix every gap — re-read the source rather than trusting the auditor's summary 
 
 ## Step 7. Write the recon doc
 
-Print `✍️ [bt-recon] Writing _specs/<slug>_recon.md …` and write it to `_specs/<slug>_recon.md` (or `--out`). Get the header `commit` from `git rev-parse --short HEAD` (no git → `commit: n/a`).
+Print `✍️ [bt-recon] Writing .agents/recon/<slug>_recon.md …` and write it to `.agents/recon/<slug>_recon.md` (or `--out`). Get the header `commit` from `git rev-parse --short HEAD` (no git → `commit: n/a`).
 
-Include every section. A section that genuinely does not apply says so in one line (`No network I/O in this scope [code].`) — never delete the heading, so the next reader knows it was checked. For a codebase recon with more than about 6 major systems, make this file the index (header, Summary, Architecture, End-to-End Flows, Known Issues, Extension Points, History, Unknowns, Files Reviewed) and give each system its own chapter at `_specs/<slug>_recon/<system-slug>.md` using the same template.
+Include every section. A section that genuinely does not apply says so in one line (`No network I/O in this scope [code].`) — never delete the heading, so the next reader knows it was checked. For a codebase recon with more than about 6 major systems, make this file the index (header, Summary, Architecture, End-to-End Flows, Known Issues, Extension Points, History, Unknowns, Files Reviewed) and give each system its own chapter at `.agents/recon/<slug>_recon/<system-slug>.md` using the same template.
 
 ```markdown
 # Recon: <recon_title>
 
 scope: <the brief, one line> · kind: <subsystem|codebase>
 commit: <short sha> · date: <YYYY-MM-DD> · files: <n> (<total> lines)
-guide: <_specs/<slug>_guide.md | none> · live: <yes | no (<reason>)>
+guide: <.agents/recon/<slug>_guide.md | none> · live: <yes | no (<reason>)>
 confidence tags: [code] read in source · [live] seen running · [history] from git · [inferred] deduced
 
 ## Summary
@@ -182,9 +182,9 @@ confidence tags: [code] read in source · [live] seen running · [history] from 
 
 ## Step 8. Write the user guide (when the scope has UI)
 
-Write `_specs/<slug>_guide.md` when the scope has anything a person operates — panels, controls, modes, gestures, outputs they use — or with `--guide`; skip it under `--no-guide` or when there is no UI (and set `guide: none` in the recon header). Print `✍️ [bt-recon] Writing _specs/<slug>_guide.md …`.
+Write `.agents/recon/<slug>_guide.md` when the scope has anything a person operates — panels, controls, modes, gestures, outputs they use — or with `--guide`; skip it under `--no-guide` or when there is no UI (and set `guide: none` in the recon header). Print `✍️ [bt-recon] Writing .agents/recon/<slug>_guide.md …`.
 
-The reader has never seen the feature and does not read code: plain language, no code, no `path:line`, every term explained on first use. It must agree with the recon doc — it is the same facts told as tasks. Use the live screenshots wherever they exist (relative links into `_specs/<slug>_recon/`). Anything the recon could not confirm is stated with a short caveat rather than presented as certain.
+The reader has never seen the feature and does not read code: plain language, no code, no `path:line`, every term explained on first use. It must agree with the recon doc — it is the same facts told as tasks. Use the live screenshots wherever they exist (relative links into `.agents/recon/<slug>_recon/`). Anything the recon could not confirm is stated with a short caveat rather than presented as certain.
 
 ```markdown
 # <recon_title> — User Guide
@@ -221,8 +221,8 @@ The reader has never seen the feature and does not read code: plain language, no
 ## Step 9. Report
 
 ```
-Recon:  _specs/<slug>_recon.md
-Guide:  _specs/<slug>_guide.md | none (<why>)
+Recon:  .agents/recon/<slug>_recon.md
+Guide:  .agents/recon/<slug>_guide.md | none (<why>)
 Scope:  <n> files, <total> lines · live: <yes|no>
 Claims: <n> [code] · <n> [live] · <n> [history] · <n> [inferred] · <n> unknowns
 Top risks: <three one-liners from Known Issues>

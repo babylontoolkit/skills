@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.54)
+# Babylon Toolkit Desktop Agent (1.1.55)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -242,7 +242,7 @@ pair or schedule the bridge.
 | [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch. Add `--grill-me` to be interviewed first, `--parity` to allow numeric parity bars in the acceptance criteria. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
 | [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive, and `--parity` for numeric parity gates instead of the default functional proof. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
 | [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task, a range (`T3-T7`, `T12-`, `NEXT:3`) or all remaining tasks from a plan/spec; with no task id it runs the next unchecked task. Add `--auto-pilot` for an unattended overnight run that never stops for human input, and `--strict` for an adversarial verifier on every task. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
-| [`bt-recon`](skills/bt-recon/SKILL.md) | `/bt-recon` | Deep-dive existing code — a subsystem named in a brief, or the whole codebase — and write an evidence-cited technical grounding spec (`_specs/<slug>_recon.md`) plus, when it has UI, a plain-language user guide (`_specs/<slug>_guide.md`). Built for taking over undocumented code; `bt-spec` and `bt-plan` read the recon as grounding. Includes an observe-only live pass when the brief gives a URL; `--refresh` updates a recon after code changes. |
+| [`bt-recon`](skills/bt-recon/SKILL.md) | `/bt-recon` | Deep-dive existing code — a subsystem named in a brief, or the whole codebase — and write an evidence-cited technical grounding spec (`.agents/recon/<slug>_recon.md`) plus, when it has UI, a plain-language user guide (`.agents/recon/<slug>_guide.md`). Built for taking over undocumented code; `bt-spec` and `bt-plan` read the recon as grounding. Includes an observe-only live pass when the brief gives a URL; `--refresh` updates a recon after code changes. |
 | [`bt-convert`](skills/bt-convert/SKILL.md) | `/bt-convert` | Convert source code to Babylon Toolkit TypeScript. |
 | [`bt-copycat`](skills/bt-copycat/SKILL.md) | `/bt-copycat` | Re-create the specified website adapted to specified genre. |
 | [`bt-landing`](skills/bt-landing/SKILL.md) | `/bt-landing` | Re-design the landing page, splash screen, preloader and custom overlays. |
@@ -251,7 +251,7 @@ pair or schedule the bridge.
 | [`bt-design`](skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. |
 | [`bt-hero`](skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. |
 | [`bt-atlas`](skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. |
-| [`bt-combine`](skills/bt-combine/SKILL.md) | `/bt-combine` | Analyse a Unity scene and merge the static meshes and LOD groups that can safely be merged (packed lightmap UVs, LOD clusters with corrected switch distances), on a copy of the scene — then re-bake, export and verify against the original in Unity and the browser. |
+| [`bt-optimize`](skills/bt-optimize/SKILL.md) | `/bt-optimize` | Make an exported Unity scene run fast in the browser: profile the BabylonJS frame (draw calls per pass, lights, shadows, post-processing, resolution, materials, textures), fix the causes on a copy of the scene — runtime lights, shadows, post, exporter settings, static / lightmap / mirrored unlocks — and merge static meshes and LOD groups (packed lightmap UVs, LOD clusters); then re-bake, export and verify frame rate and look against the original. `--no-combine`, `--combine-only`. |
 
 Every tool derives the slash-command from the **folder name** (`bt-spec/` → `/bt-spec`) and reads
 the frontmatter `name` + `description` to decide when the skill applies. The `allowed-tools`
@@ -288,8 +288,8 @@ Docs are read once by the orchestrator and handed to subagents as a brief instea
 subagent re-fetching the Agent Reference.
 
 ```
-/bt-execute --strict @_specs/<feature>_plan.md ALL
-/bt-execute --auto-pilot --strict @_specs/<feature>_plan.md ALL
+/bt-execute --strict @.agents/specs/<feature>_plan.md ALL
+/bt-execute --auto-pilot --strict @.agents/specs/<feature>_plan.md ALL
 ```
 
 Proof is sized the same way. By default a feature is proven **functionally**: tests, cheap
@@ -310,7 +310,7 @@ implementer writes the tests and the independent verifier judges them.
 ### Unattended runs (`/bt-execute --auto-pilot`)
 
 ```
-/bt-execute --auto-pilot @_specs/<feature>_plan.md ALL
+/bt-execute --auto-pilot @.agents/specs/<feature>_plan.md ALL
 ```
 
 Auto-pilot is for running a 50-task plan overnight. There is no one to ask, so `bt-execute`
@@ -363,12 +363,12 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 > for everything else (Codex, Copilot, Gemini CLI, Antigravity). By default use the
 > GLOBAL (per-user home) locations; use the project-local locations only when the user
 > explicitly asks for a project install. Copy **whole folders** into each — the
-> `bt-atlas/scripts/` and `bt-combine/scripts/` assets must be present in every location.
+> `bt-atlas/scripts/` and `bt-optimize/scripts/` assets must be present in every location.
 
 
 # Babylon Toolkit Loop Engineering (Gauntlet Loop)
 
-**What it is in one line:** you give it a brief and a quality bar; it interviews you, locks a **target image** and the **cameras** every screenshot is taken from, writes a loop card, then runs rounds of *build → capture real evidence → fresh harsh critic scores a rubric and returns the full gap list → record* until the success condition passes or a boundary fires — building with **BabylonJS + the Babylon Toolkit, never Three.js**. All state lives in `_gauntlet/<name>/`, so you can stop any time and resume days or weeks later.
+**What it is in one line:** you give it a brief and a quality bar; it interviews you, locks a **target image** and the **cameras** every screenshot is taken from, writes a loop card, then runs rounds of *build → capture real evidence → fresh harsh critic scores a rubric and returns the full gap list → record* until the success condition passes or a boundary fires — building with **BabylonJS + the Babylon Toolkit, never Three.js**. All state lives in `.agents/gauntlet/<name>/`, so you can stop any time and resume days or weeks later.
 
 ### Two deliverable kinds, one loop
 
@@ -413,7 +413,7 @@ Name it yourself and pick the template explicitly:
 /bt-gauntlet --name:cod-fps --template:gauntlet I want you to build a first-person shooter ...
 ```
 
-Attach reference screenshots/clips with the message — they become the locked target in `_gauntlet/cod-fps/reference/`. If you attach nothing, the interview generates the target instead and shows it to you before anything is built.
+Attach reference screenshots/clips with the message — they become the locked target in `.agents/gauntlet/cod-fps/reference/`. If you attach nothing, the interview generates the target instead and shows it to you before anything is built.
 
 ## 2. Choose a template
 
@@ -462,7 +462,7 @@ You can also just interrupt at any time — parking is only the polite version.
 
 ## 5. Run several gauntlets side by side
 
-Each job owns its own `_gauntlet/<name>/` folder — as many as you like, fully independent budgets, rounds, references, and evidence:
+Each job owns its own `.agents/gauntlet/<name>/` folder — as many as you like, fully independent budgets, rounds, references, and evidence:
 
 ```
 /bt-gauntlet --name:cod-fps <FPS brief>
@@ -478,7 +478,7 @@ A new gauntlet whose name collides with an existing job is an error — it will 
 
 ## 6. Read the workspace while it's parked
 
-Everything is plain markdown/media under `_gauntlet/<name>/` — inspect it in your editor between sessions:
+Everything is plain markdown/media under `.agents/gauntlet/<name>/` — inspect it in your editor between sessions:
 
 | File | What you'll find |
 | --- | --- |
@@ -496,7 +496,7 @@ Want to redirect the loop? Edit `progress.md`'s `NEXT ACTION` (or part prioritie
 Hand it a **pre-filled loop card** (either template with every slot answered, including `<NAME>`) and it starts immediately, no questions:
 
 ```
-/bt-gauntlet --card:_specs/racing-game_gauntlet-card.md --rounds:10
+/bt-gauntlet --card:.agents/specs/racing-game_gauntlet-card.md --rounds:10
 ```
 
 If any slot is unfilled or vague it STOPS and tells you which — it never guesses. This is the entry point used by the spec workflow below, and handy any time you want to author the card by hand.
@@ -515,8 +515,8 @@ Typical two-phase sequence for a real game:
 ```
 # Phase 1 — foundation (checklist-shaped work: scaffold, controller, physics, HUD)
 /bt-spec <feature brief>
-/bt-plan @_specs/<feature>_spec.md
-/bt-execute @_specs/<feature>_plan.md ALL
+/bt-plan @.agents/specs/<feature>_spec.md
+/bt-execute @.agents/specs/<feature>_plan.md ALL
 
 # Phase 2 — quality (reference-bar work on top of what now exists)
 /bt-gauntlet --name:aaa-polish <polish brief + reference media>
@@ -528,7 +528,7 @@ Or fold the gauntlet INTO a spec run by naming it in the brief:
 /bt-spec Build the racing game, then polish it to Gran Turismo quality using bt-gauntlet
 ```
 
-In that flow, bt-spec runs the gauntlet interview at spec time and writes the pre-filled card (`_specs/<feature>_gauntlet-card.md`); bt-plan makes the gauntlet the final task invoking `--card:`; bt-execute re-enters a parked job via `--resume <name>` on each `NEXT` and flips the task's checkbox only when the job genuinely reports DONE.
+In that flow, bt-spec runs the gauntlet interview at spec time and writes the pre-filled card (`.agents/specs/<feature>_gauntlet-card.md`); bt-plan makes the gauntlet the final task invoking `--card:`; bt-execute re-enters a parked job via `--resume <name>` on each `NEXT` and flips the task's checkbox only when the job genuinely reports DONE.
 
 ## 9. Which method should I use for making games? (recommendation)
 
@@ -545,8 +545,8 @@ Here's the reasoning:
 ```
 # Phase 1 — foundation (cheap, deterministic, checkbox-resumable)
 /bt-spec  <game systems brief>
-/bt-plan  @_specs/<feature>_spec.md
-/bt-execute @_specs/<feature>_plan.md ALL
+/bt-plan  @.agents/specs/<feature>_spec.md
+/bt-execute @.agents/specs/<feature>_plan.md ALL
 
 # Phase 2 — quality (reference-chasing, critic-judged, round-resumable)
 /bt-gauntlet --name:aaa-polish <polish brief + reference screenshots>
@@ -578,7 +578,7 @@ Keep the layering straight:
 | | The native driver (`/loop`, `/goal`) | The gauntlet |
 | --- | --- | --- |
 | Job | *When* to re-poke the agent | *What* a round is: build → evidence → fresh critic → record |
-| Survives session end / limits | No | Yes — `_gauntlet/<name>/` + `--resume` |
+| Survives session end / limits | No | Yes — `.agents/gauntlet/<name>/` + `--resume` |
 | Portable across hosts | Each host different; some have nothing | Identical everywhere |
 
 This is an operator convenience you apply from the outside. The SKILL.md deliberately never references any native loop tool, so the skill stays fully portable — on a host with no such feature, you just re-invoke `--resume` yourself.

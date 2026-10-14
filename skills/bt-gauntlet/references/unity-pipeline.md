@@ -51,7 +51,7 @@ scenes; geometry, UVs, PBR maps, LODs and skinning for models.
 ## 1. Prerequisite gate — before round 1, and again on every resume
 
 **A gauntlet that starts without these spends its whole budget polishing something that never exports.**
-Run the gate, write the result to `_gauntlet/<name>/pipeline.md`, and refuse to start if it fails.
+Run the gate, write the result to `.agents/gauntlet/<name>/pipeline.md`, and refuse to start if it fails.
 
 ```bash
 unity command bt_status --project-path "$PROJ"
@@ -319,8 +319,8 @@ inline, so decode it to wherever the evidence lives (a `--save_path` would land 
 ```bash
 unity command capture_game_view --camera gauntlet_hero --width 1920 --height 1080 \
   --project-path "$PROJ" --result-only | jq -r .base64 | base64 -d \
-  > "_gauntlet/<name>/evidence/round-12-p7-hero.png"
-file "_gauntlet/<name>/evidence/round-12-p7-hero.png"      # PNG image data, 1920 x 1080
+  > ".agents/gauntlet/<name>/evidence/round-12-p7-hero.png"
+file ".agents/gauntlet/<name>/evidence/round-12-p7-hero.png"      # PNG image data, 1920 x 1080
 ```
 
 > Do not hand-roll `Camera.Render()` into a `RenderTexture` from `eval`: under URP in a batch Editor that

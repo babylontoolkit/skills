@@ -1,5 +1,5 @@
 /**
- * bt-combine browser check: loads each exported scene in the toolkit's player page (headless Chrome), captures the
+ * bt-optimize browser check: loads each exported scene in the toolkit's player page (headless Chrome), captures the
  * same moments after load, and records console errors and load time. Comparing captures of the source scene and the
  * combined scene at the same moment shows whether a merge changed what the player sees (time-driven flythroughs land
  * on the same frame within a second or so; capture a burst to line them up).

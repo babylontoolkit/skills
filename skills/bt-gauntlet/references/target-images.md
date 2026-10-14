@@ -12,7 +12,7 @@ gap to it.
 
 **In priority order:**
 
-1. **The user supplied reference media.** Use it directly. Copy into `_gauntlet/<name>/reference/`, named
+1. **The user supplied reference media.** Use it directly. Copy into `.agents/gauntlet/<name>/reference/`, named
    per part/camera where possible (`hero-01.png`, `alley-02.png`).
 2. **There is an existing artifact to improve.** Capture the current state first, then feed that screenshot
    to the image model as the **baseline** and ask for a refinement along the user's direction — so the
@@ -37,7 +37,7 @@ the interview, and record it in `pipeline.md` so a resumed session uses the same
 generate_image(prompt, out_path, reference_paths?, model?, aspect_ratio?, resolution?, output_format?)
 ```
 
-- `out_path` → `_gauntlet/<name>/reference/target-<camera>.png`
+- `out_path` → `.agents/gauntlet/<name>/reference/target-<camera>.png`
 - `reference_paths` → the current-state screenshot for the refinement path (up to 14 files)
 - `aspect_ratio` → match the locked camera's aspect; `resolution: "2K"` or `"4K"`; `output_format: "png"`
 
@@ -63,7 +63,7 @@ Higgsfield rules for this loop:
 - **Sign-in is the user's.** If the CLI isn't signed in, start `higgsfield auth login` in the background and
   have the user approve it in the browser. Select the workspace (`workspace list` → `workspace set <id>`)
   before anything else.
-- **Never hot-link** a Higgsfield CDN URL. The locked target must be a file inside `_gauntlet/<name>/`,
+- **Never hot-link** a Higgsfield CDN URL. The locked target must be a file inside `.agents/gauntlet/<name>/`,
   which the wrapper guarantees.
 - For several independent images (one per locked camera), run the wrapper calls in parallel from the shell,
   each with its own `--out`.
@@ -118,8 +118,8 @@ For `unity` jobs the boundary is concrete: the 73 scene-metadata keys the export
 Once the target is agreed, **it is frozen for the run.** Record in the loop card:
 
 ```
-REFERENCE: _gauntlet/<name>/reference/target-hero.png  (locked round 1, 2026-09-09)
-           _gauntlet/<name>/reference/target-alley.png (locked round 1, 2026-09-09)
+REFERENCE: .agents/gauntlet/<name>/reference/target-hero.png  (locked round 1, 2026-09-09)
+           .agents/gauntlet/<name>/reference/target-alley.png (locked round 1, 2026-09-09)
 ```
 
 A moving target makes every score incomparable and every failed-approach log meaningless. If the user
@@ -136,7 +136,7 @@ must be re-judged, and reset those parts' best-score history. Never silently reg
 ## 5. Cameras — one target per locked camera
 
 **A comparison against a target image is meaningless if the viewpoint drifts.** Every target image is paired
-with exactly one locked camera, recorded in `_gauntlet/<name>/cameras.md`:
+with exactly one locked camera, recorded in `.agents/gauntlet/<name>/cameras.md`:
 
 ```markdown
 # Locked cameras

@@ -1,8 +1,8 @@
 {
-  "name": "bt-combine-qa",
+  "name": "bt-optimize-qa",
   "private": true,
   "type": "module",
-  "description": "Browser and glTF checks for the bt-combine skill. Installed into <project>/_combine/.qa-tools, never into the Unity project's own package.json.",
+  "description": "Browser profiling, comparison and glTF checks for the bt-optimize skill. Installed into <project>/.agents/optimize/.qa-tools, never into the Unity project's own package.json.",
   "dependencies": {
     "puppeteer-core": "23.11.1"
   }

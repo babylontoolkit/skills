@@ -1,6 +1,6 @@
 ---
 name: bt-gauntlet
-description: "The Babylon Toolkit Gauntlet Skill runs a loop-engineering gauntlet: builders versus fresh harsh critics, scored against a LOCKED target image from LOCKED cameras, looping until a success condition, boundary, or stall rule stops it. Two deliverable kinds share one loop — BabylonJS / Babylon Toolkit web games, and anything authored in Unity (game levels and the individual assets in them: baked GI, IBL, reflection probes, terrain, fog, tonemapping, materials, models), with headless Blender as the tool for low-level model work. Unity plus the Toolkit exporter is the content-creation surface and asset manager, shipping interactive glTF that BabylonJS loads; iteration stays inside Unity on camera snapshots, relying on Unity→Babylon parity, with export + browser checkpoints at milestones rather than every round. Fully RESUMABLE: each job lives in its own _gauntlet/<name>/ workspace, so the user can stop any time (daily limits, calling it a night) and continue weeks later in a brand-new session with `/bt-gauntlet --resume <name>`. Use for a long-running, self-improving build of an ambitious game artifact, level, or asset (e.g. `/bt-gauntlet build me a rain-soaked neon alley level at the fidelity of this reference image`)."
+description: "The Babylon Toolkit Gauntlet Skill runs a loop-engineering gauntlet: builders versus fresh harsh critics, scored against a LOCKED target image from LOCKED cameras, looping until a success condition, boundary, or stall rule stops it. Two deliverable kinds share one loop — BabylonJS / Babylon Toolkit web games, and anything authored in Unity (game levels and the individual assets in them: baked GI, IBL, reflection probes, terrain, fog, tonemapping, materials, models), with headless Blender as the tool for low-level model work. Unity plus the Toolkit exporter is the content-creation surface and asset manager, shipping interactive glTF that BabylonJS loads; iteration stays inside Unity on camera snapshots, relying on Unity→Babylon parity, with export + browser checkpoints at milestones rather than every round. Fully RESUMABLE: each job lives in its own .agents/gauntlet/<name>/ workspace, so the user can stop any time (daily limits, calling it a night) and continue weeks later in a brand-new session with `/bt-gauntlet --resume <name>`. Use for a long-running, self-improving build of an ambitious game artifact, level, or asset (e.g. `/bt-gauntlet build me a rain-soaked neon alley level at the fidelity of this reference image`)."
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch(domain:raw.githubusercontent.com), Agent, Task
 ---
 
@@ -20,16 +20,16 @@ Use the user's message after the skill name as the `arguments`.
 
 **Flags** (all optional; `--flag:value` or `--flag`):
 
-- **`--name: slug`** — this gauntlet job's name; it becomes the job's workspace folder `_gauntlet/<name>/`. **Any number of gauntlet jobs can exist side by side in one project** (e.g. `cod-fps`, `neon-alley`), each fully independent. If omitted on a new gauntlet, derive a short kebab-case slug from the brief and confirm it in the interview.
+- **`--name: slug`** — this gauntlet job's name; it becomes the job's workspace folder `.agents/gauntlet/<name>/`. **Any number of gauntlet jobs can exist side by side in one project** (e.g. `cod-fps`, `neon-alley`), each fully independent. If omitted on a new gauntlet, derive a short kebab-case slug from the brief and confirm it in the interview.
 - **`--template: gauntlet | bounded`** — which loop template drives the run. `gauntlet` = **Template A** (full-on Shumer-style fan-out: builders vs fresh harsh critics). `bounded` = **Template B** (single-track objective / metric / boundary loop card — use when reliability and cost matter more than dramatic language). **Default: `gauntlet`.** Recorded in `loop-card.md`; a job never mixes templates. Both live in `references/loop-templates.md`.
 - **`--rounds: N`** — maximum full rounds (build → verify → critic → record) THIS invocation may run before parking cleanly with a status report and the exact resume command. **Default: `5`.** Override per session (`--rounds:20` for a long night).
-- **`--card: file`** — a **pre-filled loop card**: one of the two templates with EVERY slot already answered, including `<NAME>` and `<DELIVERABLE KIND>`. Skips the interview entirely — validate the card, copy it to `_gauntlet/<name>/loop-card.md`, distill `brief.md` from it, and start round 1 without asking anything. This is the **non-interactive entry** used when a spec/plan drives the gauntlet. If any slot is unfilled or vague, STOP and report which — never guess a slot.
-- **`--resume [<name>]`** — skip the interview, load `_gauntlet/<name>/`, and continue at its `NEXT ACTION`. This is how the loop continues in a brand-new session a day or a week later. Name resolution: an explicit name targets that job; with no name and exactly ONE job in `_gauntlet/`, resume it; with several jobs, list them (name, kind, parts done/total, next action) and ask which one — never guess.
+- **`--card: file`** — a **pre-filled loop card**: one of the two templates with EVERY slot already answered, including `<NAME>` and `<DELIVERABLE KIND>`. Skips the interview entirely — validate the card, copy it to `.agents/gauntlet/<name>/loop-card.md`, distill `brief.md` from it, and start round 1 without asking anything. This is the **non-interactive entry** used when a spec/plan drives the gauntlet. If any slot is unfilled or vague, STOP and report which — never guess a slot.
+- **`--resume [<name>]`** — skip the interview, load `.agents/gauntlet/<name>/`, and continue at its `NEXT ACTION`. This is how the loop continues in a brand-new session a day or a week later. Name resolution: an explicit name targets that job; with no name and exactly ONE job in `.agents/gauntlet/`, resume it; with several jobs, list them (name, kind, parts done/total, next action) and ask which one — never guess.
 - **`--status [<name>]`** — read-only report: parts done/total, budgets spent vs boundaries, last critic score, active stall tier, next action. With no name, print an **index of ALL gauntlet jobs**. Runs zero rounds.
 - **`--stop [<name>]`** — park that job deliberately: write the current status into its `progress.md`, print the resume command, run nothing further.
-- **`<brief>`** — the idea and the goal. Attached reference screenshots/clips are copied into `_gauntlet/<name>/reference/`.
+- **`<brief>`** — the idea and the goal. Attached reference screenshots/clips are copied into `.agents/gauntlet/<name>/reference/`.
 
-**Mode resolution:** if `--resume`, `--status`, or `--stop` is present, run that mode. Otherwise, if `_gauntlet/` contains existing jobs and no new brief was given, list them and offer to resume one. Otherwise this is a **new gauntlet**: run the interview — or, with `--card:`, validate the supplied card and start immediately. A new gauntlet whose `--name` collides with an existing job is an error — offer `--resume <name>` or a different name; never silently overwrite a job's workspace.
+**Mode resolution:** if `--resume`, `--status`, or `--stop` is present, run that mode. Otherwise, if `.agents/gauntlet/` contains existing jobs and no new brief was given, list them and offer to resume one. Otherwise this is a **new gauntlet**: run the interview — or, with `--card:`, validate the supplied card and start immediately. A new gauntlet whose `--name` collides with an existing job is an error — offer `--resume <name>` or a different name; never silently overwrite a job's workspace.
 
 ---
 
@@ -50,7 +50,7 @@ Use the user's message after the skill name as the `arguments`.
 
 | File | What it holds |
 |---|---|
-| `references/workspace.md` | the `_gauntlet/<name>/` layout, `progress.md` and round-journal formats, the resume protocol |
+| `references/workspace.md` | the `.agents/gauntlet/<name>/` layout, `progress.md` and round-journal formats, the resume protocol |
 | `references/critic-rubrics.md` | the critic contract, the scoring rubrics, the gap-list rules, the hard gates, the stall ladder |
 | `references/target-images.md` | generating, prompting, reachability-checking, locking the target; locked cameras; **generation backends** (kie default, Higgsfield mapping) |
 | `references/loop-templates.md` | Template A and Template B loop cards |
@@ -77,7 +77,7 @@ If you have not read it in this session/context, or you no longer remember it du
 
 The doctrine lives in the Agent Reference — `references/scene-components.md` § "Babylon Toolkit Component Authority" (https://raw.githubusercontent.com/babylontoolkit/agent/main/references/scene-components.md): supplied GLTF/GLB files are **interactive prefabs** whose `extras.metadata.components` carry configured physics, tuning and gameplay intent; `TOOLKIT.*` components are the first-class engine implementation — compose and tune them through `PROJECT.*` ScriptComponents, never reimplement, bypass, or delete them; replacement requires that document's evidence checklist. Read it before any round touching supplied interactive assets. The gauntlet-specific mechanics:
 
-- **Round 1 writes the inventory to disk** — `_gauntlet/<name>/components.md`: every component grouped by scene node, classified **protected-system** (`TOOLKIT.*` — tune, never replace), **project** (`PROJECT.*` — modifiable), or **authoring-only**, with safe-to-tune properties verified against `babylon.toolkit.d.ts`. A resumed cold session READS this instead of re-deriving it; the round that changes supplied assets updates it.
+- **Round 1 writes the inventory to disk** — `.agents/gauntlet/<name>/components.md`: every component grouped by scene node, classified **protected-system** (`TOOLKIT.*` — tune, never replace), **project** (`PROJECT.*` — modifiable), or **authoring-only**, with safe-to-tune properties verified against `babylon.toolkit.d.ts`. A resumed cold session READS this instead of re-deriving it; the round that changes supplied assets updates it.
 - **Builders write code to the Agent Reference's Coding Practices — ENFORCED** — clean, professional TypeScript or JavaScript in the project's own language, meaningful full-word names (never one- or two-letter names or obfuscation), well-structured, readable and maintainable by human developers, with meaningful JSDoc on every class, function, method and public member (always written, but never a reason to fail a part). Every builder brief carries that section in full; critics fail a part that breaks it (the *Coding practices* hard gate in `references/critic-rubrics.md`).
 - **Builders build against the manifest** — given `components.md` alongside the Agent Reference. Unity-authored serialized values are preserved unless a *measured* issue justifies the change, and the measurement goes in the round journal.
 - **Critics enforce it** — reimplementing, bypassing (e.g. direct transform updates beside an attached physics controller), or deleting a protected component is a **FAIL regardless of how the evidence looks**, unless the round journal carries the full replacement-evidence checklist.
@@ -98,7 +98,7 @@ The loop may not start until **every slot of the chosen template is filled**. Th
 
 Interview batches:
 
-0. **NAME** — Confirm the job's slug. It becomes `_gauntlet/<name>/` and must not collide with an existing job.
+0. **NAME** — Confirm the job's slug. It becomes `.agents/gauntlet/<name>/` and must not collide with an existing job.
 1. **DELIVERABLE KIND + DELIVERABLE** — Which of the three kinds is this: a **web game**, a **Unity level for export**, or a **Blender model**? Then what exactly ships (playable browser demo, one polished level, a hero asset with LODs...)? Module style: ES6/ESM default; UMD only if explicitly demanded. New project or existing? Target folder. **Read the matching pipeline reference now** and run its prerequisite gate before going further — a failed gate (no Pro licence, no toolkit bootstrap, no rendering Editor for snapshots, no Blender) changes what is worth agreeing to.
 2. **OBJECTIVE** — The exact outcome that must become true, as one testable sentence. Rewrite with the user until it is inspectable.
 3. **THE TARGET + CAMERAS** — Per `references/target-images.md`: does the user have reference media, is there an existing artifact to refine, or do we generate the target? Agree the target image(s), run the **reachability pass** (Reachable / Approximable / **OUT OF REACH**), and agree the **locked cameras** — one per target, three to five, including a detail crop. Settle the **image-generation backend** too (kie by default, the Higgsfield CLI if it is installed and signed in or the user asks for it — `target-images.md` §1a) and record it in `pipeline.md`. Plus numeric benchmarks: target FPS @ resolution, max load time, draw-call / texture / triangle budgets. If the user has no benchmark, making a defensible one is part of the interview, not skipped.
@@ -109,7 +109,7 @@ Interview batches:
 
 8. **Loop mechanics** — confirm `--template` choice, rounds-per-session default, and any parts the user wants prioritized first.
 
-Write all answers to `_gauntlet/<name>/brief.md`. Write the locked cameras to `cameras.md` and the pipeline state to `pipeline.md`. Fill the chosen template's slots to produce `_gauntlet/<name>/loop-card.md`. **Show the user the filled loop card and get confirmation before round 1.** Nothing builds until the card is confirmed.
+Write all answers to `.agents/gauntlet/<name>/brief.md`. Write the locked cameras to `cameras.md` and the pipeline state to `pipeline.md`. Fill the chosen template's slots to produce `.agents/gauntlet/<name>/loop-card.md`. **Show the user the filled loop card and get confirmation before round 1.** Nothing builds until the card is confirmed.
 
 ---
 
@@ -118,7 +118,7 @@ Write all answers to `_gauntlet/<name>/brief.md`. Write the locked cameras to `c
 **Nothing the loop needs lives in the conversation — it all lives in files.** One folder per job:
 
 ```
-_gauntlet/<name>/
+.agents/gauntlet/<name>/
 ├── loop-card.md      # the constitution: kind, objective, target, rubric, OUT OF REACH, boundaries
 ├── brief.md          # full interview answers
 ├── cameras.md        # LOCKED capture cameras — evidence from anywhere else is inadmissible
@@ -141,7 +141,7 @@ _gauntlet/<name>/
 1. **Inspect** the current state: `progress.md` + `pipeline.md` + the actual project — plus `components.md` when supplied assets carry component metadata (write it now if it is owed and missing).
 2. **Select** the highest-impact unmet criterion — normally the top entries of the **standing gap list** from the last critic, respecting user priorities from the brief.
 3. **Build** — make one coherent improvement, through the deliverable kind's build surface. **Template A:** fan out builder subagents only for *genuinely independent* parts; **keep tightly coupled systems under one sequential owner** (broad fan-out performs WORSE than sequential ownership for coupled visual systems). **Template B:** single-track. When a stall tier is active, obey it — incremental tweaks are forbidden and the round must carry a `STRATEGY:` line.
-4. **Verify with the real artifact** — run the pipeline's verify recipe and capture evidence **from the locked cameras** into `_gauntlet/<name>/evidence/`: screenshots plus whatever metrics that pipeline can measure in-loop. **Use the pipeline's cheap in-loop mode every round** — for `unity` that is a Unity camera snapshot, *not* a bake-export-serve-browser round trip; the expensive engine verification is a deliberate checkpoint (round 1, each milestone, and when the work is done), never a per-round tax. **Screenshots are required for visual parts.** If the host cannot produce the evidence, mark the part `unverified` — it can NEVER be flipped to `- [x]` on the builder's word.
+4. **Verify with the real artifact** — run the pipeline's verify recipe and capture evidence **from the locked cameras** into `.agents/gauntlet/<name>/evidence/`: screenshots plus whatever metrics that pipeline can measure in-loop. **Use the pipeline's cheap in-loop mode every round** — for `unity` that is a Unity camera snapshot, *not* a bake-export-serve-browser round trip; the expensive engine verification is a deliberate checkpoint (round 1, each milestone, and when the work is done), never a per-round tax. **Screenshots are required for visual parts.** If the host cannot produce the evidence, mark the part `unverified` — it can NEVER be flipped to `- [x]` on the builder's word.
 
 5. **Criticize (fresh context)** — spawn a harsh critic subagent per `references/critic-rubrics.md`. It receives the loop card, the part's spec, the target, the evidence, the metrics, **the previous round's screenshot and verdict**, and the pipeline's extra inputs — **never the builder's rationale**. It returns a **scored rubric**, the **FULL prioritized gap list** (not one gap), every **hard gate** as pass/fail, a regression note, and PASS/FAIL. It grades pixels, numbers and behaviour — never effort or intent.
 6. **Record** — append `rounds/round-NN.md` with the score and the whole gap list; update `progress.md`: on PASS flip the part to `- [x]`; on FAIL log the top gap and increment the attempt counter; update the best/last scores and the stall tier. Persist BEFORE the next round.
@@ -175,7 +175,7 @@ generate_image(
            alley at night, wet asphalt with sharp neon reflections in standing water,
            layered Kanji signage in magenta and cyan, thin haze in the light cones,
            baked global illumination, gameplay camera at eye height, 1920x1080",
-  out_path: "_gauntlet/neon-alley/reference/target-hero.png",
+  out_path: ".agents/gauntlet/neon-alley/reference/target-hero.png",
   aspect_ratio: "16:9", resolution: "2K", output_format: "png")
 ```
 
@@ -196,7 +196,7 @@ until unity command lighting_bake_status --project-path "$PROJ" --result-only 2>
 
 # snapshot each locked camera straight to PNG — no export, no server, no browser
 unity command capture_game_view --camera gauntlet_hero --width 1920 --height 1080 --project-path "$PROJ" \
-  --result-only | jq -r .base64 | base64 -d > _gauntlet/neon-alley/evidence/round-NN-p7-hero.png
+  --result-only | jq -r .base64 | base64 -d > .agents/gauntlet/neon-alley/evidence/round-NN-p7-hero.png
 ```
 
 Seconds, not minutes. The critic scores hero + side + detail against their targets and returns the full gap list.
@@ -223,8 +223,8 @@ generate_image(
   prompt: "the same harbor scene, same layout and camera, upgraded to a modern real-time
            in-engine look: warmer low sun, softer bounce into the shadows, wet stone with
            varied roughness, richer ambient occlusion, subtle haze over the water",
-  reference_paths: ["_gauntlet/harbor-polish/evidence/round-00-baseline-hero.png"],
-  out_path: "_gauntlet/harbor-polish/reference/target-hero.png")
+  reference_paths: [".agents/gauntlet/harbor-polish/evidence/round-00-baseline-hero.png"],
+  out_path: ".agents/gauntlet/harbor-polish/reference/target-hero.png")
 ```
 
 3. **Constrain the part list.** "Don't change the layout" removes P1/P2/P3 from scope — record that as an explicit scope cut, so the loop works only P4–P11 (materials, light rig, GI bake, IBL, probes, atmosphere, image processing, perf) and a critic never raises a composition gap.
@@ -254,7 +254,7 @@ blender --background --factory-startup --python-exit-code 1 \
         --python /tmp/round-07-bevels.py -- "$FBX" "$FBX"    # same path in and out
 unity command eval 'UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceSynchronousImport); return "ok";' --project-path "$PROJ"
 unity command capture_game_view --camera gauntlet_hero --width 1920 --height 1080 --project-path "$PROJ" \
-  --result-only | jq -r .base64 | base64 -d > _gauntlet/hero-mech/evidence/round-07-p2-hero.png
+  --result-only | jq -r .base64 | base64 -d > .agents/gauntlet/hero-mech/evidence/round-07-p2-hero.png
 ```
 
 Without `--python-exit-code 1` a crashed script exits `0` and the loop records a failed round as a success. Without in-place writing, every round mints a new GUID and quietly detaches the model from every scene that used it. Both are hard gates.
@@ -338,9 +338,9 @@ candy-themed circuit with a jump, a tunnel, boost pads and scenery everywhere. K
 - **Progress is never self-reported.** Screenshots, perf numbers, exported metadata, diffs — an observable receipt, or it didn't happen.
 - **Never chase what cannot cross the boundary.** The `OUT OF REACH` list exists so critics stop naming impossible gaps.
 - **Permissions start reversible.** Deploy, delete, spend, publish, message, and secrets stay behind explicit user approval, always.
-- **Context rots; files don't.** Compact durable state in `_gauntlet/<name>/` beats a long chat history. On any doubt, trust the files and the actual project, then correct `progress.md`.
+- **Context rots; files don't.** Compact durable state in `.agents/gauntlet/<name>/` beats a long chat history. On any doubt, trust the files and the actual project, then correct `progress.md`.
 - **Pipeline state does not survive a pause.** A resident Unity Editor, a dev server, a warm asset database: all session-scoped. Re-run the prerequisite gate on every resume.
-- **Jobs never bleed into each other.** A round touches only its own `_gauntlet/<name>/` state; other jobs' workspaces are read-only neighbors.
+- **Jobs never bleed into each other.** A round touches only its own `.agents/gauntlet/<name>/` state; other jobs' workspaces are read-only neighbors.
 - **Every park prints the exact resume command**: `/bt-gauntlet --resume <name>`.
 
 ---

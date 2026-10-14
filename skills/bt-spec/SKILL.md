@@ -39,7 +39,7 @@ Git is optional. **Where git is available:** stop now if the working tree has un
 - **`SPEC.md`** (repository root) is the project's source of truth for architecture, systems, conventions and decisions. Read its headings, Architecture, Conventions, and the systems this feature touches. The feature must fit it. **If the idea conflicts with SPEC.md, stop and tell the user before writing.** Verification procedures described in SPEC.md are tooling the feature may reuse, not requirements it inherits.
 - **If `SPEC.md` is missing or an empty stub, ask the user first** whether to create it from the scaffold at the end of this file. Yes → write it, then continue against it. No → continue, and note in the spec: `"No project SPEC.md content yet — following existing codebase conventions."`
 - **`DESIGN.md`** (only if the feature has UI): it is the single source of truth for design — never Figma or invented values. Cite the tokens and shared components the feature uses in 3–8 bullets. Missing → note `"No DESIGN.md design system found — follow the existing UI conventions already in the codebase."` No UI → say no design tokens apply.
-- **Recon docs (`_specs/*_recon.md`, written by bt-recon):** if any recon's `scope` covers a system this feature touches, read its Summary, Architecture, the relevant Feature Inventory / UI Reference / External Interfaces sections, Known Issues and Extension Points — it is the grounding for code nobody else documented, so build on it instead of re-deriving it. Cite it in `## Research Notes`. If its `commit:` is well behind HEAD for the files this feature touches, note the drift there and suggest `bt-recon --refresh`.
+- **Recon docs (`.agents/recon/*_recon.md`, written by bt-recon):** if any recon's `scope` covers a system this feature touches, read its Summary, Architecture, the relevant Feature Inventory / UI Reference / External Interfaces sections, Known Issues and Extension Points — it is the grounding for code nobody else documented, so build on it instead of re-deriving it. Cite it in `## Research Notes`. If its `commit:` is well behind HEAD for the files this feature touches, note the drift there and suggest `bt-recon --refresh`.
 - **Research the codebase, sized to the feature.** Find the closest existing feature to mirror, the real conventions, and the integration points. For a `small` feature do this inline; fan out to up to 3 **read-only** subagents only for `medium` / `large` (they report findings and file paths, never draft the spec; if a finding contradicts SPEC.md, raise it with the user rather than resolving it silently). Record the result in the spec's `## Research Notes` so bt-plan starts from it.
 
 ## Step 3. Sibling-skill patterns
@@ -67,7 +67,7 @@ Interview the user until the design is decided, after Steps 2–3 so questions a
 - **`size`** — `small` ≈ 1–2 hours by hand, one system; `medium` ≈ a day, a few systems; `large` ≈ multi-day, multi-system, or Unity/Blender/export pipeline work. Classify by the real work.
 - **`proof`** — `functional` (default) or `parity` (only with `--parity`, or when the brief itself states a numeric bar). Under `functional`, Acceptance Criteria are what a user would notice — it works, it looks and feels right (against DESIGN.md, or next to a reference when there is one), the console is clean — proven by tests and a look at the running result. Never invent numeric pixel thresholds, repeat counts, per-engine matrices or evidence archives: how a feature is proven is most of what it costs to build.
 
-Print `✍️ [bt-spec] Drafting _specs/<feature_slug>_spec.md …`, then write the spec to `_specs/<feature_slug>_spec.md` using the project's `FEATURE.md` template if it exists (add any header field or section below that it lacks), otherwise this structure. No implementation detail or code examples.
+Print `✍️ [bt-spec] Drafting .agents/specs/<feature_slug>_spec.md …`, then write the spec to `.agents/specs/<feature_slug>_spec.md` using the project's `FEATURE.md` template if it exists (add any header field or section below that it lacks), otherwise this structure. No implementation detail or code examples.
 
 ```markdown
 # Spec for <feature-name>
@@ -120,7 +120,7 @@ Create test file(s) in ./tests for these named cases, without going heavy:
 
 ```
 Branch: <branch_name>
-Spec file: _specs/<feature_slug>_spec.md
+Spec file: .agents/specs/<feature_slug>_spec.md
 Title: <feature_title>
 ```
 
@@ -132,7 +132,7 @@ Do not print the spec unless asked.
 # Project Spec
 
 > The source of truth for this project: its durable architecture, systems, conventions and decisions.
-> Feature specs in `_specs/` are derived from and constrained by this file. It describes the **product** —
+> Feature specs in `.agents/specs/` are derived from and constrained by this file. It describes the **product** —
 > what exists and why — never how a feature was verified (capture protocols, tool lists, ledgers).
 
 ## Architecture & Module Layout  _(current-state — replace/merge)_
@@ -156,7 +156,7 @@ Do not print the spec unless asked.
 
 ## How to update this spec
 - `(current-state — replace/merge)` sections say what is true now: replace seed placeholders with real content, then keep them matching the shipped code.
-- `Decisions` holds only what still binds the current design, briefly. A decision's full rationale, its rejected alternatives and its history live in that feature's spec in `_specs/`, not here — this file must stay short enough to read before every feature.
+- `Decisions` holds only what still binds the current design, briefly. A decision's full rationale, its rejected alternatives and its history live in that feature's spec in `.agents/specs/`, not here — this file must stay short enough to read before every feature.
 - Add each new Game System as its own subsection; record every new dependency (version + why) in the task that introduces it.
 - bt-spec reads this file and aligns the feature to it; bt-plan conforms to it and adds an `Update SPEC.md` task for spec-impacting features; bt-execute runs that task through the same verifier as every other task.
 ```

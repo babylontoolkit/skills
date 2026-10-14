@@ -23,7 +23,7 @@ Use the user's message after the skill name as the `arguments`.
 - **an idea sentence** — `create a Mustang GT Shelby decked out for racing, with a race driver — desert dawn to red-rock canyon to night dunes, NFS-style game site`
 - **a path to an existing hero image or video** — `@my-hero.jpg`, `@footage/run.mp4`
 - **explicit slot answers** — `HUD 0→220 MPH`, `sweep: hero`, `no jump nav`, `call it SIDEWINDER`
-- **a previously written brief file** — `@_specs/<name>_hero-brief.md` (rebuilds it exactly, asking nothing)
+- **a previously written brief file** — `@.agents/specs/<name>_hero-brief.md` (rebuilds it exactly, asking nothing)
 - **nothing at all** — full interview
 
 Whatever is present is used verbatim; the intake resolves the rest (Step 1). **There are no route keywords and no confirmation gates: `/bt-hero` builds, one shot.** The only permitted stop is the safety stop in Step 3.
@@ -66,7 +66,7 @@ Then resolve every unfilled slot by exactly one of two paths:
 
 ## Step 2 — Write the hero brief (the save file)
 
-Write the resolved slots to `_specs/<feature-name>_hero-brief.md` (create `_specs/` if needed). The brief is the **record**, not a gate: the user never has to touch it, but `/bt-hero @<brief-file>` later must rebuild the same hero with zero questions — that is what makes a hero repeatable, shareable, and tweakable (edit a line, re-run). Record **only Tier 3 answers and explicit Tier 2 overrides** — never Tier 1 mechanics; the brief describes the film, not the engine.
+Write the resolved slots to `.agents/specs/<feature-name>_hero-brief.md` (create `.agents/specs/` if needed). The brief is the **record**, not a gate: the user never has to touch it, but `/bt-hero @<brief-file>` later must rebuild the same hero with zero questions — that is what makes a hero repeatable, shareable, and tweakable (edit a line, re-run). Record **only Tier 3 answers and explicit Tier 2 overrides** — never Tier 1 mechanics; the brief describes the film, not the engine.
 
 ```markdown
 ---

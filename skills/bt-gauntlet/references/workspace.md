@@ -4,12 +4,12 @@ This is what makes the loop resumable days or weeks later: **nothing the loop ne
 conversation — it all lives in files.** A brand-new session with zero context reads the workspace and knows
 exactly where it was.
 
-**One folder per gauntlet job.** `_gauntlet/` is just the container; every job owns a self-contained
-`_gauntlet/<name>/` workspace, so any number of gauntlets — even for the same project — can run, park and
+**One folder per gauntlet job.** `.agents/gauntlet/` is just the container; every job owns a self-contained
+`.agents/gauntlet/<name>/` workspace, so any number of gauntlets — even for the same project — can run, park and
 resume independently.
 
 ```
-_gauntlet/
+.agents/gauntlet/
 ├── cod-fps/                 # one gauntlet job
 │   ├── loop-card.md         # The filled template — the loop's constitution:
 │   │                        #   DELIVERABLE KIND, DELIVERABLE, OBJECTIVE,
@@ -117,10 +117,10 @@ progress.md updated: attempt 3/5, stall -> approaching (same top gap twice)
 
 ## Resume protocol (`--resume [<name>]`, or auto-offered)
 
-1. Resolve the job: explicit name → that job; one job in `_gauntlet/` → resume it; several → list them and
+1. Resolve the job: explicit name → that job; one job in `.agents/gauntlet/` → resume it; several → list them and
    ask.
 2. Fetch/read the Babylon Toolkit Agent Reference if not already remembered in this session.
-3. Read `_gauntlet/<name>/loop-card.md` → `progress.md` → `pipeline.md` → `cameras.md` →
+3. Read `.agents/gauntlet/<name>/loop-card.md` → `progress.md` → `pipeline.md` → `cameras.md` →
    `components.md` (if present) → the last 1–2 `rounds/*.md`.
 4. Read the pipeline reference for the job's `Kind` and **re-run its prerequisite gate**. This is not
    optional on resume: a resident Unity Editor, a running dev server and a warm asset database do **not**

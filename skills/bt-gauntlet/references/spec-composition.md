@@ -7,8 +7,8 @@ skills:
 
 | Spec workflow | Gauntlet equivalent |
 | --- | --- |
-| `_specs/<feature>_spec.md` (bt-spec) | `_gauntlet/<name>/loop-card.md` — objective, benchmark, rubric, success condition, boundaries |
-| `_specs/<feature>_plan.md` (bt-plan) | the part checklist in `_gauntlet/<name>/progress.md` — the lead agent's round-1 decomposition |
+| `.agents/specs/<feature>_spec.md` (bt-spec) | `.agents/gauntlet/<name>/loop-card.md` — objective, benchmark, rubric, success condition, boundaries |
+| `.agents/specs/<feature>_plan.md` (bt-plan) | the part checklist in `.agents/gauntlet/<name>/progress.md` — the lead agent's round-1 decomposition |
 | bt-execute `ALL` (checkbox resume) | the round protocol + `--resume <name>` |
 
 The difference is when a box may flip. A **bt-plan task** is feed-forward: known work, visited once, `- [x]`
@@ -40,11 +40,11 @@ idiom bt-prototype uses with bt-hero — **pre-resolve everything at spec time s
 - **bt-spec:** the interview happens HERE, at spec time — the spec answers every loop-card slot (including
   `<NAME>`, `<DELIVERABLE KIND>`, the reference media or target-generation prompt, the locked cameras, the
   `OUT OF REACH` list and the boundaries) and writes the **pre-filled loop card** as a spec artifact
-  (e.g. `_specs/<feature>_gauntlet-card.md`).
+  (e.g. `.agents/specs/<feature>_gauntlet-card.md`).
 - **bt-plan:** the gauntlet becomes one task (usually the last), whose Details invoke
-  `/bt-gauntlet --card:_specs/<feature>_gauntlet-card.md --rounds:N`. Its **Acceptance** is observable:
+  `/bt-gauntlet --card:.agents/specs/<feature>_gauntlet-card.md --rounds:N`. Its **Acceptance** is observable:
   "gauntlet job `<name>` reports DONE — success condition met and the integration critic passed — as
-  evidenced by `_gauntlet/<name>/progress.md` and the final round journal."
+  evidenced by `.agents/gauntlet/<name>/progress.md` and the final round journal."
 - **bt-execute:** runs the task by invoking the gauntlet non-interactively. Because a gauntlet may outlast
   one session, the task's checkbox stays `- [ ]` while the job is merely parked; each later
   `bt-execute <plan> NEXT` run re-enters via `/bt-gauntlet --resume <name>` and the box flips only when the
@@ -58,7 +58,7 @@ bt-gauntlet never orchestrates bt-spec itself — composition is always initiate
 
 ## Cross-Host Notes
 
-This skill runs the same everywhere because resumability depends on nothing but the `_gauntlet/` files and
+This skill runs the same everywhere because resumability depends on nothing but the `.agents/gauntlet/` files and
 re-invocation — no host loop feature is required.
 
 - **Subagents:** tool names differ (Claude Code `Agent`/`Task`; other hosts their own equivalent). Check the

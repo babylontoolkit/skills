@@ -12,8 +12,8 @@ using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// bt-combine engine. Decides which static meshes and LOD groups of the active scene can be merged without changing
-/// how the scene looks in Unity or in BabylonJS, writes the reasoning to _combine/&lt;scene&gt;/, and merges them with the
+/// bt-optimize merge stage. Decides which static meshes and LOD groups of the active scene can be merged without changing
+/// how the scene looks in Unity or in BabylonJS, writes the reasoning to .agents/optimize/&lt;scene&gt;/, and merges them with the
 /// Babylon Toolkit's MeshCombiner (Pack Source Lightmap UVs mode, so no vertex is split).
 /// Run every entry point with `unity command run_script --file &lt;this file&gt; --entry BtCombine.&lt;Method&gt;`.
 /// </summary>
@@ -203,6 +203,7 @@ public static class BtCombine
         report.AppendLine("unity=" + Application.unityVersion);
         report.AppendLine("playMode=" + EditorApplication.isPlayingOrWillChangePlaymode);
         report.AppendLine("packSourceLightmapUVs=" + ToolkitPacksSourceUVs());
+        report.AppendLine("mergesMirrored=" + ToolkitHandlesMirrors());
         report.AppendLine("sourceExists=" + File.Exists(sourceScene));
         var active = SceneManager.GetActiveScene();
         report.AppendLine("activeScene=" + active.path + " dirty=" + active.isDirty);
@@ -230,7 +231,7 @@ public static class BtCombine
             AssetDatabase.ImportAsset(outputScene, ImportAssetOptions.ForceUpdate);
             string meshFolder = MeshFolderFor(outputScene);
             if (AssetDatabase.IsValidFolder(meshFolder)) AssetDatabase.DeleteAsset(meshFolder);
-            string manifest = Path.Combine(ReportFolderFor(outputScene), "manifest.json");
+            string manifest = Path.Combine(ReportFolderFor(outputScene), "combine-manifest.json");
             if (File.Exists(manifest)) File.Delete(manifest);
         }
         var scene = EditorSceneManager.OpenScene(outputScene, OpenSceneMode.Single);
@@ -242,7 +243,7 @@ public static class BtCombine
     /// <summary>Deletes a working copy, its merged meshes, its baked lighting folder and its report folder.</summary>
     public static string RemoveCopy(string outputScene, string reopenScene)
     {
-        if (!File.Exists(WorkingCopyMarker(outputScene))) throw new InvalidOperationException(outputScene + " is not a bt-combine working copy; refusing to delete it.");
+        if (!File.Exists(WorkingCopyMarker(outputScene))) throw new InvalidOperationException(outputScene + " is not a bt-optimize working copy; refusing to delete it.");
         ThrowIfAnySceneDirty();
         EditorSceneManager.OpenScene(reopenScene, OpenSceneMode.Single);
         bool sceneDeleted = AssetDatabase.DeleteAsset(outputScene);
@@ -255,7 +256,7 @@ public static class BtCombine
 
     /// <summary>
     /// Plans the merges for the active scene without changing it, and writes analysis.md + analysis.json to
-    /// _combine/&lt;scene&gt;/. Returns the Markdown report.
+    /// .agents/optimize/&lt;scene&gt;/ (combine-plan.md / .json). Returns the Markdown report.
     /// </summary>
     public static string Analyze(string optionsJson)
     {
@@ -266,13 +267,13 @@ public static class BtCombine
         string markdown = plan.ToMarkdown(record, options);
         string folder = ReportFolderFor(scene.path);
         Directory.CreateDirectory(folder);
-        File.WriteAllText(Path.Combine(folder, "analysis.md"), markdown);
-        File.WriteAllText(Path.Combine(folder, "analysis.json"), record.ToJson());
+        File.WriteAllText(Path.Combine(folder, "combine-plan.md"), markdown);
+        File.WriteAllText(Path.Combine(folder, "combine-plan.json"), record.ToJson());
         return markdown;
     }
 
     /// <summary>
-    /// Plans and performs the merges on the active scene (which must be a bt-combine working copy), saves it, and
+    /// Plans and performs the merges on the active scene (which must be a bt-optimize working copy), saves it, and
     /// writes manifest.json. Lighting must be re-baked afterwards when any lightmapped mesh was merged.
     /// </summary>
     public static string Apply(string optionsJson)
@@ -286,9 +287,9 @@ public static class BtCombine
         var scene = SceneManager.GetActiveScene();
         if (!File.Exists(WorkingCopyMarker(scene.path)))
         {
-            throw new InvalidOperationException(scene.path + " is not a bt-combine working copy. Run PrepareCopy first; Apply never edits a source scene.");
+            throw new InvalidOperationException(scene.path + " is not a bt-optimize working copy. Run PrepareCopy first; Apply never edits a source scene.");
         }
-        string manifestPath = Path.Combine(ReportFolderFor(scene.path), "manifest.json");
+        string manifestPath = Path.Combine(ReportFolderFor(scene.path), "combine-manifest.json");
         if (File.Exists(manifestPath) || HasCombinedObjects(scene))
         {
             throw new InvalidOperationException("This scene was already combined. Run with reset to start again from the source scene.");
@@ -341,10 +342,10 @@ public static class BtCombine
     public static string Verify()
     {
         var scene = SceneManager.GetActiveScene();
-        string manifestPath = Path.Combine(ReportFolderFor(scene.path), "manifest.json");
+        string manifestPath = Path.Combine(ReportFolderFor(scene.path), "combine-manifest.json");
         if (!File.Exists(manifestPath)) throw new InvalidOperationException("No manifest.json for " + scene.path + ". Run Apply first.");
         var manifest = RunRecord.FromJson(File.ReadAllText(manifestPath));
-        var report = new StringBuilder("# bt-combine verify — " + scene.path + "\n\n");
+        var report = new StringBuilder("# bt-optimize merge verify — " + scene.path + "\n\n");
         int problems = 0;
 
         string lightingData = Lightmapping.lightingDataAsset != null ? AssetDatabase.GetAssetPath(Lightmapping.lightingDataAsset) : "";
@@ -396,7 +397,7 @@ public static class BtCombine
             }
         }
         report.AppendLine("\nproblems=" + problems);
-        File.WriteAllText(Path.Combine(ReportFolderFor(scene.path), "verify.md"), report.ToString());
+        File.WriteAllText(Path.Combine(ReportFolderFor(scene.path), "combine-verify.md"), report.ToString());
         return report.ToString();
     }
 
@@ -407,7 +408,7 @@ public static class BtCombine
     public static string QaPoints(int count)
     {
         var scene = SceneManager.GetActiveScene();
-        var manifest = RunRecord.FromJson(File.ReadAllText(Path.Combine(ReportFolderFor(scene.path), "manifest.json")));
+        var manifest = RunRecord.FromJson(File.ReadAllText(Path.Combine(ReportFolderFor(scene.path), "combine-manifest.json")));
         var lines = new StringBuilder();
         foreach (var group in manifest.groups.OrderByDescending(g => g.kind == "lod").ThenByDescending(g => g.sources.Length).Take(count))
         {
@@ -498,8 +499,8 @@ public static class BtCombine
     public static string CorrectDensity()
     {
         var scene = SceneManager.GetActiveScene();
-        if (!File.Exists(WorkingCopyMarker(scene.path))) throw new InvalidOperationException(scene.path + " is not a bt-combine working copy.");
-        string manifestPath = Path.Combine(ReportFolderFor(scene.path), "manifest.json");
+        if (!File.Exists(WorkingCopyMarker(scene.path))) throw new InvalidOperationException(scene.path + " is not a bt-optimize working copy.");
+        string manifestPath = Path.Combine(ReportFolderFor(scene.path), "combine-manifest.json");
         var manifest = RunRecord.FromJson(File.ReadAllText(manifestPath));
         var report = new StringBuilder();
         int corrected = 0;
@@ -618,7 +619,7 @@ public static class BtCombine
         public string ToMarkdown(RunRecord record, Options options)
         {
             var text = new StringBuilder();
-            text.AppendLine("# bt-combine analysis — " + record.scene + "\n");
+            text.AppendLine("# bt-optimize merge plan — " + record.scene + "\n");
             text.AppendLine("| | Before | After (planned) |\n|---|---|---|");
             text.AppendLine("| Mesh renderers | " + record.renderersBefore + " | " + record.renderersAfter + " |");
             text.AppendLine("| Draw calls (est., LOD0) | " + record.drawsBefore + " | " + record.drawsAfter + " |");
@@ -754,7 +755,7 @@ public static class BtCombine
     {
         var options = context.Options;
         var gameObject = renderer.gameObject;
-        if (gameObject.name.StartsWith(StaticPrefix) || gameObject.name.StartsWith(LodPrefix)) return "already a bt-combine result";
+        if (gameObject.name.StartsWith(StaticPrefix) || gameObject.name.StartsWith(LodPrefix)) return "already a merge result";
         var meshFilter = renderer.GetComponent<MeshFilter>();
         if (meshFilter == null || meshFilter.sharedMesh == null || meshFilter.sharedMesh.vertexCount == 0) return "no mesh";
         if (IsExcludedByName(renderer.transform, options)) return "excluded by --exclude";
@@ -771,7 +772,7 @@ public static class BtCombine
             string shaderReason = ShaderVerdict(material.shader, context);
             if (shaderReason != null) return shaderReason;
         }
-        if (renderer.transform.localToWorldMatrix.determinant < 0f) return "mirrored (negative scale) transform";
+        if (renderer.transform.localToWorldMatrix.determinant < 0f && !ToolkitHandlesMirrors()) return "mirrored (negative scale) transform — update CanvasTools.dll to merge it";
         if (renderer.additionalVertexStreams != null) return "vertex-painted (additional vertex streams)";
         if (renderer.GetComponents<MonoBehaviour>().Length > 0) return "has a script component";
         if (context.Referenced.Contains(gameObject)) return "referenced by a script, timeline or component";
@@ -791,11 +792,11 @@ public static class BtCombine
     private static string LodGroupVerdict(LODGroup lodGroup, SceneContext context)
     {
         var gameObject = lodGroup.gameObject;
-        if (gameObject.name.StartsWith(LodPrefix)) return "already a bt-combine result";
+        if (gameObject.name.StartsWith(LodPrefix)) return "already a merge result";
         if (IsExcludedByName(lodGroup.transform, context.Options)) return "excluded by --exclude";
         if (gameObject.GetComponents<MonoBehaviour>().Length > 0) return "has a script component";
         if (context.Referenced.Contains(gameObject)) return "referenced by a script, timeline or component";
-        if (lodGroup.transform.localToWorldMatrix.determinant < 0f) return "mirrored (negative scale) transform";
+        if (lodGroup.transform.localToWorldMatrix.determinant < 0f && !ToolkitHandlesMirrors()) return "mirrored (negative scale) transform — update CanvasTools.dll to merge it";
         var lods = lodGroup.GetLODs();
         if (lods.Length < 2) return "fewer than 2 LOD levels";
         var seen = new HashSet<Renderer>();
@@ -1298,6 +1299,12 @@ public static class BtCombine
         return typeof(UnityMeshSimplifier.MeshCombiner).GetMethod("PackSourceLightmapUVs", BindingFlags.NonPublic | BindingFlags.Static) != null;
     }
 
+    /// <summary>True when the toolkit's MeshCombiner reverses winding and fixes normals / tangents for mirrored sources.</summary>
+    private static bool ToolkitHandlesMirrors()
+    {
+        return typeof(UnityMeshSimplifier.MeshCombiner).GetProperty("HandlesMirroredTransforms", BindingFlags.Public | BindingFlags.Static) != null;
+    }
+
     /// <summary>The scene's maximum lights per material (SceneController.lightingOptions.maximumLights, default 4).</summary>
     private static int MaxLightsPerMesh()
     {
@@ -1518,7 +1525,7 @@ public static class BtCombine
         draws = all.Where(r => !hiddenLods.Contains(r)).Sum(r => r.sharedMaterials.Length);
     }
 
-    /// <summary>True when the scene already holds bt-combine results.</summary>
+    /// <summary>True when the scene already holds merge results.</summary>
     private static bool HasCombinedObjects(Scene scene)
     {
         return scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Transform>(true))
@@ -1578,7 +1585,7 @@ public static class BtCombine
             if (openScene.isDirty)
             {
                 throw new InvalidOperationException("'" + (openScene.path == "" ? openScene.name : openScene.path) + "' has unsaved changes. "
-                    + "Ask the user to save or discard them; bt-combine never switches scenes over unsaved work.");
+                    + "Ask the user to save or discard them; bt-optimize never switches scenes over unsaved work.");
             }
         }
     }
@@ -1601,10 +1608,10 @@ public static class BtCombine
         return Path.GetDirectoryName(scenePath).Replace('\\', '/') + "/" + Path.GetFileNameWithoutExtension(scenePath) + "_CombinedMeshes";
     }
 
-    /// <summary>Folder for a scene's reports: &lt;project&gt;/_combine/&lt;scene&gt;.</summary>
+    /// <summary>Folder for a scene's reports: &lt;project&gt;/.agents/optimize/&lt;scene&gt;.</summary>
     private static string ReportFolderFor(string scenePath)
     {
-        return Path.Combine(Directory.GetParent(Application.dataPath).FullName, "_combine", Path.GetFileNameWithoutExtension(scenePath));
+        return Path.Combine(Directory.GetParent(Application.dataPath).FullName, ".agents", "optimize", Path.GetFileNameWithoutExtension(scenePath));
     }
 
     /// <summary>Creates an asset folder and its parents if missing.</summary>

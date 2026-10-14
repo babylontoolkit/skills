@@ -4,16 +4,16 @@ description: "The Babylon Toolkit Plan Skill creates the detailed technical plan
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Agent, Task
 ---
 
-Turn a feature spec into `_specs/<feature-name>_plan.md`: an ordered checklist of tasks that `bt-execute` runs. Follow the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md). The user's message after the skill name is the `arguments`.
+Turn a feature spec into `.agents/specs/<feature-name>_plan.md`: an ordered checklist of tasks that `bt-execute` runs. Follow the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md). The user's message after the skill name is the `arguments`.
 
 ```
 /bt-plan [--heavy] [--parity] [--no-time-limit] <feature-spec> <optional-brief>
 
-/bt-plan @_specs/mute-game-audio_spec.md
+/bt-plan @.agents/specs/mute-game-audio_spec.md
 /bt-plan "add a settings toggle to mute all game audio"     # no spec file → Quick Plan: short interview, then plan
-/bt-plan --heavy @_specs/feature_spec.md                    # decision-complete plan for a long or cheaper-model run
-/bt-plan --heavy --parity @_specs/feature_spec.md           # numeric parity gates against the reference (slow)
-/bt-plan --no-time-limit @_specs/feature_spec.md            # turn off the default TIME MATTERS mode
+/bt-plan --heavy @.agents/specs/feature_spec.md                    # decision-complete plan for a long or cheaper-model run
+/bt-plan --heavy --parity @.agents/specs/feature_spec.md           # numeric parity gates against the reference (slow)
+/bt-plan --no-time-limit @.agents/specs/feature_spec.md            # turn off the default TIME MATTERS mode
 ```
 
 - `--heavy` — Heavy Plan mode (below). `--parity` — plan numeric parity proof; also on when the spec says `proof: parity`. `--no-time-limit` — turn off TIME MATTERS mode (Ground rules). Strip flags, and any literal `TIME MATTERS`, first; they are never part of the brief.
@@ -30,7 +30,7 @@ Turn a feature spec into `_specs/<feature-name>_plan.md`: an ordered checklist o
 ## Step 1. Analyze (required before writing)
 
 1. Read the feature spec in full, and `SPEC.md`'s headings, Architecture, Conventions and the systems the feature touches. The plan must conform to SPEC.md — **if it would conflict, stop and tell the user.** Verification procedures described in SPEC.md are tooling you may reuse, not a bar the plan must meet. Note the spec's `spec_impact`, `size` and `proof`.
-2. **Start from the spec's `## Research Notes`, and any bt-recon doc (`_specs/*_recon.md`) it cites or whose scope covers the systems the feature touches** — its Extension Points and End-to-End Flows usually name the integration points directly. Spot-check that the paths exist, then research only what a plan needs beyond them: how the app is built and tested, the real conventions and the closest feature to mirror, the concrete files and integration points, available dependencies, constraints from the agent instructions.
+2. **Start from the spec's `## Research Notes`, and any bt-recon doc (`.agents/recon/*_recon.md`) it cites or whose scope covers the systems the feature touches** — its Extension Points and End-to-End Flows usually name the integration points directly. Spot-check that the paths exist, then research only what a plan needs beyond them: how the app is built and tested, the real conventions and the closest feature to mirror, the concrete files and integration points, available dependencies, constraints from the agent instructions.
 3. Size the research: `small` → inline; `medium` / `large` (or no Research Notes) → up to 3 **read-only** subagents returning findings and paths, not file dumps. Tell each one verbatim: *"Read-only: you may read, search and report. Do not edit or create files, and do not run builds, tests or any command that writes — not even into a build folder. If a fact needs a build or a test run to establish, report it as unknown and say which command would settle it."*
 4. Sibling-skill pattern (e.g. bt-design's 3D-Hero-Scroll): read that skill's reference **and templates** *(where skills load through a tool: `load_skill` + `read_skill_resource`, never a guessed path; where they are files: the skills directory this skill was loaded from, e.g. `~/.claude/skills/`, `~/.agents/skills/` or the project's equivalent)*. The plan **copies and configures the template engine — never re-implements it**; each behavioral option the spec records (e.g. `sweep: page`) becomes an Acceptance item stated in observable terms. Prefer copying and wiring the template as the first task, so later tasks only configure it.
 5. Too ambiguous to plan responsibly → ask the user. **Already built?** If the research shows some or all of the feature already exists, say so first and plan only what is missing (often just tests and the live check).
@@ -54,7 +54,7 @@ Execution time is mostly *how the work is proven*, not the code. Keep proof stro
 
 ## Step 3. Write the plan
 
-Print `✍️ [bt-plan] Writing _specs/<feature-name>_plan.md …`. The file has, in order:
+Print `✍️ [bt-plan] Writing .agents/specs/<feature-name>_plan.md …`. The file has, in order:
 
 **`## Codebase Analysis`** — what Step 1 found, citing real files; the SPEC.md sections the plan conforms to; `spec_impact`, `size`, `proof` (say which were inferred); Quick Plan assumptions.
 
@@ -126,8 +126,8 @@ Each task above is a checkbox. To implement:
 Then **stop**. Final message: a short summary, the estimated time, and:
 
 ```
-Plan written to _specs/<feature-name>_plan.md — <n> tasks, estimated <total range> of agent time
-Run a single task with `bt-execute _specs/<feature-name>_plan.md T1`, or every task with `bt-execute _specs/<feature-name>_plan.md ALL` (add `--strict` for an adversarial verifier on every task).
+Plan written to .agents/specs/<feature-name>_plan.md — <n> tasks, estimated <total range> of agent time
+Run a single task with `bt-execute .agents/specs/<feature-name>_plan.md T1`, or every task with `bt-execute .agents/specs/<feature-name>_plan.md ALL` (add `--strict` for an adversarial verifier on every task).
 ```
 
 ## Heavy Plan mode (`--heavy`)
