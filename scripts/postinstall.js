@@ -35,6 +35,12 @@ function main() {
   for (const p of report.persona) console.log(`  persona ${p.file} — ${p.action}`);
 
   for (const c of report.config) console.log(`  config  ${c.file} — ${c.action} (network_access = true)`);
+  if (report.reference) {
+    const ref = report.reference;
+    console.log(ref.status === 'installed' || ref.status === 'kept'
+      ? `  reference ${ref.dir} — ${ref.status === 'kept' ? 'kept the existing copy' : `${ref.files} files`}`
+      : `  reference not installed (${ref.reason}) — agents read it from GitHub; run \`bt-agent update\` later`);
+  }
 
   console.log(check.ok ? '\nINSTALL OK' : '\nINSTALL INCOMPLETE — run `bt-agent doctor` for details');
   console.log('\nRestart your agent session so the skills, persona and Codex configuration are picked up.\n');

@@ -12,7 +12,8 @@ const USAGE = `
 @babylonjs-toolkit/agent ${version}
 
   Installs the Babylon Toolkit agent skills and Agent Persona for every
-  supported AI client, on macOS, Linux and Windows. Codex targets also
+  supported AI client, on macOS, Linux and Windows, with a local copy of
+  the Agent Reference in ~/.claude/toolkit/reference. Codex targets also
   enable outbound network access in their workspace-write configuration.
 
 Usage
@@ -36,6 +37,8 @@ Options
   --persona-only       Install/refresh the Agent Persona only; do not copy skills
   --no-migrate         Leave a legacy unmarked persona in place, do not convert it
   --no-self-update     update: reinstall the bundled files only; do not fetch npm
+  --no-reference       Do not download the Agent Reference; agents read it from GitHub
+  --reference-from d   Install the Agent Reference from a local checkout instead of GitHub
   --dry-run            Print what would happen; change nothing
   --json               Machine-readable output
   -h, --help           Show this help
@@ -63,6 +66,8 @@ function parseArgs(argv) {
     skills: true,
     migrate: true,
     selfUpdate: true,
+    reference: true,
+    referenceFrom: null,
     dryRun: false,
     json: false,
     help: false,
@@ -98,6 +103,13 @@ function parseArgs(argv) {
       case '--no-self-update':
         opts.selfUpdate = false;
         break;
+      case '--no-reference':
+        opts.reference = false;
+        break;
+      case '--reference-from':
+        opts.referenceFrom = argv[++i] || null;
+        if (!opts.referenceFrom) throw new Error('--reference-from needs a folder');
+        break;
       case '--dry-run':
         opts.dryRun = true;
         break;
@@ -108,7 +120,9 @@ function parseArgs(argv) {
         opts.ids = String(argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
         break;
       default:
-        if (arg.startsWith('--targets=')) {
+        if (arg.startsWith('--reference-from=')) {
+          opts.referenceFrom = arg.slice('--reference-from='.length);
+        } else if (arg.startsWith('--targets=')) {
           opts.ids = arg.slice('--targets='.length).split(',').map((s) => s.trim()).filter(Boolean);
         } else if (arg.startsWith('-')) {
           throw new Error(`Unknown option: ${arg}`);
@@ -150,6 +164,8 @@ function printInstall(report) {
     if (entry.backup) console.log(`          backup: ${prettyPath(entry.backup)}`);
   }
 
+  printReference(report);
+
   if (report.pruned.length) {
     console.log('');
     for (const p of report.pruned) console.log(`  pruned  ${prettyPath(p)} (no longer shipped)`);
@@ -163,6 +179,39 @@ function printInstall(report) {
       if (p.note) console.log(`          ${p.note}`);
       if (p.backup) console.log(`          backup: ${prettyPath(p.backup)}`);
     }
+  }
+}
+
+function printReference(report) {
+  const entry = report.reference;
+  if (!entry) return;
+  const commit = entry.commit ? entry.commit.slice(0, 7) : 'unknown commit';
+  const where = `  reference ${prettyPath(entry.dir)}`;
+  switch (entry.status) {
+    case 'installed':
+      console.log(`${where} — ${entry.source}, ${commit}: ${entry.files} files, ${entry.rewrittenLinks + entry.rewrittenDownloads} links now local`);
+      break;
+    case 'kept':
+      console.log(`${where} — kept the existing copy (${commit}); could not refresh it: ${entry.reason}`);
+      break;
+    case 'unavailable':
+      console.log(`${where} — not installed: ${entry.reason}`);
+      console.log('            agents will read the Agent Reference from GitHub until `bt-agent update` succeeds');
+      break;
+    case 'would-install':
+      console.log(`${where} — would download ${entry.source}`);
+      break;
+    default:
+      console.log(`${where} — ${commit}`);
+  }
+  if (entry.links && entry.links.broken.length) {
+    console.log(`            ${entry.links.broken.length} local link(s) do not resolve:`);
+    for (const broken of entry.links.broken) console.log(`              ${broken}`);
+  }
+  for (const permission of report.permissions || []) {
+    if (permission.action === 'unchanged') continue;
+    console.log(`  allow   ${prettyPath(permission.file)} — ${permission.rule} ${permission.action}`);
+    if (permission.note) console.log(`          ${permission.note}`);
   }
 }
 
@@ -225,6 +274,14 @@ function printDoctor(result) {
     console.log('INSTALL FAILED — missing:');
     for (const m of result.missing) console.log(`  ${prettyPath(m)}`);
   }
+  const ref = result.reference;
+  if (ref && ref.present) {
+    const freshness = ref.latest ? (ref.latest === ref.commit ? ', current with GitHub' : '') : '';
+    console.log(`\n  reference ${prettyPath(ref.dir)} — ${ref.commit ? ref.commit.slice(0, 7) : 'unknown commit'}, ${ref.files} files, ${ref.links.checked} local links checked${freshness}`);
+  } else if (ref) {
+    console.log(`\n  reference ${prettyPath(ref.dir)}`);
+  }
+  for (const warning of (ref && ref.warnings) || []) console.log(`            ${warning}`);
 }
 
 function targetsJson(mode, projectRoot) {
@@ -295,6 +352,8 @@ function main() {
     persona: opts.persona,
     skills: opts.skills,
     migrate: opts.migrate,
+    reference: opts.reference,
+    referenceFrom: opts.referenceFrom,
     dryRun: opts.dryRun,
   };
 
@@ -384,7 +443,8 @@ function main() {
         } else if (!report.manifestFound) {
           console.log('\nNothing to uninstall — no install manifest found.\n');
         } else {
-          console.log(`\n${opts.dryRun ? 'Would remove' : 'Removed'} ${report.removed.length} skill folder(s).`);
+          console.log(`\n${opts.dryRun ? 'Would remove' : 'Removed'} ${report.removed.length} folder(s) (skills and the local Agent Reference).`);
+          for (const p of report.permissions) if (p.action === 'removed') console.log(`  allow   ${prettyPath(p.file)} — ${p.rule} removed`);
           for (const p of report.persona) console.log(`  persona ${prettyPath(p.file)} — ${p.action}`);
           console.log('');
         }
@@ -392,7 +452,7 @@ function main() {
       }
 
       case 'doctor': {
-        const result = doctor(common);
+        const result = doctor({ ...common, checkRemote: true });
         if (opts.json) console.log(JSON.stringify(result, null, 2));
         else {
           printDoctor(result);

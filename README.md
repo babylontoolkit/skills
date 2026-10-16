@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.64)
+# Babylon Toolkit Desktop Agent (1.1.66)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -18,9 +18,10 @@ npx @babylonjs-toolkit/agent install
 ```
 
 That installs **every skill** into every skills directory and the **Agent Persona** into every
-global instruction file, on macOS, Linux and Windows. Codex targets also enable outbound
-network access in their workspace-write configuration. Restart your agent session to pick
-up the skills, instructions and configuration.
+global instruction file, on macOS, Linux and Windows, and downloads the **Agent Reference** with
+all its sub-documents into `~/.claude/toolkit/reference/` (see *The local Agent Reference* below).
+Codex targets also enable outbound network access in their workspace-write configuration.
+Restart your agent session to pick up the skills, instructions and configuration.
 
 ### Commands
 
@@ -43,8 +44,36 @@ up the skills, instructions and configuration.
 | `--no-persona` | Install skills only; leave instruction files alone |
 | `--persona-only` | Install/refresh the Agent Persona only; do not copy skills |
 | `--no-self-update` | `update` only: reinstall the bundled files; do not fetch npm |
+| `--no-reference` | Do not download the Agent Reference; agents read it from GitHub |
+| `--reference-from <dir>` | Install the Agent Reference from a local checkout instead of GitHub (offline, or to try unpublished Reference edits) |
 | `--dry-run` | Print what would happen and change nothing |
 | `--json` | Machine-readable output |
+
+### The local Agent Reference
+
+Agents read the [Agent Reference](https://github.com/babylontoolkit/agent) before any Babylon work.
+`bt-agent install` and `bt-agent update` download it — `reference.md`, every sub-document, the training
+examples and the 2.7 MB API declarations — into `~/.claude/toolkit/reference/`, beside the Unity helper
+scripts the Reference keeps in `~/.claude/toolkit/` (a `--project` install uses `.claude/toolkit/reference/`
+in the project). Every link into the Reference repo is rewritten to the local file — in the copy and in the
+installed skills — and the Reference's `curl … -o ~/.claude/toolkit/…` download commands become `cp`
+from the copy, so agents read files instead of fetching pages:
+
+- **Faster and more reliable** — no network round trip per document, and no failed fetch stopping a run.
+- **Fewer tokens** — an agent searches a large document and reads only the section it needs, where a
+  fetch is all or nothing (`unity-exporter-cli.md` and `unity-authoring-recipes.md` are about 30k tokens
+  each); and nothing reaches it summarized or cut short.
+- **The same in every agent** — Claude Code, Codex, Copilot, Gemini CLI and Antigravity all read files.
+- **In step with the skills** — the copy is the one the installed skills were written against.
+
+The copy comes from GitHub at install time, not from the npm package, so a Reference edit reaches agents
+with `bt-agent update` — no npm release needed. If the download fails, an existing copy is kept; with no
+copy at all, the skills and persona keep the GitHub addresses and agents read the Reference from there.
+The persona names the local folder and keeps GitHub as the fallback for any file that is missing.
+Claude Code asks before reading outside the project, so a global install adds one read-only rule —
+`Read(~/.claude/toolkit/reference/**)` — to `~/.claude/settings.json` (uninstall removes it, and only if
+the installer added it). `bt-agent doctor` checks that every local link resolves and says when GitHub has a
+newer Reference.
 
 ### Disk usage report
 

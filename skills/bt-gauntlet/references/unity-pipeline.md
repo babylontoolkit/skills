@@ -38,7 +38,7 @@ scenes; geometry, UVs, PBR maps, LODs and skinning for models.
 > container** (`selection != null`, components but no scene metadata). A model used in a level ships inside
 > that level's export; there is nothing asset-specific to do for it. See § 6.B.
 
-> **Required reading before round 1.** Fetch and read the Agent Reference's
+> **Required reading before round 1.** Read the Agent Reference's
 > [Unity Exporter Instructions](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-exporter-cli.md)
 > and [Unity Authoring Recipes](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/unity-authoring-recipes.md)
 > in full — and, for any round that touches Blender, the

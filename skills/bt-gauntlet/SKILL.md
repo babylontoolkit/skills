@@ -67,11 +67,11 @@ Downgrading is not a neutral choice. A critic that is the same context which jus
 
 ## ⚠️ Required Reading Before Any Babylon Work
 
-For any round involving Babylon, BabylonJS, or the Babylon Toolkit, first ensure you have already fetched and read the Babylon Toolkit Agent Reference in the current remembered session/context:
+For any round involving Babylon, BabylonJS, or the Babylon Toolkit, first ensure you have already read the Babylon Toolkit Agent Reference in the current remembered session/context:
 
 https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md
 
-If you have not read it in this session/context, or you no longer remember it due to context loss/compaction (which WILL be the case on `--resume` in a fresh session), fetch and read it before writing any code. Treat it as the authority for conventions, API, and patterns; fetch its linked subpages only when relevant — and for a `unity` job the Unity Exporter subpage is **always** relevant, plus the Blender CLI subpage whenever model work is in scope. Do not refetch what you still remember. If a required fetch fails, STOP and tell the user. Do not guess at the API. Builders spawned as subagents must be given (or told to fetch) the Agent Reference too — a subagent does not inherit your context.
+If you have not read it in this session/context, or you no longer remember it due to context loss/compaction (which WILL be the case on `--resume` in a fresh session), read it before writing any code. Treat it as the authority for conventions, API, and patterns; read its linked subpages only when relevant — and for a `unity` job the Unity Exporter subpage is **always** relevant, plus the Blender CLI subpage whenever model work is in scope. Do not re-read what you still remember. If a required document cannot be read, STOP and tell the user. Do not guess at the API. Builders spawned as subagents must be given (or told to read) the Agent Reference too — a subagent does not inherit your context.
 
 ## ⚠️ Babylon Toolkit Component Authority (supplied interactive assets)
 

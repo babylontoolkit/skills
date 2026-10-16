@@ -119,7 +119,7 @@ progress.md updated: attempt 3/5, stall -> approaching (same top gap twice)
 
 1. Resolve the job: explicit name → that job; one job in `.agents/gauntlet/` → resume it; several → list them and
    ask.
-2. Fetch/read the Babylon Toolkit Agent Reference if not already remembered in this session.
+2. Read the Babylon Toolkit Agent Reference if not already remembered in this session.
 3. Read `.agents/gauntlet/<name>/loop-card.md` → `progress.md` → `pipeline.md` → `cameras.md` →
    `components.md` (if present) → the last 1–2 `rounds/*.md`.
 4. Read the pipeline reference for the job's `Kind` and **re-run its prerequisite gate**. This is not

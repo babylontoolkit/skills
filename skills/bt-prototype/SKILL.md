@@ -53,7 +53,7 @@ Use the user's message after the skill name as the `arguments`.
 
 ## ⚠️ Required reading before any build
 
-For any Babylon / BabylonJS / Babylon Toolkit work, ensure the **Agent Reference** is already read in this session/context (fetch `https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md` first if not; and its `web-kie-servers.md` sub-document if using the KIE MCP servers, or its `web-higgsfield-cli.md` sub-document if using the Higgsfield CLI). If a required fetch fails, STOP and tell the user. Do not refetch what you already remember.
+For any Babylon / BabylonJS / Babylon Toolkit work, ensure the **Agent Reference** is already read in this session/context (read `https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md` first if not; and its `web-kie-servers.md` sub-document if using the KIE MCP servers, or its `web-higgsfield-cli.md` sub-document if using the Higgsfield CLI). If a required document cannot be read, STOP and tell the user. Do not re-read what you already remember.
 
 If the project keeps a root **SPEC.md**, read it first and conform to its architecture/conventions; record the shipped prototypes per the project's working agreement when the batch lands.
 

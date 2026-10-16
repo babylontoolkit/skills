@@ -80,12 +80,12 @@ CLI** → the model's own built-in image/video generation → any other configur
 image/video tool. The parameter names below (`reference_paths`, `image_paths`,
 `out_path`) are KIE/Kling's; map them to your backend (Higgsfield mapping below).
 
-> **If using the KIE MCP servers** (Babylon Toolkit projects): fetch the
+> **If using the KIE MCP servers** (Babylon Toolkit projects): read the
 > Babylon Toolkit Agent Reference and its `web-kie-servers.md` sub-document
 > first (per CLAUDE.md). Those servers read the key from `.env` — a file named
 > `env` is ignored.
 
-> **If using the Higgsfield CLI** (`@higgsfield/cli`): fetch the Agent
+> **If using the Higgsfield CLI** (`@higgsfield/cli`): read the Agent
 > Reference's `web-higgsfield-cli.md` sub-document first. Install the CLI
 > locally (`npm i -D @higgsfield/cli`) and the reference's download wrapper as
 > `scripts/hf-generate.mjs`. The CLI only returns CDN URLs; the wrapper saves
