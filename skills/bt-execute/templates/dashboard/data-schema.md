@@ -114,8 +114,20 @@ Top level:
 | `highlights` | the results worth remembering |
 | `comparison` | ONE before/after for the plan as a whole — "before" captured before T1 started, "after" at the end, from the same camera or viewport: `{ "title", "caption", "source", "before": { "src", "caption" }, "after": { "src", "caption" } }`; `null` when the plan has nothing to see |
 | `snapshots` | optional: the plan's key progression, or the end-to-end proof |
+| `testing` | how the plan was tested — every run, not only `--verbose` (below) |
 | `sections` | `--verbose` only: `[{ "title", "body": [paragraphs], "items": [bullets] }]`, in this order where they apply — Architecture · Phase by phase · Problems and resolutions · Deviations from the plan · Known limitations · Lessons learned · Estimate vs actual · Recommended next steps |
 | `updates` | see *Updated notifications* |
+
+`afterAction.testing` — the page shows it as *Testing and verification*, beside a task-by-task table and
+every test case that it reads from the tasks themselves:
+
+| Field | Meaning |
+|---|---|
+| `summary` | paragraphs: how the plan was tested — unit tests, the verifier's re-runs, what was checked live and on what, the end-to-end check |
+| `suites` | `[{ "name", "command", "passed", "failed", "added", "note" }]` — every suite the plan touched, from **one last full run of each at run end**, never added up from the tasks (each task reports the whole suite it ran, so a sum counts the same tests many times). `added` is how many tests this plan wrote; `note` explains any failure that pre-dates the plan |
+| `gaps` | what is not covered by a test or a live check, one string per point |
+
+The page's *Tests passing* figure is the sum of `suites`; without them it shows how many tasks have tests.
 
 Each phase:
 
@@ -155,7 +167,7 @@ Each task:
 |---|---|
 | `approach` | paragraphs: how it was built, how the pieces fit, why this way and not the alternatives |
 | `changes` | `[{ "file", "change": "what changed in it and why" }]` |
-| `testCases` | `[{ "name", "expected", "result": "PASS" \| "FAIL …" }]` |
+| `testCases` | `[{ "name", "expected", "result" }]` — `result` leads with `PASS` or `FAIL`, then what was observed: `"PASS — 0→74 km/h on held W"` |
 | `acceptance` | `[{ "criterion", "result": "PASS" \| "FAIL", "evidence" }]` |
 | `problems` | `[{ "attempt": "1", "failed", "cause", "fix" }]` |
 | `liveCheck` | what was looked at, where, at what resolution, how it was judged |

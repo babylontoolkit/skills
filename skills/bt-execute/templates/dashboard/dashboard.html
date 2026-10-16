@@ -334,8 +334,8 @@
   .figures { margin: 0; padding: 14px 18px; border-radius: var(--radius-small); background: var(--bg-sunken); border: 1px solid var(--line); display: grid; gap: 2px; align-self: start; }
   .figures div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
   .figures div:first-child { border-top: 0; }
-  .figures dt { color: var(--text-muted); font-size: 13px; }
-  .figures dd { margin: 0; font: 700 13.5px/1.5 var(--font-mono); text-align: right; }
+  .figures dt { flex: none; color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+  .figures dd { min-width: 0; margin: 0; font: 700 13.5px/1.5 var(--font-mono); text-align: right; overflow-wrap: anywhere; }
 
   /* ---------- Snapshots ---------- */
   .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 16px; margin-top: 18px; }
@@ -650,6 +650,19 @@
   .aar-section h4 { font-size: 15.5px; }
   .aar-section p { margin: 0 0 8px; color: var(--text-muted); font-size: 14px; }
   .aar-section ul { margin: 0; padding-left: 18px; color: var(--text-muted); font-size: 14px; display: grid; gap: 4px; }
+  .testing { margin-top: 24px; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--radius-small); background: var(--bg); display: grid; gap: 14px; }
+  .testing > h4 { margin: 0; font-size: 15.5px; }
+  .testing > p { margin: 0; color: var(--text-muted); font-size: 14px; }
+  .testing-part > summary { cursor: pointer; font: 700 11px/1.6 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); }
+  .testing-part[open] > summary { margin-bottom: 10px; }
+  .testing-cases { display: grid; gap: 16px; }
+  .case-head { margin-bottom: 6px; font-size: 13.5px; font-weight: 600; }
+  .case-head .task-link { margin-right: 6px; }
+  .cell-note { margin-top: 2px; color: var(--text-muted); font-size: 12.5px; }
+  .count { font: 700 12.5px/1.5 var(--font-mono); }
+  .count-pass { color: var(--done); }
+  .count-fail { color: var(--failed); }
+  .task-link { font: 700 12.5px/1.5 var(--font-mono); }
 
   /* ---------- Updated notifications ---------- */
   .updated-badge {
@@ -714,7 +727,7 @@
   /* ---------- Containment: nothing is ever wider than its card ---------- */
   /* A single-column grid's column defaults to the width of its longest unbreakable line (a long path,
      a hash), which pushes every paragraph in it past the card's edge. Size those columns to the card. */
-  .tasks, .task-body, .task-details, .highlights, .figures, .live-steps, .update-notes,
+  .tasks, .task-body, .task-details, .highlights, .figures, .live-steps, .update-notes, .testing, .testing-cases,
   .detail-block ul, .aar-section ul { grid-template-columns: minmax(0, 1fr); }
   .highlights li { grid-template-columns: 22px minmax(0, 1fr); }
   /* Long paths, identifiers and URLs wrap wherever they must instead of running off the edge. */
@@ -787,6 +800,8 @@
   const STATUS_ICONS = { done: '✓', 'in-progress': '◐', built: '◆', verifying: '⟳', pending: '○', deferred: '⏭', failed: '✕' };
   /** Longest test or acceptance result still shown as a single badge; anything longer is wrapping text. */
   const VERDICT_BADGE_MAX_LENGTH = 16;
+  // The report's task-by-task testing table starts open for a short plan and folded for a long one.
+  const TESTING_TABLE_OPEN_ROWS = 12;
   /** Where the Babylon Toolkit Desktop Agent, whose skills generate this dashboard, is published. */
   const SKILLS_DOWNLOAD_URL = 'https://www.npmjs.com/package/@babylonjs-toolkit/agent';
   /** Minutes without a live update before the Now banner warns that the run has gone quiet. */
@@ -988,6 +1003,7 @@
             </div>
             ${renderFigures(allTasks, doneCount)}
           </div>
+          ${renderTesting(allTasks)}
           ${renderAfterActionSections(afterAction.sections)}
           ${updateNotes(afterAction.updates)}
         </article>
@@ -1005,11 +1021,16 @@
     const phases = report.phases || [];
     const retried = allTasks.filter((task) => Number(task.attempts) > 1).length;
     const deferred = allTasks.filter((task) => task.status === 'deferred' || task.status === 'failed').length;
-    const testsPassed = allTasks.reduce((total, task) => total + (task.tests ? Number(task.tests.passed) || 0 : 0), 0);
+    // Each task reports the whole suite it ran, so adding up the tasks counts the same tests many times over.
+    // The final suites are the true count; without them, say how many tasks were tested.
+    const suites = finalSuites();
+    const testsFigure = suites.length
+      ? ['Tests passing', `${suites.reduce((total, suite) => total + (Number(suite.passed) || 0), 0)}${sumFailed(suites) ? ` · ${sumFailed(suites)} failed` : ''}`]
+      : ['Tasks with tests', `${allTasks.filter(hasTests).length} / ${allTasks.length}`];
     const rows = [
       ['Tasks verified', `${doneCount} / ${allTasks.length}`],
       ['Phases', `${phases.filter((phase) => phase.status === 'done').length} / ${phases.length}`],
-      ['Tests passing', String(testsPassed)],
+      testsFigure,
       ['Needed a second attempt', String(retried)],
       ['Deferred', String(deferred)],
       ['Active time', report.activeTime || '—'],
@@ -1201,6 +1222,104 @@
       detailBlock('Time', timing),
     ].join('');
     return blocks ? `<div class="task-details">${blocks}</div>` : '';
+  }
+
+  /* ===================== Testing and verification ===================== */
+
+  /** The suites as they stand at the end of the plan — bt-execute writes them from one last full run of each. */
+  function finalSuites() {
+    const testing = report.afterAction && report.afterAction.testing;
+    return testing && Array.isArray(testing.suites) ? testing.suites : [];
+  }
+
+  function sumFailed(suites) {
+    return suites.reduce((total, suite) => total + (Number(suite.failed) || 0), 0);
+  }
+
+  function hasTests(task) {
+    return Boolean(task.tests && (Number(task.tests.passed) || Number(task.tests.failed)));
+  }
+
+  function hasLiveCheck(task) {
+    return task.verifyLevel === 'live' || Boolean(task.details && task.details.liveCheck);
+  }
+
+  function testCasesOf(task) {
+    return (task.details && task.details.testCases) || [];
+  }
+
+  /**
+   * The After Action Report's testing section. The final suites and how the plan was tested are written by
+   * bt-execute; the task-by-task table and the test cases are read from the tasks, so they always agree with them.
+   */
+  function renderTesting(allTasks) {
+    const testing = (report.afterAction && report.afterAction.testing) || {};
+    const suites = finalSuites();
+    const checked = allTasks.filter((task) => task.verifier || hasTests(task) || testCasesOf(task).length || ['done', 'deferred', 'failed'].includes(task.status));
+    const gaps = testing.gaps || [];
+    if (!suites.length && !checked.length && !testing.summary && !gaps.length) return '';
+
+    const suiteTable = detailTable(['Suite', 'Passed', 'Failed', 'Added', 'Command'], [32, 11, 11, 11, 35],
+      suites.map((suite) => [
+        `${formatInline(suite.name || '')}${suite.note ? `<div class="cell-note">${formatInline(suite.note)}</div>` : ''}`,
+        `<span class="count count-pass">${escapeHtml(suite.passed ?? '—')}</span>`,
+        `<span class="count${Number(suite.failed) ? ' count-fail' : ''}">${escapeHtml(suite.failed ?? 0)}</span>`,
+        escapeHtml(suite.added ?? '—'),
+        suite.command ? `<code>${escapeHtml(suite.command)}</code>` : '',
+      ]));
+
+    const withTests = checked.filter(hasTests).length;
+    const liveChecks = checked.filter(hasLiveCheck).length;
+    const verified = checked.filter((task) => task.status === 'done').length;
+    const taskTable = detailTable(['Task', 'Verifier', 'Tests', 'Test files', 'Cases', 'Live check'], [27, 12, 14, 31, 8, 8],
+      checked.map((task) => {
+        const cases = testCasesOf(task);
+        // Results often record what was observed rather than a verdict, so count the cases and flag only stated failures.
+        const casesFailed = cases.filter((testCase) => /^fail/i.test(String(testCase.result || '').trim())).length;
+        const tests = task.tests || {};
+        return [
+          `<a class="task-link" href="#task-${escapeAttribute(task.id || '')}">${escapeHtml(task.id || '')}</a><div class="cell-note">${escapeHtml(task.title || '')}</div>`,
+          `${taskVerdict(task)}${Number(task.attempts) > 1 ? `<div class="cell-note">${escapeHtml(task.attempts)} attempts</div>` : ''}`,
+          hasTests(task)
+            ? `<span class="count count-pass">${escapeHtml(tests.passed ?? 0)} passed</span>${Number(tests.failed) ? `<div class="count count-fail">${escapeHtml(tests.failed)} failed</div>` : ''}`
+            : `<span class="cell-note" title="${escapeAttribute(tests.note || '')}">${tests.note ? escapeHtml(tests.note) : '—'}</span>`,
+          (tests.files || []).length ? tests.files.map((file) => `<code>${escapeHtml(file)}</code>`).join('<br>') : '—',
+          cases.length ? `${cases.length}${casesFailed ? `<div class="count count-fail">${casesFailed} failed</div>` : ''}` : '—',
+          hasLiveCheck(task) ? `<span title="${escapeAttribute((task.details && task.details.liveCheck) || 'Checked live')}">Yes</span>` : '—',
+        ];
+      }));
+
+    const caseTasks = checked.filter((task) => testCasesOf(task).length);
+    const caseCount = caseTasks.reduce((total, task) => total + testCasesOf(task).length, 0);
+    const caseTables = caseTasks.map((task) => `
+      <div class="detail-block">
+        <div class="case-head"><a class="task-link" href="#task-${escapeAttribute(task.id || '')}">${escapeHtml(task.id || '')}</a> ${escapeHtml(task.title || '')}</div>
+        ${detailTable(['Case', 'Expected', 'Result'], [28, 36, 36],
+          testCasesOf(task).map((testCase) => [formatInline(testCase.name || ''), formatInline(testCase.expected || ''), verdict(testCase.result)]))}
+      </div>`).join('');
+
+    return `
+      <div class="testing">
+        <h4>Testing and verification</h4>
+        ${paragraphs(testing.summary)}
+        ${suiteTable ? `<div class="detail-block"><h4>Final test suites</h4>${suiteTable}</div>` : ''}
+        ${gaps.length ? `<div class="detail-block"><h4>Not covered</h4><ul>${gaps.map((gap) => `<li>${formatInline(gap)}</li>`).join('')}</ul></div>` : ''}
+        ${taskTable ? `<details class="testing-part" ${checked.length <= TESTING_TABLE_OPEN_ROWS ? 'open' : ''}>
+          <summary>Task by task · ${verified} of ${allTasks.length} verified · ${withTests} with tests · ${liveChecks} checked live</summary>
+          ${taskTable}
+        </details>` : ''}
+        ${caseTables ? `<details class="testing-part">
+          <summary>Every test case · ${caseCount} across ${caseTasks.length} task${caseTasks.length === 1 ? '' : 's'}</summary>
+          <div class="testing-cases">${caseTables}</div>
+        </details>` : ''}
+      </div>`;
+  }
+
+  /** A task's verifier result as one badge, from its status; the verifier's full sentence is its tooltip. */
+  function taskVerdict(task) {
+    const tone = { done: 'pass', failed: 'fail' }[task.status] || 'other';
+    const label = { done: 'PASS', failed: 'FAIL' }[task.status] || STATUS_LABELS[task.status] || task.status || '';
+    return `<span class="verdict verdict-${tone}" title="${escapeAttribute(task.verifier || '')}">${escapeHtml(label)}</span>`;
   }
 
   /** Verbose After Action Report sections: Architecture, Problems and resolutions, Lessons learned … */
@@ -1471,6 +1590,13 @@
       afterAction.updates = asUpdates(afterAction.updates);
       afterAction.snapshots = repairSnapshots(afterAction.snapshots);
       ['body', 'highlights', 'sections'].forEach((key) => { if (afterAction[key] !== undefined) afterAction[key] = asList(afterAction[key]); });
+      if (afterAction.testing !== undefined) {
+        if (afterAction.testing === null || typeof afterAction.testing !== 'object') afterAction.testing = null;
+        else {
+          afterAction.testing.suites = asList(afterAction.testing.suites).filter((suite) => suite && typeof suite === 'object');
+          afterAction.testing.gaps = asTextList(afterAction.testing.gaps);
+        }
+      }
     }
     data.phases.forEach((phase) => {
       phase.updates = asUpdates(phase.updates);
@@ -1708,6 +1834,12 @@
       lightboxImage.src = trigger.dataset.zoom;
       lightboxCaption.textContent = trigger.dataset.caption || '';
       lightbox.classList.add('is-open');
+    });
+    // A link to a task opens its card, not just scrolls to the folded row.
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest('a[href^="#task-"]');
+      const target = link && document.getElementById(decodeURIComponent(link.getAttribute('href').slice(1)));
+      if (target && target.tagName === 'DETAILS') target.open = true;
     });
     const close = () => lightbox.classList.remove('is-open');
     lightbox.addEventListener('click', close);

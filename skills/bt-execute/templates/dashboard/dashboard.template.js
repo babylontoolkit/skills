@@ -32,6 +32,11 @@ window.FEATURE_DASHBOARD = {
     "highlights": [],
     "comparison": null,
     "snapshots": [],
+    "testing": {
+      "summary": [],
+      "suites": [],
+      "gaps": []
+    },
     "sections": [],
     "updates": []
   },
