@@ -19,7 +19,13 @@ The `window.… =` prefix exists only because a page opened from disk (`file://`
 JSON — double-quoted keys and strings, no comments, no trailing commas — so any JSON parser can read it.
 The status of the plan itself lives in the plan file's checkboxes; the dashboard mirrors it (see *Status*).
 
-## Updating a data file — parse, change, write back
+## Updating a data file
+
+Use bt-execute's helper — `node <skills>/bt-execute/scripts/dashboard.mjs live|task|activity|status|check|watch <feature-folder> …`
+(every option is in its header). It parses, checks field shapes and writes atomically. Its `watch` command is the
+watchdog that writes a heartbeat into the live file when an agent has been quiet for 10 minutes.
+
+### Fallback — parse, change, write back
 
 Never edit the text by hand: one stray comma blanks the page. Read the file, parse the JSON, change the
 fields, and write the whole file back. Every write then produces valid data by construction.
@@ -38,6 +44,15 @@ PY
 
 Node works the same way (`JSON.parse` / `JSON.stringify(data, null, 2)`). Where neither runs, write the
 whole file from a complete JSON value, never a partial patch. `<slug>_live.js` is small — always write it whole.
+
+**Keep every field its documented shape.** Valid JSON is not enough: a list field written as plain text
+(`"updates": "note"` instead of `"updates": [{ "at", "by", "note" }]`) once blanked a dashboard mid-run. The
+lists are `updates`, `snapshots`, `files`, `decisions`, `activity`, `followUps`, `phases`, `tasks`, a snapshot's
+`frames`, and in `details` the tables `changes`, `testCases`, `acceptance`, `problems` and the list `notes`.
+Add to a list (`.append(...)`), never assign a string to it, and when you give a helper script to subagents,
+make it check these shapes before it writes. The page repairs the common slips on load (a text `updates`
+becomes one note, a text `notes` a one-item list, any other non-list an empty list) and shows an error panel
+instead of a blank page if something still cannot render — it keeps checking and redraws once the file is fixed.
 
 ## Conventions
 
@@ -144,7 +159,7 @@ Each task:
 | `acceptance` | `[{ "criterion", "result": "PASS" \| "FAIL", "evidence" }]` |
 | `problems` | `[{ "attempt": "1", "failed", "cause", "fix" }]` |
 | `liveCheck` | what was looked at, where, at what resolution, how it was judged |
-| `notes` | anything a maintainer should know |
+| `notes` | `["…"]` — anything a maintainer should know, one string per point |
 | `timing` | `{ "build": 12, "verify": 6, "fix": 4 }` — minutes |
 
 ## Snapshot shapes
@@ -174,4 +189,5 @@ The page shows it only while `status` is `in-progress`.
 | `title` | only when there is no task: `"Verifying phase 1"`, `"Committing phase 1"` |
 | `role` | `implementer` · `verifier` · `orchestrator` |
 | `activity` | one plain-language sentence on what is happening this minute |
+| `source` | `agent` (an agent wrote it) or `watchdog` (a heartbeat written because the agent was quiet — the page tags it) |
 | `steps` | `[{ "at": "HH:MM", "text" }]` — the current task's log, oldest first; start fresh for each task, keep the last 12. Plain language a non-developer follows: "Painting the road mask from the spline", not "edit RoadNetwork.ts L120" |

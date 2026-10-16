@@ -181,7 +181,7 @@
     font: 700 11.5px/1.4 var(--font-mono);
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    white-space: nowrap;
+    max-width: 100%;
   }
   .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
   .status-done, .status-complete { color: var(--done); background: var(--done-soft); }
@@ -314,9 +314,6 @@
     margin-top: 7px;
     font: 500 11.5px/1.3 var(--font-mono);
     color: var(--text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   /* ---------- Summary ---------- */
@@ -495,9 +492,6 @@
     padding: 6px 8px 7px;
     font: 600 11.5px/1.3 var(--font-sans);
     color: var(--text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .film-frame .film-step {
     position: absolute;
@@ -518,7 +512,7 @@
   .stage-caption .stage-note { color: var(--text-muted); font-size: 13.5px; }
 
   /* ---------- Phases ---------- */
-  .phase { margin-top: 20px; overflow: hidden; }
+  .phase { margin-top: 20px; }
   .phase-head {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -604,6 +598,8 @@
   .live-steps time { font: 600 12px/1.6 var(--font-mono); color: var(--text-faint); }
   .live-steps li:last-child { color: var(--text); font-weight: 600; }
   .task-live { padding: 12px 14px; border-radius: var(--radius-small); background: var(--active-soft); }
+  .now-warning { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid var(--failed); border-radius: 0 var(--radius-small) var(--radius-small) 0; background: var(--failed-soft); font-size: 13.5px; }
+  .tag.tag-watchdog { color: var(--updated); border-color: color-mix(in srgb, var(--updated) 45%, transparent); background: var(--updated-soft); letter-spacing: 0.06em; }
   .task-live .now-head { font-size: 10.5px; }
   .task-id { font: 700 13px/1 var(--font-mono); color: var(--text-muted); }
   .task-title { font-weight: 600; min-width: 0; }
@@ -639,11 +635,11 @@
   .detail-block p { margin: 0 0 8px; color: var(--text-muted); }
   .detail-block ul { margin: 0; padding-left: 18px; color: var(--text-muted); display: grid; gap: 4px; }
   .detail-scroll { overflow-x: auto; }
-  .detail-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .detail-table th { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line-strong); font: 600 10.5px/1.4 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); white-space: nowrap; }
+  .detail-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+  .detail-table th { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line-strong); font: 600 10.5px/1.4 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
   .detail-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
-  .detail-table td:first-child { min-width: 140px; }
-  .verdict { padding: 2px 7px; border-radius: 5px; font: 700 11px/1.5 var(--font-mono); white-space: nowrap; }
+  .verdict-note { color: var(--text); }
+  .verdict { display: inline-block; max-width: 100%; padding: 2px 7px; border-radius: 5px; font: 700 11px/1.5 var(--font-mono); }
   .verdict-pass { color: var(--done); background: var(--done-soft); }
   .verdict-fail { color: var(--failed); background: var(--failed-soft); }
   .verdict-other { color: var(--text-muted); background: var(--pending-soft); }
@@ -666,7 +662,7 @@
     font: 700 10.5px/1.4 var(--font-mono);
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    white-space: nowrap;
+    max-width: 100%;
   }
   .updated-badge::before { content: "↻"; font-size: 12px; letter-spacing: 0; }
   .updated-badge.is-new { box-shadow: 0 0 0 3px var(--updated-soft); }
@@ -713,6 +709,15 @@
   .activity-log > summary { cursor: pointer; }
   .activity-log[open] > summary { margin-bottom: 8px; }
 
+  /* ---------- Containment: nothing is ever wider than its card ---------- */
+  /* A single-column grid's column defaults to the width of its longest unbreakable line (a long path,
+     a hash), which pushes every paragraph in it past the card's edge. Size those columns to the card. */
+  .tasks, .task-body, .task-details, .highlights, .figures, .live-steps, .update-notes,
+  .detail-block ul, .aar-section ul { grid-template-columns: minmax(0, 1fr); }
+  .highlights li { grid-template-columns: 22px minmax(0, 1fr); }
+  /* Long paths, identifiers and URLs wrap wherever they must instead of running off the edge. */
+  .page, .masthead h1, .masthead .lede { overflow-wrap: anywhere; }
+
   /* ---------- Lightbox ---------- */
   .lightbox {
     position: fixed;
@@ -747,6 +752,12 @@
     .after-action { padding: 18px; }
     .after-action-columns { grid-template-columns: 1fr; }
     .route-label { display: none; }
+    /* Detail tables stack on phones: one block per row, each value under its column's label. */
+    .detail-table, .detail-table tbody, .detail-table tr, .detail-table td { display: block; width: 100%; }
+    .detail-table colgroup, .detail-table thead { display: none; }
+    .detail-table tr { padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .detail-table td { padding: 3px 0; border-bottom: 0; }
+    .detail-table td::before { content: attr(data-label); display: block; font: 600 10.5px/1.6 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before { animation: none !important; transition: none !important; }
@@ -772,6 +783,8 @@
   /** Seconds between refreshes of the "updated N min ago" labels. */
   const AGE_REFRESH_SECONDS = 30;
   const STATUS_ICONS = { done: '✓', 'in-progress': '◐', built: '◆', verifying: '⟳', pending: '○', deferred: '⏭', failed: '✕' };
+  /** Longest test or acceptance result still shown as a single badge; anything longer is wrapping text. */
+  const VERDICT_BADGE_MAX_LENGTH = 16;
   /** Where the Babylon Toolkit Desktop Agent, whose skills generate this dashboard, is published. */
   const SKILLS_DOWNLOAD_URL = 'https://www.npmjs.com/package/@babylonjs-toolkit/agent';
   /** Minutes without a live update before the Now banner warns that the run has gone quiet. */
@@ -808,8 +821,15 @@
   const storageKey = `dashboard:${report.feature && report.feature.slug ? report.feature.slug : location.pathname}`;
   const lastVisit = readStorage(localStorage, `${storageKey}:lastSeen`) || '';
 
-  render();
-  wireLightbox();
+  normalizeReport(report);
+  try {
+    render();
+    wireLightbox();
+  } catch (error) {
+    // A malformed field must never leave a blank page: say what broke, and keep checking for a repaired file.
+    console.error('Dashboard render failed', error);
+    renderBrokenData(error);
+  }
   wireAutoUpdate();
   restoreScroll();
   writeStorage(localStorage, `${storageKey}:lastSeen`, report.updatedAt || '');
@@ -1092,11 +1112,19 @@
     ].filter(Boolean).join(' · ');
     const title = task ? `${escapeHtml(task.id)} — ${escapeHtml(task.title || '')}` : escapeHtml(live.title || live.task || 'Between tasks');
     const age = describeAge(live.updatedAt);
+    // The live status can lag: it may still name a finished task while the agent works on the next one.
+    const activeTasks = allTasks.filter((candidate) => ['in-progress', 'built', 'verifying'].includes(candidate.status));
+    const namesFinishedTask = task && !['in-progress', 'built', 'verifying'].includes(task.status) && activeTasks.length > 0;
+    const lagWarning = namesFinishedTask
+      ? `<p class="now-warning">This status still names ${escapeHtml(task.id)}, which is ${escapeHtml(STATUS_LABELS[task.status] || task.status).toLowerCase()}. ${escapeHtml(activeTasks.map((candidate) => candidate.id).join(', '))} ${activeTasks.length === 1 ? 'is' : 'are'} in progress — the agent has not written its own status yet.</p>`
+      : '';
+    const watchdogTag = live.source === 'watchdog' ? '<span class="tag tag-watchdog" title="Written by the watchdog because the agent has been quiet">watchdog</span>' : '';
     return `
       <div class="card now ${age.isStale ? 'is-stale' : ''}" aria-live="polite">
-        <div class="now-head"><span class="live-dot"></span>Now${heading ? ` · ${heading}` : ''}<span class="now-age" data-age="${escapeAttribute(live.updatedAt || '')}">${escapeHtml(age.text)}</span></div>
+        <div class="now-head"><span class="live-dot"></span>Now${heading ? ` · ${heading}` : ''}${watchdogTag}<span class="now-age" data-age="${escapeAttribute(live.updatedAt || '')}">${escapeHtml(age.text)}</span></div>
         <a class="now-task" href="#task-${escapeAttribute(live.task || '')}">${title}</a>
         ${live.activity ? `<p class="now-activity">${formatInline(live.activity)}</p>` : ''}
+        ${lagWarning}
         ${renderLiveSteps(NOW_STEP_COUNT)}
       </div>`;
   }
@@ -1148,13 +1176,13 @@
       : '';
     const blocks = [
       detailBlock('Approach', paragraphs(details.approach)),
-      detailBlock('Changes by file', detailTable(['File', 'What changed and why'],
+      detailBlock('Changes by file', detailTable(['File', 'What changed and why'], [34, 66],
         (details.changes || []).map((change) => [`<code>${escapeHtml(change.file || '')}</code>`, formatInline(change.change || '')]))),
-      detailBlock('Test cases', detailTable(['Case', 'Expected', 'Result'],
+      detailBlock('Test cases', detailTable(['Case', 'Expected', 'Result'], [28, 36, 36],
         (details.testCases || []).map((testCase) => [formatInline(testCase.name || ''), formatInline(testCase.expected || ''), verdict(testCase.result)]))),
-      detailBlock('Acceptance', detailTable(['Criterion', 'Verdict', 'Evidence'],
+      detailBlock('Acceptance', detailTable(['Criterion', 'Verdict', 'Evidence'], [32, 18, 50],
         (details.acceptance || []).map((item) => [formatInline(item.criterion || ''), verdict(item.result), formatInline(item.evidence || '')]))),
-      detailBlock('Problems &amp; fixes', detailTable(['Attempt', 'What failed', 'Root cause', 'Fix'],
+      detailBlock('Problems &amp; fixes', detailTable(['Attempt', 'What failed', 'Root cause', 'Fix'], [10, 30, 30, 30],
         (details.problems || []).map((problem) => [escapeHtml(problem.attempt || ''), formatInline(problem.failed || ''), formatInline(problem.cause || ''), formatInline(problem.fix || '')]))),
       detailBlock('Live check', paragraphs(details.liveCheck)),
       detailBlock('Notes', (details.notes || []).length ? `<ul>${details.notes.map((note) => `<li>${formatInline(note)}</li>`).join('')}</ul>` : ''),
@@ -1184,18 +1212,35 @@
     return list.map((paragraph) => `<p>${formatInline(paragraph)}</p>`).join('');
   }
 
-  function detailTable(headings, rows) {
+  /**
+   * A verbose-detail table with fixed column shares, so no single long cell can widen its column and
+   * squeeze the others. Each cell carries its heading as `data-label` for the stacked phone layout.
+   */
+  function detailTable(headings, columnPercents, rows) {
     if (!rows.length) return '';
     return `<div class="detail-scroll"><table class="detail-table">
+      <colgroup>${columnPercents.map((percent) => `<col style="width:${percent}%">`).join('')}</colgroup>
       <thead><tr>${headings.map((heading) => `<th>${heading}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map((cells) => `<tr>${cells.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tbody>${rows.map((cells) => `<tr>${cells.map((cell, index) => `<td data-label="${escapeAttribute(headings[index])}">${cell}</td>`).join('')}</tr>`).join('')}</tbody>
     </table></div>`;
   }
 
+  /**
+   * A test or acceptance result. "PASS" / "FAIL" lead with a coloured badge and any explanation follows as
+   * normal wrapping text; a short other result is a neutral badge; a long one is plain text.
+   */
   function verdict(result) {
-    const text = String(result || '');
-    const tone = /^pass/i.test(text) ? 'pass' : /^fail/i.test(text) ? 'fail' : 'other';
-    return text ? `<span class="verdict verdict-${tone}">${escapeHtml(text)}</span>` : '';
+    const text = String(result || '').trim();
+    if (!text) return '';
+    const leading = /^(pass(?:ed)?|fail(?:ed)?)\b[\s:—–-]*/i.exec(text);
+    if (leading) {
+      const tone = /^pass/i.test(leading[1]) ? 'pass' : 'fail';
+      const rest = text.slice(leading[0].length);
+      return `<span class="verdict verdict-${tone}">${escapeHtml(leading[1].toUpperCase())}</span>${rest ? ` <span class="verdict-note">${formatInline(rest)}</span>` : ''}`;
+    }
+    return text.length <= VERDICT_BADGE_MAX_LENGTH
+      ? `<span class="verdict verdict-other">${escapeHtml(text)}</span>`
+      : `<span class="verdict-note">${formatInline(text)}</span>`;
   }
 
   function factRow(label, valueHtml) {
@@ -1376,6 +1421,79 @@
           (open the browser console for details). bt-plan writes it when the plan is created, and bt-execute updates it after every phase.</p>
         </div>
       </main>`;
+  }
+
+  /** Shown instead of a blank page when the data parses but a field has a shape the page cannot render. */
+  function renderBrokenData(error) {
+    appRoot.innerHTML = `
+      <main class="page">
+        <div class="card error-panel">
+          <h2>The dashboard data could not be shown</h2>
+          <p>A field in <code>documents/&lt;slug&gt;_dashboard.js</code> has an unexpected shape: ${escapeHtml(error && error.message ? error.message : String(error))}.
+          This page keeps checking and redraws itself as soon as the file is repaired (open the browser console for details).</p>
+        </div>
+      </main>`;
+  }
+
+  /* ===================== Data repair ===================== */
+
+  /**
+   * Repairs the list fields a hand or script slip most often breaks, so one bad value cannot blank the page:
+   * an update written as plain text becomes one update note, and any other non-list value becomes an empty list.
+   */
+  function normalizeReport(data) {
+    const asList = (value) => (Array.isArray(value) ? value : []);
+    const asUpdates = (value) => {
+      if (typeof value === 'string' && value) return [{ note: value }];
+      return asList(value).map((update) => (typeof update === 'string' ? { note: update } : update)).filter((update) => update && typeof update === 'object');
+    };
+    const repairSnapshots = (snapshots) => asList(snapshots)
+      .filter((snapshot) => snapshot && typeof snapshot === 'object')
+      .map((snapshot) => Object.assign(snapshot, { updates: asUpdates(snapshot.updates) }, snapshot.frames !== undefined ? { frames: asList(snapshot.frames) } : {}));
+    data.phases = asList(data.phases);
+    data.decisions = asList(data.decisions).map((decision) => Object.assign(decision, { updates: asUpdates(decision.updates) }));
+    data.followUps = asList(data.followUps);
+    data.activity = asList(data.activity);
+    if (data.afterAction && typeof data.afterAction === 'object') {
+      const afterAction = data.afterAction;
+      afterAction.updates = asUpdates(afterAction.updates);
+      afterAction.snapshots = repairSnapshots(afterAction.snapshots);
+      ['body', 'highlights', 'sections'].forEach((key) => { if (afterAction[key] !== undefined) afterAction[key] = asList(afterAction[key]); });
+    }
+    data.phases.forEach((phase) => {
+      phase.updates = asUpdates(phase.updates);
+      phase.snapshots = repairSnapshots(phase.snapshots);
+      phase.tasks = asList(phase.tasks);
+      phase.tasks.forEach((task) => {
+        task.updates = asUpdates(task.updates);
+        task.snapshots = repairSnapshots(task.snapshots);
+        task.files = typeof task.files === 'string' ? [task.files] : asList(task.files);
+        task.decisions = typeof task.decisions === 'string' ? [task.decisions] : asList(task.decisions);
+        if (task.tests !== null && typeof task.tests !== 'object') task.tests = null;
+        if (task.details !== null && task.details !== undefined && typeof task.details !== 'object') task.details = null;
+        if (task.details) repairDetails(task.details);
+      });
+    });
+    if (data.afterAction && Array.isArray(data.afterAction.sections)) {
+      data.afterAction.sections.forEach((section) => {
+        if (section && typeof section === 'object' && section.items !== undefined) section.items = asTextList(section.items);
+      });
+    }
+
+    /** A verbose write-up: tables need lists of rows; notes may be one sentence or a list of them. */
+    function repairDetails(details) {
+      ['changes', 'testCases', 'acceptance', 'problems'].forEach((key) => {
+        if (details[key] !== undefined) details[key] = asList(details[key]).filter((row) => row && typeof row === 'object');
+      });
+      if (details.notes !== undefined) details.notes = asTextList(details.notes);
+      if (details.timing !== undefined && (details.timing === null || typeof details.timing !== 'object')) details.timing = null;
+    }
+
+    /** One string becomes a one-item list; a list keeps only its non-empty entries. */
+    function asTextList(value) {
+      if (typeof value === 'string') return value ? [value] : [];
+      return asList(value).filter((item) => item !== null && item !== undefined && item !== '');
+    }
   }
 
   /* ===================== Updated notifications ===================== */
@@ -1591,11 +1709,13 @@
    */
   function wireAutoUpdate() {
     const toggle = document.getElementById('live-toggle');
-    toggle.addEventListener('click', () => {
-      writeStorage(localStorage, `${storageKey}:live`, isLiveEnabled() ? 'off' : 'on');
-      toggle.setAttribute('aria-pressed', String(isLiveEnabled()));
-      toggle.textContent = autoUpdateLabel();
-    });
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        writeStorage(localStorage, `${storageKey}:live`, isLiveEnabled() ? 'off' : 'on');
+        toggle.setAttribute('aria-pressed', String(isLiveEnabled()));
+        toggle.textContent = autoUpdateLabel();
+      });
+    }
     const dashboardSource = scriptSource('_dashboard.js');
     const liveSource = scriptSource('_live.js');
     const renderedFingerprint = fingerprint(report, live);

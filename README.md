@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.60)
+# Babylon Toolkit Desktop Agent (1.1.61)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -283,7 +283,10 @@ minutes), and each task's result appears the moment it is built. An open tab kee
 re-reads its data in the background (every 10 s during a run, every 30 s otherwise) and refreshes
 only when something changed — a task result, a finished run, the next run starting, or a plan
 reopened because you added a task after it was complete (the dashboard drops back to *paused* and
-the After Action Report is revised when the new work is done). Phase by phase and task by task it shows what was actually done, files, tests,
+the After Action Report is revised when the new work is done). A watchdog runs alongside every run:
+when an agent has written nothing for 10 minutes it writes a heartbeat naming the latest file the work
+changed (or warns that the run may be stalled), and it corrects a status that still names a finished
+task — so the dashboard never sits silent or wrong while a long task is running. Phase by phase and task by task it shows what was actually done, files, tests,
 verifier verdicts, attempts, commits, decisions, deferrals and follow-ups. The snapshots tell the
 story of the build: **progressions** captured from the same camera each time a meaningful layer
 lands (a terrain: heightmap → textures → roads → trees → foliage → lighting), played back as a
