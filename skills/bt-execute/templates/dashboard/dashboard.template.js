@@ -56,6 +56,7 @@ window.FEATURE_DASHBOARD = {
   ],
 
   status: "planned",
+  detail: "normal",                      // "verbose" once any run used bt-execute --verbose (never set back)
   updatedAt: "2026-01-01 09:00",
   estimate: "3–6 h",                      // the plan's Total line
   activeTime: "",                         // from the run log's ⏱ lines, e.g. "2 h 10 min"
@@ -72,6 +73,10 @@ window.FEATURE_DASHBOARD = {
     // from the same camera or viewport. null when the plan has nothing to see.
     comparison: null,                     // { title, caption, source, before: { src, caption }, after: { src, caption } }
     snapshots: [],                        // optional: the plan's key progression, or the end-to-end proof
+    // --verbose only: the full debrief, one card per section, in this order where they apply —
+    // Architecture · Phase by phase · Problems and resolutions · Deviations from the plan · Known limitations ·
+    // Lessons learned · Estimate vs actual · Recommended next steps
+    sections: [],                         // { title, body: [paragraphs], items: [bullets] }
     updates: []
   },
 
@@ -104,6 +109,17 @@ window.FEATURE_DASHBOARD = {
           deferredReason: "",
           decisions: [],                  // "DECISION T1: … — source"
           snapshots: [],                  // this task's progression / comparisons / stills
+          // --verbose only: the task's full write-up. Every field optional; the page shows what is present.
+          details: null,                  // {
+                                          //   approach: ["how it was built, how the pieces fit, why this way and not the alternatives"],
+                                          //   changes: [{ file, change: "what changed in it and why" }],
+                                          //   testCases: [{ name, expected, result: "PASS" | "FAIL …" }],
+                                          //   acceptance: [{ criterion, result: "PASS" | "FAIL", evidence }],
+                                          //   problems: [{ attempt: "1", failed, cause, fix }],
+                                          //   liveCheck: "what was looked at, where, at what resolution, what was judged",
+                                          //   notes: ["anything a maintainer should know"],
+                                          //   timing: { build: 12, verify: 6, fix: 4 }   // minutes
+                                          // }
           updates: []
         }
       ]

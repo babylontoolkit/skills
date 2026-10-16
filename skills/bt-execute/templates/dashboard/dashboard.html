@@ -632,6 +632,27 @@
     font-size: 13.5px;
   }
 
+  /* ---------- Verbose task details and After Action Report sections ---------- */
+  .task-details { display: grid; gap: 16px; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
+  .detail-block h4, .aar-section h4 { margin: 0 0 8px; }
+  .detail-block h4 { font: 700 11px/1.4 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); }
+  .detail-block p { margin: 0 0 8px; color: var(--text-muted); }
+  .detail-block ul { margin: 0; padding-left: 18px; color: var(--text-muted); display: grid; gap: 4px; }
+  .detail-scroll { overflow-x: auto; }
+  .detail-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .detail-table th { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line-strong); font: 600 10.5px/1.4 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); white-space: nowrap; }
+  .detail-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  .detail-table td:first-child { min-width: 140px; }
+  .verdict { padding: 2px 7px; border-radius: 5px; font: 700 11px/1.5 var(--font-mono); white-space: nowrap; }
+  .verdict-pass { color: var(--done); background: var(--done-soft); }
+  .verdict-fail { color: var(--failed); background: var(--failed-soft); }
+  .verdict-other { color: var(--text-muted); background: var(--pending-soft); }
+  .aar-sections { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+  .aar-section { padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--radius-small); background: var(--bg); }
+  .aar-section h4 { font-size: 15.5px; }
+  .aar-section p { margin: 0 0 8px; color: var(--text-muted); font-size: 14px; }
+  .aar-section ul { margin: 0; padding-left: 18px; color: var(--text-muted); font-size: 14px; display: grid; gap: 4px; }
+
   /* ---------- Updated notifications ---------- */
   .updated-badge {
     display: inline-flex;
@@ -836,6 +857,7 @@
       feature.origin ? `<span class="chip">from <strong>${escapeHtml(feature.origin === 'quick-plan' ? 'Quick Plan' : 'Spec')}</strong></span>` : '',
       feature.size ? `<span class="chip">size <strong>${escapeHtml(feature.size)}</strong></span>` : '',
       feature.proof ? `<span class="chip">proof <strong>${escapeHtml(feature.proof)}</strong></span>` : '',
+      report.detail === 'verbose' ? '<span class="chip">detail <strong>verbose</strong></span>' : '',
       report.updatedAt ? `<span class="chip">updated <strong>${escapeHtml(report.updatedAt)}</strong></span>` : '',
       report.status !== status ? `<span class="chip chip-warning"><span>status says <strong>${escapeHtml(report.status)}</strong>, but ${escapeHtml(unfinishedTasks().map((task) => task.id).join(', '))} ${unfinishedTasks().length === 1 ? 'is' : 'are'} not done</span></span>` : '',
     ].join('');
@@ -944,6 +966,7 @@
             </div>
             ${renderFigures(allTasks, doneCount)}
           </div>
+          ${renderAfterActionSections(afterAction.sections)}
           ${updateNotes(afterAction.updates)}
         </article>
         ${(afterAction.snapshots || []).length ? `<div class="gallery">${afterAction.snapshots.map(renderSnapshot).join('')}</div>` : ''}`;
@@ -1035,7 +1058,8 @@
       factRow('Decisions', (task.decisions || []).length ? task.decisions.map(formatInline).join('<br>') : ''),
     ].join('');
     const isCurrent = isRunActive() && live && live.task === task.id;
-    const hasBody = isCurrent || task.summary || facts || task.deferredReason || (task.snapshots || []).length || (task.updates || []).length;
+    const details = renderTaskDetails(task.details);
+    const hasBody = isCurrent || task.summary || facts || details || task.deferredReason || (task.snapshots || []).length || (task.updates || []).length;
 
     return `
       <details class="task is-${escapeAttribute(status)}${isCurrent ? ' is-live' : ''}" id="task-${escapeAttribute(task.id || '')}" ${isCurrent || status === 'in-progress' || isNew(task.updates) ? 'open' : ''}>
@@ -1051,6 +1075,7 @@
           ${task.deferredReason ? `<div class="deferred-note"><strong>Deferred:</strong> ${formatInline(task.deferredReason)}</div>` : ''}
           ${updateNotes(task.updates)}
           ${facts ? `<dl class="facts">${facts}</dl>` : ''}
+          ${details}
           ${(task.snapshots || []).length ? `<div class="gallery">${task.snapshots.map(renderSnapshot).join('')}</div>` : ''}
         </div>` : ''}
       </details>`;
@@ -1109,6 +1134,68 @@
     if (!match) return null;
     const [, year, month, day, hour, minute] = match.map(Number);
     return new Date(year, month - 1, day, hour, minute);
+  }
+
+  /**
+   * The verbose write-up of a task (bt-execute --verbose): how it was built and why, every file's change, every
+   * test case, every acceptance item with its evidence, every failed attempt, the live check and the time spent.
+   * Each block renders only when its data exists, so a normal run's task card is unchanged.
+   */
+  function renderTaskDetails(details) {
+    if (!details) return '';
+    const timing = details.timing
+      ? ['build', 'verify', 'fix'].filter((phase) => details.timing[phase] != null).map((phase) => `${phase} ${escapeHtml(details.timing[phase])} min`).join(' · ')
+      : '';
+    const blocks = [
+      detailBlock('Approach', paragraphs(details.approach)),
+      detailBlock('Changes by file', detailTable(['File', 'What changed and why'],
+        (details.changes || []).map((change) => [`<code>${escapeHtml(change.file || '')}</code>`, formatInline(change.change || '')]))),
+      detailBlock('Test cases', detailTable(['Case', 'Expected', 'Result'],
+        (details.testCases || []).map((testCase) => [formatInline(testCase.name || ''), formatInline(testCase.expected || ''), verdict(testCase.result)]))),
+      detailBlock('Acceptance', detailTable(['Criterion', 'Verdict', 'Evidence'],
+        (details.acceptance || []).map((item) => [formatInline(item.criterion || ''), verdict(item.result), formatInline(item.evidence || '')]))),
+      detailBlock('Problems &amp; fixes', detailTable(['Attempt', 'What failed', 'Root cause', 'Fix'],
+        (details.problems || []).map((problem) => [escapeHtml(problem.attempt || ''), formatInline(problem.failed || ''), formatInline(problem.cause || ''), formatInline(problem.fix || '')]))),
+      detailBlock('Live check', paragraphs(details.liveCheck)),
+      detailBlock('Notes', (details.notes || []).length ? `<ul>${details.notes.map((note) => `<li>${formatInline(note)}</li>`).join('')}</ul>` : ''),
+      detailBlock('Time', timing),
+    ].join('');
+    return blocks ? `<div class="task-details">${blocks}</div>` : '';
+  }
+
+  /** Verbose After Action Report sections: Architecture, Problems and resolutions, Lessons learned … */
+  function renderAfterActionSections(sections) {
+    if (!(sections || []).length) return '';
+    return `<div class="aar-sections">${sections.map((section) => `
+      <div class="aar-section">
+        <h4>${formatInline(section.title || '')}</h4>
+        ${paragraphs(section.body)}
+        ${(section.items || []).length ? `<ul>${section.items.map((item) => `<li>${formatInline(item)}</li>`).join('')}</ul>` : ''}
+      </div>`).join('')}</div>`;
+  }
+
+  function detailBlock(title, contentHtml) {
+    return contentHtml ? `<div class="detail-block"><h4>${title}</h4>${contentHtml}</div>` : '';
+  }
+
+  /** Text that may be one string or a list of paragraphs. */
+  function paragraphs(text) {
+    const list = Array.isArray(text) ? text : text ? [text] : [];
+    return list.map((paragraph) => `<p>${formatInline(paragraph)}</p>`).join('');
+  }
+
+  function detailTable(headings, rows) {
+    if (!rows.length) return '';
+    return `<div class="detail-scroll"><table class="detail-table">
+      <thead><tr>${headings.map((heading) => `<th>${heading}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map((cells) => `<tr>${cells.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+
+  function verdict(result) {
+    const text = String(result || '');
+    const tone = /^pass/i.test(text) ? 'pass' : /^fail/i.test(text) ? 'fail' : 'other';
+    return text ? `<span class="verdict verdict-${tone}">${escapeHtml(text)}</span>` : '';
   }
 
   function factRow(label, valueHtml) {
