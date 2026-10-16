@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.58)
+# Babylon Toolkit Desktop Agent (1.1.60)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -270,7 +270,7 @@ start without a spec:
   documents/<slug>_plan.md         the plan (bt-plan)
   documents/<slug>_autopilot.md    the run log (bt-execute)
   documents/<slug>_dashboard.js    the dashboard's data, updated task by task
-  documents/<slug>_live.js         what is happening this minute, updated step by step
+  documents/<slug>_live.js         what is happening this minute, updated step by step (git-ignored)
   snapshots/                       meaningful snapshots of the build
   tests/                           every test the plan's tasks write
 ```

@@ -10,8 +10,8 @@
 
   This page is a fixed template: copy it to .agents/specs/<slug>/dashboard.html, replace {{slug}} below with the
   feature slug, and never hand-edit anything else. Everything shown comes from the data file
-  documents/<slug>_dashboard.js (schema: bt-execute/templates/dashboard/dashboard.template.js) and, while a run
-  is going, the live status in documents/<slug>_live.js (schema: live.template.js).
+  documents/<slug>_dashboard.js and, while a run is going, the live status in documents/<slug>_live.js —
+  both strict JSON behind a one-line `window.… =` prefix (fields and update recipe: data-schema.md).
   It opens straight from disk (file://) — no server, no build, no network.
 -->
 <style>
