@@ -600,6 +600,8 @@
   .task-live { padding: 12px 14px; border-radius: var(--radius-small); background: var(--active-soft); }
   .now-warning { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid var(--failed); border-radius: 0 var(--radius-small) var(--radius-small) 0; background: var(--failed-soft); font-size: 13.5px; }
   .tag.tag-watchdog { color: var(--updated); border-color: color-mix(in srgb, var(--updated) 45%, transparent); background: var(--updated-soft); letter-spacing: 0.06em; }
+  .tag.tag-snapshots { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .tag-snapshots svg { width: 13px; height: 13px; flex: none; }
   .task-live .now-head { font-size: 10.5px; }
   .task-id { font: 700 13px/1 var(--font-mono); color: var(--text-muted); }
   .task-title { font-weight: 600; min-width: 0; }
@@ -975,7 +977,7 @@
         <article class="card after-action">
           <div class="after-action-head">
             <span class="kicker">After Action Report${afterAction.writtenAt ? ` <span>· ${escapeHtml(afterAction.writtenAt)}</span>` : ''}</span>
-            <span class="meta">${isFinal ? '' : '<span class="status status-in-progress">Interim — plan not finished</span>'}${updatedBadge(afterAction.updates)}</span>
+            <span class="meta">${snapshotBadge([...(comparison && comparison.before && comparison.after ? [comparison] : []), ...(afterAction.snapshots || [])])}${isFinal ? '' :'<span class="status status-in-progress">Interim — plan not finished</span>'}${updatedBadge(afterAction.updates)}</span>
           </div>
           ${afterAction.headline ? `<h3 class="headline">${formatInline(afterAction.headline)}</h3>` : ''}
           ${comparison && comparison.before && comparison.after ? `<div class="plan-compare">${renderSnapshot(comparison)}</div>` : ''}
@@ -1060,10 +1062,20 @@
       </article>`;
   }
 
+  // A camera badge on a task's row, so tasks with pictures stand out without opening them.
+  function snapshotBadge(snapshots) {
+    const list = Array.isArray(snapshots) ? snapshots : [];
+    if (!list.length) return '';
+    const images = list.reduce((total, snapshot) => total + (Array.isArray(snapshot.frames) ? snapshot.frames.length : snapshot.before || snapshot.after ? 2 : 1), 0);
+    const label = `${list.length} snapshot${list.length === 1 ? '' : 's'}${images !== list.length ? ` · ${images} images` : ''}`;
+    return `<span class="tag tag-snapshots" title="${escapeAttribute(label)}" aria-label="${escapeAttribute(label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>${list.length}</span>`;
+  }
+
   function renderTask(task) {
     const status = task.status || 'pending';
     const tags = [
-      task.kind ? `<span class="tag">${escapeHtml(task.kind)}</span>` : '',
+      snapshotBadge(task.snapshots),
+      task.kind ?`<span class="tag">${escapeHtml(task.kind)}</span>` : '',
       task.verifyLevel === 'live' ? '<span class="tag">live check</span>' : '',
       task.attempts > 1 ? `<span class="tag">${escapeHtml(task.attempts)} attempts</span>` : '',
       status === 'built' || status === 'verifying' ? `<span class="status status-${status}">${STATUS_LABELS[status]}</span>` : '',
