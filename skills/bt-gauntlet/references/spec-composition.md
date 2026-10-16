@@ -7,8 +7,8 @@ skills:
 
 | Spec workflow | Gauntlet equivalent |
 | --- | --- |
-| `.agents/specs/<feature>_spec.md` (bt-spec) | `.agents/gauntlet/<name>/loop-card.md` — objective, benchmark, rubric, success condition, boundaries |
-| `.agents/specs/<feature>_plan.md` (bt-plan) | the part checklist in `.agents/gauntlet/<name>/progress.md` — the lead agent's round-1 decomposition |
+| `.agents/specs/<feature>/documents/<feature>_spec.md` (bt-spec) | `.agents/gauntlet/<name>/loop-card.md` — objective, benchmark, rubric, success condition, boundaries |
+| `.agents/specs/<feature>/documents/<feature>_plan.md` (bt-plan) | the part checklist in `.agents/gauntlet/<name>/progress.md` — the lead agent's round-1 decomposition |
 | bt-execute `ALL` (checkbox resume) | the round protocol + `--resume <name>` |
 
 The difference is when a box may flip. A **bt-plan task** is feed-forward: known work, visited once, `- [x]`
@@ -40,9 +40,9 @@ idiom bt-prototype uses with bt-hero — **pre-resolve everything at spec time s
 - **bt-spec:** the interview happens HERE, at spec time — the spec answers every loop-card slot (including
   `<NAME>`, `<DELIVERABLE KIND>`, the reference media or target-generation prompt, the locked cameras, the
   `OUT OF REACH` list and the boundaries) and writes the **pre-filled loop card** as a spec artifact
-  (e.g. `.agents/specs/<feature>_gauntlet-card.md`).
+  (e.g. `.agents/specs/<feature>/documents/<feature>_gauntlet-card.md`).
 - **bt-plan:** the gauntlet becomes one task (usually the last), whose Details invoke
-  `/bt-gauntlet --card:.agents/specs/<feature>_gauntlet-card.md --rounds:N`. Its **Acceptance** is observable:
+  `/bt-gauntlet --card:.agents/specs/<feature>/documents/<feature>_gauntlet-card.md --rounds:N`. Its **Acceptance** is observable:
   "gauntlet job `<name>` reports DONE — success condition met and the integration critic passed — as
   evidenced by `.agents/gauntlet/<name>/progress.md` and the final round journal."
 - **bt-execute:** runs the task by invoking the gauntlet non-interactively. Because a gauntlet may outlast
@@ -50,7 +50,8 @@ idiom bt-prototype uses with bt-hero — **pre-resolve everything at spec time s
   `bt-execute <plan> NEXT` run re-enters via `/bt-gauntlet --resume <name>` and the box flips only when the
   job genuinely reports DONE (or a loop-card boundary fires and the user accepts the parked result — record
   which). The gauntlet's own critic evidence IS the acceptance evidence; the bt-execute verifier reads
-  `progress.md` + the last round journal rather than re-judging the art.
+  `progress.md` + the last round journal rather than re-judging the art. bt-execute copies the gauntlet's best
+  evidence frames, round by round, into the feature's `snapshots/` as a progression for the feature dashboard.
 
 bt-gauntlet never orchestrates bt-spec itself — composition is always initiated from the spec side.
 

@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.55)
+# Babylon Toolkit Desktop Agent (1.1.56)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -258,6 +258,47 @@ the frontmatter `name` + `description` to decide when the skill applies. The `al
 line is honored by Claude Code (auto-approves those tools) and safely ignored by Codex and
 Copilot.
 
+### Feature folders and the dashboard
+
+Every feature gets one folder, created by `bt-spec` — or by `bt-plan` in Quick Plan mode when you
+start without a spec:
+
+```
+.agents/specs/<slug>/
+  dashboard.html                   the feature dashboard — double-click to open in a browser
+  documents/<slug>_spec.md         the spec (bt-spec; absent for a Quick Plan)
+  documents/<slug>_plan.md         the plan (bt-plan)
+  documents/<slug>_autopilot.md    the run log (bt-execute)
+  documents/<slug>_dashboard.js    the dashboard's data, updated task by task
+  documents/<slug>_live.js         what is happening this minute, updated step by step
+  snapshots/                       meaningful snapshots of the build
+  tests/                           every test the plan's tasks write
+```
+
+`dashboard.html` is a live dashboard for the whole feature. `bt-plan` writes it as a roadmap (every
+phase and task pending, with the time estimate); `bt-execute` updates it **task by task**, not phase
+by phase: a *Now* banner says which task is being worked on and what is happening this minute (the
+agents rewrite a small live-status file at every step, and the page warns if it goes quiet for 20
+minutes), and each task's result appears the moment it is built. An open tab keeps itself current: it
+re-reads its data in the background (every 10 s during a run, every 30 s otherwise) and refreshes
+only when something changed — a task result, a finished run, the next run starting, or a plan
+reopened because you added a task after it was complete (the dashboard drops back to *paused* and
+the After Action Report is revised when the new work is done). Phase by phase and task by task it shows what was actually done, files, tests,
+verifier verdicts, attempts, commits, decisions, deferrals and follow-ups. The snapshots tell the
+story of the build: **progressions** captured from the same camera each time a meaningful layer
+lands (a terrain: heightmap → textures → roads → trees → foliage → lighting), played back as a
+storyboard, plus before/after sliders and stills where those prove the point. When later work
+revises an earlier result, the earlier entry is marked **Updated** with who changed it and why —
+nothing is rewritten silently.
+
+The top of the page follows the run. While a run is going it shows **Current run activity** — the *Now*
+banner and the milestones so far. Once the run is over, that slot becomes the **After Action Report**
+(marked *Interim* if the plan is not finished yet), and the milestone history folds into the Milestone
+activity logs at the bottom. The After Action Report is the whole plan's execution summarized — what
+was built, how it was proven, what surprised, the run's figures — around **one before/after for the
+plan as a whole**, taken from the same camera before the first task and after the last. Recon docs
+stay in `.agents/recon/`; older flat specs and plans in `.agents/specs/` keep working where they are.
+
 ### Heavy plans (`/bt-plan --heavy`)
 
 A plan can hold 50+ tasks and run for days, with each task executed by `bt-execute` in a fresh
@@ -278,7 +319,7 @@ Execution time is dominated by verification, not by the code edits, so the loop 
 feature. `bt-spec` records a `size` (small / medium / large); `bt-plan` uses it to set the task
 budget (a small feature is 1–3 tasks in one phase), groups tasks into phases, marks each task's
 `Verify level` (`standard` or `live`), and never pins absolute test counts. By default
-`bt-execute` has the implementer write and run each task's named tests, then runs **one
+`bt-execute` has the implementer write and run each task's named tests (in the feature folder's `tests/`), then runs **one
 independent verifier per phase** with a scoped charter (Acceptance, the Verify commands, the
 tests re-run and judged for coverage, a diff review for real defects), always does live
 Unity/browser QA on any task whose correctness shows only at runtime (rendering, visuals,
@@ -288,8 +329,8 @@ Docs are read once by the orchestrator and handed to subagents as a brief instea
 subagent re-fetching the Agent Reference.
 
 ```
-/bt-execute --strict @.agents/specs/<feature>_plan.md ALL
-/bt-execute --auto-pilot --strict @.agents/specs/<feature>_plan.md ALL
+/bt-execute --strict @.agents/specs/<feature>/documents/<feature>_plan.md ALL
+/bt-execute --auto-pilot --strict @.agents/specs/<feature>/documents/<feature>_plan.md ALL
 ```
 
 Proof is sized the same way. By default a feature is proven **functionally**: tests, cheap
@@ -310,7 +351,7 @@ implementer writes the tests and the independent verifier judges them.
 ### Unattended runs (`/bt-execute --auto-pilot`)
 
 ```
-/bt-execute --auto-pilot @.agents/specs/<feature>_plan.md ALL
+/bt-execute --auto-pilot @.agents/specs/<feature>/documents/<feature>_plan.md ALL
 ```
 
 Auto-pilot is for running a 50-task plan overnight. There is no one to ask, so `bt-execute`
@@ -326,7 +367,7 @@ What changes is that a failure never halts the run: a failing task gets a bounde
 attempts, 5 under `--strict`), is then marked `⏭️ DEFERRED (auto-pilot): <reason>` in the plan, and the run moves
 on; deferred tasks get one more pass at the end. Each verified task is committed as a checkpoint
 on the current branch (an `autopilot/<plan>` branch is created if you are on `main`; nothing is
-ever pushed), and a `<plan>_autopilot.md` run log next to the plan records every task outcome,
+ever pushed), and a `<slug>_autopilot.md` run log next to the plan records every task outcome,
 decision and deferral for you to read in the morning, plus clock times per phase and per task
 (interactive runs log the clock times too) so bt-plan's time estimates can be recalibrated from
 real runs. Re-running the same command resumes and re-attempts anything deferred.
@@ -496,7 +537,7 @@ Want to redirect the loop? Edit `progress.md`'s `NEXT ACTION` (or part prioritie
 Hand it a **pre-filled loop card** (either template with every slot answered, including `<NAME>`) and it starts immediately, no questions:
 
 ```
-/bt-gauntlet --card:.agents/specs/racing-game_gauntlet-card.md --rounds:10
+/bt-gauntlet --card:.agents/specs/racing-game/documents/racing-game_gauntlet-card.md --rounds:10
 ```
 
 If any slot is unfilled or vague it STOPS and tells you which — it never guesses. This is the entry point used by the spec workflow below, and handy any time you want to author the card by hand.
@@ -515,8 +556,8 @@ Typical two-phase sequence for a real game:
 ```
 # Phase 1 — foundation (checklist-shaped work: scaffold, controller, physics, HUD)
 /bt-spec <feature brief>
-/bt-plan @.agents/specs/<feature>_spec.md
-/bt-execute @.agents/specs/<feature>_plan.md ALL
+/bt-plan @.agents/specs/<feature>/documents/<feature>_spec.md
+/bt-execute @.agents/specs/<feature>/documents/<feature>_plan.md ALL
 
 # Phase 2 — quality (reference-bar work on top of what now exists)
 /bt-gauntlet --name:aaa-polish <polish brief + reference media>
@@ -528,7 +569,7 @@ Or fold the gauntlet INTO a spec run by naming it in the brief:
 /bt-spec Build the racing game, then polish it to Gran Turismo quality using bt-gauntlet
 ```
 
-In that flow, bt-spec runs the gauntlet interview at spec time and writes the pre-filled card (`.agents/specs/<feature>_gauntlet-card.md`); bt-plan makes the gauntlet the final task invoking `--card:`; bt-execute re-enters a parked job via `--resume <name>` on each `NEXT` and flips the task's checkbox only when the job genuinely reports DONE.
+In that flow, bt-spec runs the gauntlet interview at spec time and writes the pre-filled card (`.agents/specs/<feature>/documents/<feature>_gauntlet-card.md`); bt-plan makes the gauntlet the final task invoking `--card:`; bt-execute re-enters a parked job via `--resume <name>` on each `NEXT` and flips the task's checkbox only when the job genuinely reports DONE.
 
 ## 9. Which method should I use for making games? (recommendation)
 
@@ -545,8 +586,8 @@ Here's the reasoning:
 ```
 # Phase 1 — foundation (cheap, deterministic, checkbox-resumable)
 /bt-spec  <game systems brief>
-/bt-plan  @.agents/specs/<feature>_spec.md
-/bt-execute @.agents/specs/<feature>_plan.md ALL
+/bt-plan  @.agents/specs/<feature>/documents/<feature>_spec.md
+/bt-execute @.agents/specs/<feature>/documents/<feature>_plan.md ALL
 
 # Phase 2 — quality (reference-chasing, critic-judged, round-resumable)
 /bt-gauntlet --name:aaa-polish <polish brief + reference screenshots>

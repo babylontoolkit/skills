@@ -1,0 +1,1610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature Dashboard</title>
+<!--
+  Feature Dashboard — the live, visual record of one feature's spec → plan → execute run, ending in its
+  After Action Report.
+
+  This page is a fixed template: copy it to .agents/specs/<slug>/dashboard.html, replace {{slug}} below with the
+  feature slug, and never hand-edit anything else. Everything shown comes from the data file
+  documents/<slug>_dashboard.js (schema: bt-execute/templates/dashboard/dashboard.template.js) and, while a run
+  is going, the live status in documents/<slug>_live.js (schema: live.template.js).
+  It opens straight from disk (file://) — no server, no build, no network.
+-->
+<style>
+  :root {
+    --bg: #0b0f14;
+    --bg-raised: #121821;
+    --bg-sunken: #080b0f;
+    --line: #1f2935;
+    --line-strong: #2c3a4a;
+    --text: #e6edf3;
+    --text-muted: #8b98a8;
+    --text-faint: #5d6b7c;
+    --accent: #5cc8ff;
+    --accent-soft: rgba(92, 200, 255, 0.12);
+    --done: #3fd18b;
+    --done-soft: rgba(63, 209, 139, 0.12);
+    --active: #ffb547;
+    --active-soft: rgba(255, 181, 71, 0.14);
+    --deferred: #c792ea;
+    --deferred-soft: rgba(199, 146, 234, 0.14);
+    --failed: #ff6b6b;
+    --failed-soft: rgba(255, 107, 107, 0.14);
+    --pending: #5d6b7c;
+    --pending-soft: rgba(93, 107, 124, 0.14);
+    --updated: #ffd23f;
+    --updated-soft: rgba(255, 210, 63, 0.14);
+    --radius: 14px;
+    --radius-small: 8px;
+    --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px rgba(0, 0, 0, 0.35);
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f7fa;
+      --bg-raised: #ffffff;
+      --bg-sunken: #eceff3;
+      --line: #dde3ea;
+      --line-strong: #c7d0da;
+      --text: #111821;
+      --text-muted: #556274;
+      --text-faint: #8593a3;
+      --accent: #0a7bbd;
+      --accent-soft: rgba(10, 123, 189, 0.10);
+      --done: #0f9d58;
+      --done-soft: rgba(15, 157, 88, 0.10);
+      --active: #c27400;
+      --active-soft: rgba(194, 116, 0, 0.12);
+      --deferred: #8a4fbf;
+      --deferred-soft: rgba(138, 79, 191, 0.10);
+      --failed: #d33b3b;
+      --failed-soft: rgba(211, 59, 59, 0.10);
+      --pending: #8593a3;
+      --pending-soft: rgba(133, 147, 163, 0.12);
+      --updated: #a07800;
+      --updated-soft: rgba(255, 196, 0, 0.16);
+      --shadow: 0 1px 2px rgba(17, 24, 33, 0.05), 0 8px 24px rgba(17, 24, 33, 0.06);
+      color-scheme: light;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.6 var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    font: 0.86em var(--font-mono);
+    background: var(--bg-sunken);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 0.05em 0.35em;
+    overflow-wrap: anywhere;
+  }
+  .page { max-width: 1180px; margin: 0 auto; padding: 0 16px 80px; }
+
+  /* ---------- Header ---------- */
+  .masthead {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(900px 340px at 85% -10%, var(--accent-soft), transparent 70%),
+      linear-gradient(180deg, var(--bg-raised), var(--bg));
+  }
+  .masthead::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 44px 44px;
+    opacity: 0.35;
+    mask-image: linear-gradient(180deg, black, transparent 85%);
+    -webkit-mask-image: linear-gradient(180deg, black, transparent 85%);
+    pointer-events: none;
+  }
+  .masthead-inner {
+    position: relative;
+    z-index: 1;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 44px 16px 36px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 32px;
+    align-items: center;
+  }
+  .kicker {
+    font: 600 12px/1 var(--font-mono);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+  .kicker span { color: var(--text-faint); }
+  h1 {
+    margin: 0 0 12px;
+    font-size: clamp(28px, 4.4vw, 46px);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+  }
+  .lede { margin: 0 0 20px; max-width: 760px; color: var(--text-muted); font-size: 16.5px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--bg-raised);
+    font: 500 12.5px/1.4 var(--font-mono);
+    color: var(--text-muted);
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .chip strong { color: var(--text); font-weight: 600; }
+  .chip-warning { border-color: var(--failed); color: var(--failed); background: var(--failed-soft); }
+  .chip-warning strong { color: var(--failed); }
+  .doc-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .doc-links a {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    padding: 5px 12px;
+    border-radius: var(--radius-small);
+    background: var(--accent-soft);
+    font: 500 13px/1.4 var(--font-sans);
+  }
+
+  /* ---------- Status pills ---------- */
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font: 700 11.5px/1.4 var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .status-done, .status-complete { color: var(--done); background: var(--done-soft); }
+  .status-in-progress { color: var(--active); background: var(--active-soft); }
+  .status-in-progress::before { animation: pulse 1.6s ease-in-out infinite; }
+  .status-pending, .status-planned, .status-paused { color: var(--pending); background: var(--pending-soft); }
+  .status-deferred, .status-partial, .status-incomplete { color: var(--deferred); background: var(--deferred-soft); }
+  .status-failed { color: var(--failed); background: var(--failed-soft); }
+  .status-built, .status-verifying { color: var(--accent); background: var(--accent-soft); }
+  .status-verifying::before { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; transform: scale(0.7); } }
+
+  /* ---------- Progress ring ---------- */
+  .ring { position: relative; width: 168px; height: 168px; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 10; }
+  .ring .track { stroke: var(--line); }
+  .ring .value { stroke: var(--done); stroke-linecap: round; transition: stroke-dashoffset 900ms cubic-bezier(.2, .8, .2, 1); }
+  .ring .label {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+  }
+  .ring .percent { font: 700 36px/1 var(--font-sans); letter-spacing: -0.03em; }
+  .ring .fraction { margin-top: 6px; font: 500 12px/1 var(--font-mono); color: var(--text-muted); }
+
+  /* ---------- Sticky nav ---------- */
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 10px 16px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav-inner::-webkit-scrollbar { display: none; }
+  .nav a {
+    padding: 6px 11px;
+    border-radius: var(--radius-small);
+    color: var(--text-muted);
+    font: 500 13.5px/1 var(--font-sans);
+    white-space: nowrap;
+  }
+  .nav a:hover { background: var(--bg-raised); color: var(--text); text-decoration: none; }
+  .nav .spacer { flex: 1; }
+  .nav .count {
+    margin-left: 5px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--updated-soft);
+    color: var(--updated);
+    font: 700 11px/1.4 var(--font-mono);
+  }
+  .live-toggle {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--bg-raised);
+    color: var(--text-muted);
+    font: 600 12px/1 var(--font-mono);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .live-toggle[aria-pressed="true"] { color: var(--active); border-color: var(--active); }
+  .live-toggle[aria-pressed="true"]::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--active);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  /* ---------- Sections ---------- */
+  section { margin-top: 48px; }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+  h2 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  .section-note { color: var(--text-faint); font-size: 13.5px; }
+  .card {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .empty {
+    padding: 28px;
+    text-align: center;
+    color: var(--text-muted);
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+  }
+
+  /* ---------- Stat tiles ---------- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 28px; }
+  .stat { padding: 16px 18px; }
+  .stat-label { font: 600 11px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); }
+  .stat-value { margin-top: 10px; font: 700 26px/1.1 var(--font-sans); letter-spacing: -0.02em; }
+  .stat-value small { font-size: 14px; color: var(--text-muted); font-weight: 500; letter-spacing: 0; }
+  .stat-sub { margin-top: 4px; font-size: 12.5px; color: var(--text-muted); }
+
+  /* ---------- Phase route ---------- */
+  .route { display: flex; gap: 6px; margin-top: 16px; }
+  .route a {
+    flex: 1;
+    min-width: 0;
+    text-decoration: none;
+    color: inherit;
+  }
+  .route-bar { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .route-fill { height: 100%; border-radius: 999px; background: var(--done); }
+  .route a.is-in-progress .route-fill { background: var(--active); }
+  .route a.is-deferred .route-fill, .route a.is-partial .route-fill { background: var(--deferred); }
+  .route-label {
+    margin-top: 7px;
+    font: 500 11.5px/1.3 var(--font-mono);
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ---------- Summary ---------- */
+  .headline { margin: 0 0 12px; font-size: 21px; line-height: 1.35; letter-spacing: -0.01em; }
+  .highlights { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
+  .highlights li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; }
+  .highlights li::before { content: "✦"; color: var(--accent); }
+
+  /* ---------- After Action Report ---------- */
+  .after-action { padding: 24px 28px 26px; border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+  .after-action-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .after-action-head .kicker { margin: 0; }
+  .after-action .headline { margin: 14px 0 18px; font-size: 24px; }
+  .plan-compare .shot { box-shadow: none; }
+  .plan-compare .shot-frame { aspect-ratio: auto !important; height: min(64vh, 54vw); }
+  .after-action-columns { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; margin-top: 22px; }
+  .after-action-columns p { margin: 0 0 12px; color: var(--text-muted); }
+  .figures { margin: 0; padding: 14px 18px; border-radius: var(--radius-small); background: var(--bg-sunken); border: 1px solid var(--line); display: grid; gap: 2px; align-self: start; }
+  .figures div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .figures div:first-child { border-top: 0; }
+  .figures dt { color: var(--text-muted); font-size: 13px; }
+  .figures dd { margin: 0; font: 700 13.5px/1.5 var(--font-mono); text-align: right; }
+
+  /* ---------- Snapshots ---------- */
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 16px; margin-top: 18px; }
+  .shot { margin: 0; overflow: hidden; }
+  .shot-frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: var(--bg-sunken);
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .shot-frame img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  .shot-frame .before-layer { clip-path: inset(0 calc(100% - var(--split, 50%)) 0 0); }
+  .shot-frame .divider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--split, 50%);
+    width: 2px;
+    margin-left: -1px;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+  }
+  .shot-frame .divider::after {
+    content: "⟷";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 34px;
+    height: 34px;
+    margin: -17px 0 0 -17px;
+    display: grid;
+    place-content: center;
+    border-radius: 50%;
+    background: #fff;
+    color: #111;
+    font-size: 15px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  }
+  .shot-frame input[type="range"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: ew-resize;
+  }
+  .shot-tag {
+    position: absolute;
+    top: 10px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.62);
+    color: #fff;
+    font: 700 10.5px/1.4 var(--font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+  .shot-tag.left { left: 10px; }
+  .shot-tag.right { right: 10px; }
+  .shot-expand {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 2;
+    padding: 5px 9px;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.62);
+    color: #fff;
+    font: 600 11px/1 var(--font-mono);
+    cursor: zoom-in;
+  }
+  .shot-frame.single { cursor: zoom-in; }
+  .shot-missing {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    padding: 16px;
+    text-align: center;
+    color: var(--text-faint);
+    font: 500 12.5px/1.5 var(--font-mono);
+  }
+  .shot-missing[hidden] { display: none; }
+  .shot figcaption { padding: 12px 16px 14px; }
+  .shot-title { font-weight: 600; }
+  .shot-caption { color: var(--text-muted); font-size: 13.5px; }
+  .shot-source { font: 500 11px/1 var(--font-mono); color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 8px; }
+
+  /* ---------- Progressions (storyboard of a build, stage by stage) ---------- */
+  .gallery .progression { grid-column: 1 / -1; }
+  .progression .shot-frame { aspect-ratio: auto !important; height: min(62vh, 52vw); }
+  .progression .shot-frame img { transition: opacity 260ms ease; }
+  .stage-counter {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.62);
+    color: #fff;
+    font: 700 10.5px/1.4 var(--font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .stage-controls { display: flex; gap: 8px; align-items: center; padding: 12px 16px 0; }
+  .stage-button {
+    padding: 6px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-small);
+    background: var(--bg);
+    color: var(--text);
+    font: 600 12px/1 var(--font-mono);
+    cursor: pointer;
+  }
+  .stage-button:hover { border-color: var(--accent); color: var(--accent); }
+  .stage-progress { flex: 1; height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .stage-progress div { height: 100%; background: var(--accent); transition: width 260ms ease; }
+  .filmstrip {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(132px, 1fr);
+    gap: 10px;
+    padding: 12px 16px 4px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+  }
+  .film-frame {
+    position: relative;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: var(--radius-small);
+    background: var(--bg-sunken);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    scroll-snap-align: start;
+  }
+  .film-frame img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+  .film-frame .film-label {
+    display: block;
+    padding: 6px 8px 7px;
+    font: 600 11.5px/1.3 var(--font-sans);
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .film-frame .film-step {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    min-width: 20px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.66);
+    color: #fff;
+    font: 700 10.5px/1.5 var(--font-mono);
+    text-align: center;
+  }
+  .film-frame[aria-current="true"] { border-color: var(--accent); }
+  .film-frame[aria-current="true"] .film-label { color: var(--text); }
+  .stage-caption { padding: 10px 16px 0; }
+  .stage-caption .stage-name { font-weight: 700; }
+  .stage-caption .stage-note { color: var(--text-muted); font-size: 13.5px; }
+
+  /* ---------- Phases ---------- */
+  .phase { margin-top: 20px; overflow: hidden; }
+  .phase-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--line);
+  }
+  .phase-number {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-content: center;
+    border-radius: 12px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--line-strong);
+    font: 700 16px/1 var(--font-mono);
+  }
+  .phase.is-done .phase-number { background: var(--done-soft); border-color: transparent; color: var(--done); }
+  .phase.is-in-progress .phase-number { background: var(--active-soft); border-color: transparent; color: var(--active); }
+  .phase h3 { margin: 0; font-size: 18px; }
+  .phase-meta { margin-top: 4px; font: 500 12.5px/1.4 var(--font-mono); color: var(--text-muted); }
+  .phase-body { padding: 20px 24px 24px; }
+  .phase-summary { margin: 0; color: var(--text-muted); }
+  .verifier {
+    margin-top: 14px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--done);
+    border-radius: 0 var(--radius-small) var(--radius-small) 0;
+    background: var(--done-soft);
+    font-size: 13.5px;
+  }
+  .verifier.is-fail { border-color: var(--failed); background: var(--failed-soft); }
+  .verifier strong { font-family: var(--font-mono); }
+
+  /* ---------- Tasks ---------- */
+  .tasks { margin-top: 20px; display: grid; gap: 8px; }
+  .task { border: 1px solid var(--line); border-radius: var(--radius-small); background: var(--bg); }
+  .task > summary {
+    list-style: none;
+    display: grid;
+    grid-template-columns: 22px auto minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    cursor: pointer;
+  }
+  .task > summary::-webkit-details-marker { display: none; }
+  .task-icon { width: 22px; height: 22px; display: grid; place-content: center; border-radius: 50%; font: 700 12px/1 var(--font-sans); }
+  .task.is-done .task-icon { background: var(--done-soft); color: var(--done); }
+  .task.is-in-progress .task-icon { background: var(--active-soft); color: var(--active); }
+  .task.is-pending .task-icon { background: var(--pending-soft); color: var(--pending); }
+  .task.is-deferred .task-icon { background: var(--deferred-soft); color: var(--deferred); }
+  .task.is-failed .task-icon { background: var(--failed-soft); color: var(--failed); }
+  .task.is-built .task-icon, .task.is-verifying .task-icon { background: var(--accent-soft); color: var(--accent); }
+  .task.is-live { border-color: var(--active); box-shadow: 0 0 0 3px var(--active-soft); }
+  .task.is-live .task-icon { animation: pulse 1.6s ease-in-out infinite; }
+
+  /* ---------- Now: what is being worked on this minute ---------- */
+  .now {
+    padding: 18px 22px;
+    border-color: color-mix(in srgb, var(--active) 45%, var(--line));
+    background: linear-gradient(90deg, var(--active-soft), transparent 65%), var(--bg-raised);
+  }
+  .now-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    align-items: center;
+    font: 700 11.5px/1.4 var(--font-mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--active);
+  }
+  .now-head .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--active); animation: pulse 1.6s ease-in-out infinite; }
+  .now-age { color: var(--text-muted); font-weight: 500; letter-spacing: 0; text-transform: none; }
+  .now.is-stale .now-age { color: var(--failed); font-weight: 700; }
+  .now-task { display: block; margin-top: 8px; color: var(--text); font-size: 19px; font-weight: 700; line-height: 1.35; }
+  .now-task:hover { text-decoration: none; color: var(--accent); }
+  .now-activity { margin: 4px 0 0; font-size: 15.5px; }
+  .live-steps { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; color: var(--text-muted); }
+  .live-steps li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; }
+  .live-steps time { font: 600 12px/1.6 var(--font-mono); color: var(--text-faint); }
+  .live-steps li:last-child { color: var(--text); font-weight: 600; }
+  .task-live { padding: 12px 14px; border-radius: var(--radius-small); background: var(--active-soft); }
+  .task-live .now-head { font-size: 10.5px; }
+  .task-id { font: 700 13px/1 var(--font-mono); color: var(--text-muted); }
+  .task-title { font-weight: 600; min-width: 0; }
+  .task-tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .tag {
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--line);
+    font: 600 10.5px/1.4 var(--font-mono);
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .task-body { padding: 0 14px 16px 48px; display: grid; gap: 12px; }
+  .task-body p { margin: 0; color: var(--text-muted); }
+  .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; font-size: 13.5px; margin: 0; }
+  .facts dt { font: 600 11px/1.9 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .file-list { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+  .deferred-note {
+    padding: 10px 14px;
+    border-radius: var(--radius-small);
+    background: var(--deferred-soft);
+    color: var(--text);
+    font-size: 13.5px;
+  }
+
+  /* ---------- Updated notifications ---------- */
+  .updated-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border: 1px solid color-mix(in srgb, var(--updated) 45%, transparent);
+    border-radius: 999px;
+    background: var(--updated-soft);
+    color: var(--updated);
+    font: 700 10.5px/1.4 var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .updated-badge::before { content: "↻"; font-size: 12px; letter-spacing: 0; }
+  .updated-badge.is-new { box-shadow: 0 0 0 3px var(--updated-soft); }
+  .update-notes {
+    margin: 12px 0 0;
+    padding: 10px 14px;
+    list-style: none;
+    border-left: 3px solid var(--updated);
+    border-radius: 0 var(--radius-small) var(--radius-small) 0;
+    background: var(--updated-soft);
+    font-size: 13.5px;
+    display: grid;
+    gap: 6px;
+  }
+  .update-notes .when { font: 600 11.5px/1.4 var(--font-mono); color: var(--updated); margin-right: 6px; }
+
+  /* ---------- Lists: decisions, follow-ups, updates, activity ---------- */
+  .list-card { padding: 6px 0; }
+  .row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; padding: 12px 22px; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .row-key { font: 600 12.5px/1.6 var(--font-mono); color: var(--accent); overflow-wrap: anywhere; }
+  .row-source { margin-top: 4px; color: var(--text-faint); font-size: 12.5px; }
+  .timeline { position: relative; margin: 0; padding: 4px 0 4px 26px; list-style: none; }
+  .timeline::before { content: ""; position: absolute; left: 7px; top: 8px; bottom: 8px; width: 2px; background: var(--line); }
+  .timeline li { position: relative; padding: 8px 0; }
+  .timeline li::before {
+    content: "";
+    position: absolute;
+    left: -24px;
+    top: 15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--line-strong);
+  }
+  .timeline li.is-new::before { border-color: var(--updated); background: var(--updated); }
+  .timeline time { display: block; font: 600 12px/1.4 var(--font-mono); color: var(--text-faint); }
+
+  .recent-activity { margin-top: 14px; padding: 14px 22px 8px; }
+  .recent-activity .timeline { max-height: 340px; overflow-y: auto; }
+  .recent-title, .activity-log > summary { font: 700 11px/1.4 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); }
+  .activity-log { padding: 14px 22px; }
+  .activity-log > summary { cursor: pointer; }
+  .activity-log[open] > summary { margin-bottom: 8px; }
+
+  /* ---------- Lightbox ---------- */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: none;
+    place-items: center;
+    padding: 24px;
+    background: rgba(4, 6, 9, 0.9);
+    cursor: zoom-out;
+  }
+  .lightbox.is-open { display: grid; }
+  .lightbox figure { margin: 0; max-width: min(1600px, 100%); }
+  .lightbox img { display: block; max-width: 100%; max-height: calc(100vh - 110px); margin: 0 auto; border-radius: var(--radius-small); }
+  .lightbox figcaption { margin-top: 12px; color: #c9d4df; text-align: center; font-size: 14px; }
+
+  .error-panel { margin-top: 48px; padding: 28px; border-color: var(--failed); }
+  .error-panel h2 { color: var(--failed); margin-bottom: 8px; }
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--text-faint); font-size: 12.5px; }
+
+  @media (max-width: 760px) {
+    .masthead-inner { grid-template-columns: 1fr; padding-top: 32px; }
+    .ring { width: 128px; height: 128px; }
+    .ring .percent { font-size: 28px; }
+    .phase-head { grid-template-columns: auto minmax(0, 1fr); padding: 16px; }
+    .phase-head .phase-status { grid-column: 1 / -1; }
+    .phase-body { padding: 16px; }
+    .task > summary { grid-template-columns: 22px auto minmax(0, 1fr); }
+    .task-tags { grid-column: 2 / -1; justify-content: flex-start; }
+    .task-body { padding: 0 14px 16px; }
+    .row { grid-template-columns: 1fr; gap: 4px; padding: 12px 16px; }
+    .after-action { padding: 18px; }
+    .after-action-columns { grid-template-columns: 1fr; }
+    .route-label { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before { animation: none !important; transition: none !important; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Snapshot">
+  <figure><img id="lightbox-image" alt=""><figcaption id="lightbox-caption"></figcaption></figure>
+</div>
+
+<script src="documents/{{slug}}_dashboard.js"></script>
+<script src="documents/{{slug}}_live.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  /** Seconds between checks of the data files for changes while a run is executing, and otherwise. */
+  const RUNNING_CHECK_SECONDS = 10;
+  const IDLE_CHECK_SECONDS = 30;
+  /** Seconds between refreshes of the "updated N min ago" labels. */
+  const AGE_REFRESH_SECONDS = 30;
+  const STATUS_ICONS = { done: '✓', 'in-progress': '◐', built: '◆', verifying: '⟳', pending: '○', deferred: '⏭', failed: '✕' };
+  /** Where the Babylon Toolkit Desktop Agent, whose skills generate this dashboard, is published. */
+  const SKILLS_DOWNLOAD_URL = 'https://www.npmjs.com/package/@babylonjs-toolkit/agent';
+  /** Minutes without a live update before the Now banner warns that the run has gone quiet. */
+  const STALE_AFTER_MINUTES = 20;
+  /** How many of the current task's latest steps the Now banner lists. */
+  const NOW_STEP_COUNT = 6;
+  const STATUS_LABELS = {
+    planned: 'Planned',
+    'in-progress': 'In progress',
+    complete: 'Complete',
+    incomplete: 'Complete with deferrals',
+    done: 'Done',
+    pending: 'Pending',
+    deferred: 'Deferred',
+    failed: 'Failed',
+    partial: 'Partial',
+    built: 'Built — awaiting verifier',
+    paused: 'Paused — plan not finished',
+    verifying: 'Verifying',
+  };
+
+  const appRoot = document.getElementById('app');
+  const report = window.FEATURE_DASHBOARD;
+  /** Live status of the step being worked on now; written far more often than the report itself. */
+  const live = window.FEATURE_LIVE || null;
+  /** Progression snapshots in render order; the storyboard controls look their frames up here. */
+  const progressions = [];
+
+  if (!report) {
+    renderMissingData();
+    return;
+  }
+
+  const storageKey = `dashboard:${report.feature && report.feature.slug ? report.feature.slug : location.pathname}`;
+  const lastVisit = readStorage(localStorage, `${storageKey}:lastSeen`) || '';
+
+  render();
+  wireLightbox();
+  wireAutoUpdate();
+  restoreScroll();
+  writeStorage(localStorage, `${storageKey}:lastSeen`, report.updatedAt || '');
+
+  /* ===================== Rendering ===================== */
+
+  /** Builds the whole page from the report data. */
+  function render() {
+    const feature = report.feature || {};
+    const allTasks = collectTasks();
+    const doneCount = allTasks.filter((task) => task.status === 'done').length;
+    const allUpdates = collectUpdates();
+    document.title = `${feature.title || 'Feature'} — Dashboard`;
+
+    const view = pageView();
+    // Stat tiles and phase bars first; then one slot that follows the run: Current run activity while it runs,
+    // the plan summary (After Action Report) once it is over.
+    appRoot.innerHTML = [
+      renderMasthead(feature, allTasks.length, doneCount),
+      renderNav(allUpdates.length, view),
+      '<main class="page">',
+      renderStats(allTasks, doneCount),
+      view === 'running' ? renderCurrentActivity(allTasks) : '',
+      view === 'finished' ? renderAfterAction(allTasks, doneCount) : '',
+      renderPhases(),
+      renderDecisions(),
+      renderFollowUps(allTasks),
+      renderUpdateLog(allUpdates),
+      view === 'running' ? '' : renderActivityLog(),
+      renderFooter(),
+      '</main>',
+    ].join('');
+
+    wireCompareSliders();
+    animateRing(allTasks.length ? doneCount / allTasks.length : 0);
+  }
+
+  function renderMasthead(feature, totalTasks, doneCount) {
+    const percent = totalTasks ? Math.round((doneCount / totalTasks) * 100) : 0;
+    const activeCount = collectTasks().filter((task) => ['in-progress', 'built', 'verifying'].includes(task.status)).length;
+    const status = effectiveStatus();
+    const chips = [
+      `<span class="status status-${escapeAttribute(status)}">${escapeHtml(STATUS_LABELS[status] || status)}</span>`,
+      feature.branch ? `<span class="chip">⎇ <strong>${escapeHtml(feature.branch)}</strong></span>` : '',
+      feature.origin ? `<span class="chip">from <strong>${escapeHtml(feature.origin === 'quick-plan' ? 'Quick Plan' : 'Spec')}</strong></span>` : '',
+      feature.size ? `<span class="chip">size <strong>${escapeHtml(feature.size)}</strong></span>` : '',
+      feature.proof ? `<span class="chip">proof <strong>${escapeHtml(feature.proof)}</strong></span>` : '',
+      report.updatedAt ? `<span class="chip">updated <strong>${escapeHtml(report.updatedAt)}</strong></span>` : '',
+      report.status !== status ? `<span class="chip chip-warning"><span>status says <strong>${escapeHtml(report.status)}</strong>, but ${escapeHtml(unfinishedTasks().map((task) => task.id).join(', '))} ${unfinishedTasks().length === 1 ? 'is' : 'are'} not done</span></span>` : '',
+    ].join('');
+    const documentLinks = (report.documents || [])
+      .map((documentLink) => `<a href="${safeUrl(documentLink.path)}">📄 ${escapeHtml(documentLink.label)}</a>`)
+      .join('');
+
+    return `
+      <header class="masthead">
+        <div class="masthead-inner">
+          <div>
+            <p class="kicker">Feature Dashboard <span>· Technical Specification</span></p>
+            <h1>${escapeHtml(feature.title || 'Untitled feature')}</h1>
+            ${feature.summary ? `<p class="lede">${formatInline(feature.summary)}</p>` : ''}
+            <div class="meta">${chips}</div>
+            ${documentLinks ? `<div class="doc-links">${documentLinks}</div>` : ''}
+          </div>
+          <div class="ring" role="img" aria-label="${percent}% of tasks complete">
+            <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="52"/><circle class="value" id="ring-value" cx="60" cy="60" r="52"/></svg>
+            <div class="label"><div class="percent">${percent}%</div><div class="fraction">${doneCount} / ${totalTasks} tasks</div>${activeCount ? `<div class="fraction">${activeCount} active</div>` : ''}</div>
+          </div>
+        </div>
+      </header>`;
+  }
+
+  function renderNav(updateCount, view) {
+    const links = [
+      view === 'running' ? ['current-activity', 'Current run'] : null,
+      view === 'finished' ? ['after-action', 'Plan summary'] : null,
+      ['phases', 'Phases'],
+      ['decisions', 'Decisions'],
+      ['follow-ups', 'Follow ups'],
+      ['updates', `Updates${updateCount ? `<span class="count">${updateCount}</span>` : ''}`],
+      view === 'running' ? null : ['activity', 'Milestones'],
+    ].filter(Boolean).map(([target, label]) => `<a href="#${target}">${label}</a>`).join('');
+    const liveButton = `<button class="live-toggle" id="live-toggle" type="button" aria-pressed="${isLiveEnabled()}" title="Re-read the data files every ${view === 'running' ? RUNNING_CHECK_SECONDS : IDLE_CHECK_SECONDS} s and refresh when they change">${autoUpdateLabel()}</button>`;
+    return `<nav class="nav" aria-label="Report sections"><div class="nav-inner">${links}<span class="spacer"></span>${liveButton}</div></nav>`;
+  }
+
+  function renderStats(allTasks, doneCount) {
+    const phases = report.phases || [];
+    const donePhases = phases.filter((phase) => phase.status === 'done').length;
+    const deferredCount = allTasks.filter((task) => task.status === 'deferred' || task.status === 'failed').length;
+    const testTotals = allTasks.reduce((totals, task) => {
+      if (task.tests) {
+        totals.passed += Number(task.tests.passed) || 0;
+        totals.failed += Number(task.tests.failed) || 0;
+      }
+      return totals;
+    }, { passed: 0, failed: 0 });
+
+    const tiles = [
+      statTile('Tasks', `${doneCount}<small> / ${allTasks.length}</small>`, 'verified and ticked'),
+      statTile('Phases', `${donePhases}<small> / ${phases.length}</small>`, 'independently verified'),
+      statTile('Tests', `${testTotals.passed}<small> passed</small>`, testTotals.failed ? `${testTotals.failed} failing` : 'no failures recorded'),
+      statTile('Active time', escapeHtml(report.activeTime || '—'), report.estimate ? `estimate ${escapeHtml(report.estimate)}` : 'no estimate'),
+      statTile('Deferred', String(deferredCount), deferredCount ? 'see Follow ups' : 'nothing deferred'),
+      statTile('Runs', String(report.runs || 0), 'bt-execute runs so far'),
+    ].join('');
+
+    const route = phases.map((phase) => {
+      const tasks = phase.tasks || [];
+      const finished = tasks.filter((task) => task.status === 'done').length;
+      const awaitingVerifier = tasks.filter((task) => task.status === 'built' || task.status === 'verifying').length;
+      const fill = tasks.length ? Math.round(((finished + awaitingVerifier / 2) / tasks.length) * 100) : 0;
+      return `<a href="#phase-${escapeAttribute(phase.number)}" class="is-${escapeAttribute(phase.status || 'pending')}" title="Phase ${escapeAttribute(phase.number)} — ${escapeAttribute(phase.name || '')}">
+          <div class="route-bar"><div class="route-fill" style="width:${fill}%"></div></div>
+          <div class="route-label">P${escapeHtml(phase.number)} · ${escapeHtml(phase.name || '')}</div>
+        </a>`;
+    }).join('');
+
+    return `<div class="stats">${tiles}</div>${route ? `<nav class="route" aria-label="Phase progress">${route}</nav>` : ''}`;
+  }
+
+  function statTile(label, valueHtml, subText) {
+    return `<div class="card stat"><div class="stat-label">${label}</div><div class="stat-value">${valueHtml}</div><div class="stat-sub">${subText}</div></div>`;
+  }
+
+  /**
+   * The final section: the whole plan's execution in one place — the plan-wide before/after, what was built,
+   * how it was proven, the figures, and the snapshots that best show it. Written when a run ends.
+   */
+  function renderAfterAction(allTasks, doneCount) {
+    const afterAction = report.afterAction;
+    const hasContent = afterAction && (afterAction.headline || (afterAction.body || []).length || afterAction.comparison);
+    const isFinal = ['complete', 'incomplete'].includes(effectiveStatus());
+    let body;
+    if (!hasContent) {
+      body = `<div class="empty">${report.status === 'planned'
+        ? 'Execution has not started. The After Action Report is written when the plan has run.'
+        : 'Written when the run ends — the phases above are current.'}</div>`;
+    } else {
+      const comparison = afterAction.comparison;
+      body = `
+        <article class="card after-action">
+          <div class="after-action-head">
+            <span class="kicker">After Action Report${afterAction.writtenAt ? ` <span>· ${escapeHtml(afterAction.writtenAt)}</span>` : ''}</span>
+            <span class="meta">${isFinal ? '' : '<span class="status status-in-progress">Interim — plan not finished</span>'}${updatedBadge(afterAction.updates)}</span>
+          </div>
+          ${afterAction.headline ? `<h3 class="headline">${formatInline(afterAction.headline)}</h3>` : ''}
+          ${comparison && comparison.before && comparison.after ? `<div class="plan-compare">${renderSnapshot(comparison)}</div>` : ''}
+          <div class="after-action-columns">
+            <div>
+              ${(afterAction.body || []).map((paragraph) => `<p>${formatInline(paragraph)}</p>`).join('')}
+              ${(afterAction.highlights || []).length ? `<ul class="highlights">${afterAction.highlights.map((item) => `<li><span>${formatInline(item)}</span></li>`).join('')}</ul>` : ''}
+            </div>
+            ${renderFigures(allTasks, doneCount)}
+          </div>
+          ${updateNotes(afterAction.updates)}
+        </article>
+        ${(afterAction.snapshots || []).length ? `<div class="gallery">${afterAction.snapshots.map(renderSnapshot).join('')}</div>` : ''}`;
+    }
+    return `
+      <section id="after-action">
+        <div class="section-head"><h2>The plan summary</h2><span class="section-note">The whole plan's execution, start to finish</span></div>
+        ${body}
+      </section>`;
+  }
+
+  /** The run's figures, computed from the data so they can never disagree with the phases above. */
+  function renderFigures(allTasks, doneCount) {
+    const phases = report.phases || [];
+    const retried = allTasks.filter((task) => Number(task.attempts) > 1).length;
+    const deferred = allTasks.filter((task) => task.status === 'deferred' || task.status === 'failed').length;
+    const testsPassed = allTasks.reduce((total, task) => total + (task.tests ? Number(task.tests.passed) || 0 : 0), 0);
+    const rows = [
+      ['Tasks verified', `${doneCount} / ${allTasks.length}`],
+      ['Phases', `${phases.filter((phase) => phase.status === 'done').length} / ${phases.length}`],
+      ['Tests passing', String(testsPassed)],
+      ['Needed a second attempt', String(retried)],
+      ['Deferred', String(deferred)],
+      ['Active time', report.activeTime || '—'],
+      ['Estimate', report.estimate || '—'],
+      ['Runs', String(report.runs || 0)],
+    ];
+    return `<dl class="figures">${rows.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>`;
+  }
+
+  function renderPhases() {
+    const phases = report.phases || [];
+    const content = phases.length
+      ? phases.map(renderPhase).join('')
+      : '<div class="empty">No phases recorded yet.</div>';
+    return `
+      <section id="phases">
+        <div class="section-head"><h2>Execution phases</h2><span class="section-note">Each phase is checked by an independent verifier</span></div>
+        ${content}
+      </section>`;
+  }
+
+  function renderPhase(phase) {
+    const status = phase.status || 'pending';
+    const timing = [
+      phase.started && phase.finished ? `${phase.started} → ${phase.finished}` : phase.started ? `started ${phase.started}` : '',
+      phase.minutes ? `${phase.minutes} min` : '',
+      `${(phase.tasks || []).length} tasks`,
+    ].filter(Boolean).map(escapeHtml).join(' · ');
+    const verifier = phase.verifier
+      ? `<div class="verifier ${/fail/i.test(phase.verifier.result || '') ? 'is-fail' : ''}"><strong>Verifier: ${escapeHtml(phase.verifier.result || '')}</strong>${phase.verifier.note ? ` — ${formatInline(phase.verifier.note)}` : ''}</div>`
+      : '';
+    const snapshots = (phase.snapshots || []).length
+      ? `<div class="gallery">${phase.snapshots.map(renderSnapshot).join('')}</div>`
+      : '';
+
+    return `
+      <article class="card phase is-${escapeAttribute(status)}" id="phase-${escapeAttribute(phase.number)}">
+        <div class="phase-head">
+          <div class="phase-number">P${escapeHtml(phase.number)}</div>
+          <div><h3>${escapeHtml(phase.name || '')}</h3><div class="phase-meta">${timing}</div></div>
+          <div class="phase-status meta">${updatedBadge(phase.updates)}<span class="status status-${escapeAttribute(status)}">${escapeHtml(STATUS_LABELS[status] || status)}</span></div>
+        </div>
+        <div class="phase-body">
+          ${phase.summary ? `<p class="phase-summary">${formatInline(phase.summary)}</p>` : ''}
+          ${updateNotes(phase.updates)}
+          ${verifier}
+          ${snapshots}
+          <div class="tasks">${(phase.tasks || []).map(renderTask).join('')}</div>
+        </div>
+      </article>`;
+  }
+
+  function renderTask(task) {
+    const status = task.status || 'pending';
+    const tags = [
+      task.kind ? `<span class="tag">${escapeHtml(task.kind)}</span>` : '',
+      task.verifyLevel === 'live' ? '<span class="tag">live check</span>' : '',
+      task.attempts > 1 ? `<span class="tag">${escapeHtml(task.attempts)} attempts</span>` : '',
+      status === 'built' || status === 'verifying' ? `<span class="status status-${status}">${STATUS_LABELS[status]}</span>` : '',
+      updatedBadge(task.updates),
+    ].join('');
+    const facts = [
+      factRow('Files', (task.files || []).length ? `<ul class="file-list">${task.files.map((file) => `<li><code>${escapeHtml(file)}</code></li>`).join('')}</ul>` : ''),
+      factRow('Tests', task.tests ? describeTests(task.tests) : ''),
+      factRow('Verifier', task.verifier ? formatInline(task.verifier) : ''),
+      factRow('Commit', task.commit ? `<code>${escapeHtml(task.commit)}</code>` : ''),
+      factRow('Done', task.doneAt ? escapeHtml(task.doneAt) : ''),
+      factRow('Decisions', (task.decisions || []).length ? task.decisions.map(formatInline).join('<br>') : ''),
+    ].join('');
+    const isCurrent = isRunActive() && live && live.task === task.id;
+    const hasBody = isCurrent || task.summary || facts || task.deferredReason || (task.snapshots || []).length || (task.updates || []).length;
+
+    return `
+      <details class="task is-${escapeAttribute(status)}${isCurrent ? ' is-live' : ''}" id="task-${escapeAttribute(task.id || '')}" ${isCurrent || status === 'in-progress' || isNew(task.updates) ? 'open' : ''}>
+        <summary>
+          <span class="task-icon" title="${escapeAttribute(STATUS_LABELS[status] || status)}">${STATUS_ICONS[status] || '○'}</span>
+          <span class="task-id">${escapeHtml(task.id || '')}</span>
+          <span class="task-title">${escapeHtml(task.title || '')}</span>
+          <span class="task-tags">${tags}</span>
+        </summary>
+        ${hasBody ? `<div class="task-body">
+          ${isCurrent ? renderTaskLive() : ''}
+          ${task.summary ? `<p>${formatInline(task.summary)}</p>` : ''}
+          ${task.deferredReason ? `<div class="deferred-note"><strong>Deferred:</strong> ${formatInline(task.deferredReason)}</div>` : ''}
+          ${updateNotes(task.updates)}
+          ${facts ? `<dl class="facts">${facts}</dl>` : ''}
+          ${(task.snapshots || []).length ? `<div class="gallery">${task.snapshots.map(renderSnapshot).join('')}</div>` : ''}
+        </div>` : ''}
+      </details>`;
+  }
+
+  /** The Now banner: the task being worked on this minute, what is happening, and how fresh that is. */
+  function renderNow(allTasks) {
+    if (!isRunActive() || !live) return '';
+    const task = allTasks.find((candidate) => candidate.id === live.task);
+    const heading = [
+      live.phase != null ? `Phase ${escapeHtml(live.phase)}` : '',
+      live.task ? escapeHtml(live.task) : '',
+      live.role ? escapeHtml(live.role) : '',
+    ].filter(Boolean).join(' · ');
+    const title = task ? `${escapeHtml(task.id)} — ${escapeHtml(task.title || '')}` : escapeHtml(live.title || live.task || 'Between tasks');
+    const age = describeAge(live.updatedAt);
+    return `
+      <div class="card now ${age.isStale ? 'is-stale' : ''}" aria-live="polite">
+        <div class="now-head"><span class="live-dot"></span>Now${heading ? ` · ${heading}` : ''}<span class="now-age" data-age="${escapeAttribute(live.updatedAt || '')}">${escapeHtml(age.text)}</span></div>
+        <a class="now-task" href="#task-${escapeAttribute(live.task || '')}">${title}</a>
+        ${live.activity ? `<p class="now-activity">${formatInline(live.activity)}</p>` : ''}
+        ${renderLiveSteps(NOW_STEP_COUNT)}
+      </div>`;
+  }
+
+  /** The live step log, shown inside the task that is being worked on. */
+  function renderTaskLive() {
+    const age = describeAge(live.updatedAt);
+    return `<div class="task-live"><div class="now-head"><span class="live-dot"></span>Working now${live.role ? ` · ${escapeHtml(live.role)}` : ''}<span class="now-age" data-age="${escapeAttribute(live.updatedAt || '')}">${escapeHtml(age.text)}</span></div>
+      ${live.activity ? `<p class="now-activity">${formatInline(live.activity)}</p>` : ''}${renderLiveSteps(Infinity)}</div>`;
+  }
+
+  function renderLiveSteps(limit) {
+    const steps = (live.steps || []).slice(-limit);
+    if (!steps.length) return '';
+    return `<ol class="live-steps">${steps.map((step) => `<li><time>${escapeHtml(step.at || '')}</time><span>${formatInline(step.text || '')}</span></li>`).join('')}</ol>`;
+  }
+
+  function isRunActive() {
+    return report.status === 'in-progress';
+  }
+
+  /** "updated 3 min ago", or a warning once nothing has been written for STALE_AFTER_MINUTES. */
+  function describeAge(timestamp) {
+    const updated = parseTimestamp(timestamp);
+    if (!updated) return { text: timestamp ? `updated ${timestamp}` : '', isStale: false };
+    const minutes = Math.max(0, Math.round((Date.now() - updated.getTime()) / 60000));
+    const duration = minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+    if (minutes >= STALE_AFTER_MINUTES) return { text: `no update for ${duration}`, isStale: true };
+    return { text: minutes < 1 ? 'updated just now' : `updated ${duration} ago`, isStale: false };
+  }
+
+  /** Reads the report's "YYYY-MM-DD HH:MM" local timestamps. */
+  function parseTimestamp(timestamp) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(timestamp || ''));
+    if (!match) return null;
+    const [, year, month, day, hour, minute] = match.map(Number);
+    return new Date(year, month - 1, day, hour, minute);
+  }
+
+  function factRow(label, valueHtml) {
+    return valueHtml ? `<dt>${label}</dt><dd>${valueHtml}</dd>` : '';
+  }
+
+  function describeTests(tests) {
+    const counts = [
+      tests.passed != null ? `${escapeHtml(tests.passed)} passed` : '',
+      tests.failed ? `${escapeHtml(tests.failed)} failed` : '',
+    ].filter(Boolean).join(' · ');
+    const files = (tests.files || []).map((file) => `<code>${escapeHtml(file)}</code>`).join(' ');
+    const note = tests.note ? formatInline(tests.note) : '';
+    return [counts, files, note].filter(Boolean).join('<br>');
+  }
+
+  /**
+   * Three snapshot shapes: a progression (`frames`) renders as a storyboard of the build stage by stage;
+   * a before/after pair renders as a drag-to-compare slider; a single image renders as a zoomable still.
+   */
+  function renderSnapshot(snapshot) {
+    const source = snapshot.source ? `<div class="shot-source">${escapeHtml(snapshot.source)}</div>` : '';
+    const header = `${snapshot.title ? `<div class="shot-title">${formatInline(snapshot.title)} ${updatedBadge(snapshot.updates)}</div>` : ''}`;
+    if ((snapshot.frames || []).length) {
+      return renderProgression(snapshot, header, source);
+    }
+    if (snapshot.before && snapshot.after) {
+      const caption = [snapshot.caption, snapshot.before.caption && `Before: ${snapshot.before.caption}`, snapshot.after.caption && `After: ${snapshot.after.caption}`]
+        .filter(Boolean).map((line) => `<div class="shot-caption">${formatInline(line)}</div>`).join('');
+      return `
+        <figure class="card shot">
+          <div class="shot-frame compare" style="--split:50%">
+            ${imageTag(snapshot.after.src, 'After', '')}
+            ${imageTag(snapshot.before.src, 'Before', 'before-layer')}
+            <div class="divider"></div>
+            <span class="shot-tag left">Before</span><span class="shot-tag right">After</span>
+            <input type="range" min="0" max="100" value="50" aria-label="Drag to compare before and after">
+            <button class="shot-expand" type="button" data-zoom="${safeUrl(snapshot.after.src)}" data-caption="${escapeAttribute(snapshot.title || 'After')}">After ⤢</button>
+          </div>
+          <figcaption>${header}${caption}${source}${updateNotes(snapshot.updates)}</figcaption>
+        </figure>`;
+    }
+    return `
+      <figure class="card shot">
+        <div class="shot-frame single" data-zoom="${safeUrl(snapshot.src)}" data-caption="${escapeAttribute(snapshot.caption || snapshot.title || '')}">
+          ${imageTag(snapshot.src, snapshot.title || 'Snapshot', '')}
+        </div>
+        <figcaption>${header}${snapshot.caption ? `<div class="shot-caption">${formatInline(snapshot.caption)}</div>` : ''}${source}${updateNotes(snapshot.updates)}</figcaption>
+      </figure>`;
+  }
+
+  /** A storyboard: the large stage view, prev / play / next, and a filmstrip of every stage in build order. */
+  function renderProgression(snapshot, header, source) {
+    const progressionIndex = progressions.push(snapshot) - 1;
+    const firstFrame = snapshot.frames[0];
+    const filmstrip = snapshot.frames.map((frame, frameIndex) => `
+      <button class="film-frame" type="button" data-stage="${frameIndex}" aria-current="${frameIndex === 0}" title="${escapeAttribute(frame.stage || '')}">
+        <span class="film-step">${frameIndex + 1}</span>
+        <img src="${safeUrl(frame.src)}" alt="" loading="lazy">
+        <span class="film-label">${escapeHtml(frame.stage || `Stage ${frameIndex + 1}`)}</span>
+      </button>`).join('');
+    return `
+      <figure class="card shot progression" data-progression="${progressionIndex}">
+        <div class="shot-frame single" data-zoom="${safeUrl(firstFrame.src)}" data-caption="${escapeAttribute(firstFrame.stage || '')}">
+          <img class="stage-image" src="${safeUrl(firstFrame.src)}" alt="${escapeAttribute(firstFrame.stage || 'Stage 1')}">
+          <div class="shot-missing" hidden>Snapshot not found</div>
+          <span class="stage-counter">Stage 1 / ${snapshot.frames.length}</span>
+        </div>
+        <div class="stage-controls">
+          <button class="stage-button" type="button" data-step="-1" aria-label="Previous stage">◀</button>
+          <button class="stage-button" type="button" data-play>▶ Play</button>
+          <div class="stage-progress"><div style="width:${100 / snapshot.frames.length}%"></div></div>
+          <button class="stage-button" type="button" data-step="1" aria-label="Next stage">▶</button>
+        </div>
+        <div class="stage-caption" aria-live="polite"></div>
+        <div class="filmstrip">${filmstrip}</div>
+        <figcaption>${header}${snapshot.caption ? `<div class="shot-caption">${formatInline(snapshot.caption)}</div>` : ''}${source}${updateNotes(snapshot.updates)}</figcaption>
+      </figure>`;
+  }
+
+  function imageTag(src, alt, className) {
+    if (!src) return '<div class="shot-missing">No snapshot</div>';
+    return `<img class="${className}" src="${safeUrl(src)}" alt="${escapeAttribute(alt)}" loading="lazy" onerror="this.outerHTML='<div class=&quot;shot-missing&quot;>Snapshot not found:<br>${escapeAttribute(escapeAttribute(src))}</div>'">`;
+  }
+
+  function renderDecisions() {
+    const decisions = report.decisions || [];
+    const rows = decisions.map((decision) => `
+      <div class="row">
+        <div class="row-key">${escapeHtml(decision.id || '')}</div>
+        <div>${formatInline(decision.text || '')} ${updatedBadge(decision.updates)}${decision.source ? `<div class="row-source">${formatInline(decision.source)}</div>` : ''}${updateNotes(decision.updates)}</div>
+      </div>`).join('');
+    return `
+      <section id="decisions">
+        <div class="section-head"><h2>Decisions made</h2><span class="section-note">The calls that shaped the build, and why</span></div>
+        ${rows ? `<div class="card list-card">${rows}</div>` : '<div class="empty">No decisions recorded yet.</div>'}
+      </section>`;
+  }
+
+  function renderFollowUps(allTasks) {
+    const deferredRows = allTasks
+      .filter((task) => task.status === 'deferred' || task.status === 'failed')
+      .map((task) => `<div class="row"><div class="row-key">${escapeHtml(task.id || '')}</div><div><strong>${escapeHtml(task.title || '')}</strong>${task.deferredReason ? `<div class="row-source">${formatInline(task.deferredReason)}</div>` : ''}</div></div>`);
+    const followUpRows = (report.followUps || [])
+      .map((item, index) => `<div class="row"><div class="row-key">#${index + 1}</div><div>${formatInline(item)}</div></div>`);
+    const rows = deferredRows.concat(followUpRows).join('');
+    return `
+      <section id="follow-ups">
+        <div class="section-head"><h2>Deferred follow ups</h2><span class="section-note">What a human should look at next</span></div>
+        ${rows ? `<div class="card list-card">${rows}</div>` : '<div class="empty">Nothing deferred, nothing outstanding.</div>'}
+      </section>`;
+  }
+
+  function renderUpdateLog(allUpdates) {
+    const rows = allUpdates
+      .slice()
+      .sort((first, second) => String(second.at || '').localeCompare(String(first.at || '')))
+      .map((update) => `
+        <div class="row">
+          <div class="row-key">${escapeHtml(update.at || '')}${isNewTimestamp(update.at) ? ' <span class="updated-badge is-new">new</span>' : ''}</div>
+          <div><a href="#${escapeAttribute(update.anchor)}">${escapeHtml(update.where)}</a>${update.by ? ` — by <strong>${escapeHtml(update.by)}</strong>` : ''}<div class="row-source">${formatInline(update.note || '')}</div></div>
+        </div>`).join('');
+    return `
+      <section id="updates">
+        <div class="section-head"><h2>Updates and revisions</h2><span class="section-note">Earlier results revised by later work — nothing is rewritten silently</span></div>
+        ${rows ? `<div class="card list-card">${rows}</div>` : '<div class="empty">No earlier section has been revised.</div>'}
+      </section>`;
+  }
+
+  /** While a run is going: what is being worked on this minute, and the milestones so far. */
+  function renderCurrentActivity(allTasks) {
+    const timeline = renderTimeline();
+    return `
+      <section id="current-activity">
+        <div class="section-head"><h2>Current run activity</h2><span class="section-note">Live — this page refreshes itself whenever the run writes an update</span></div>
+        ${renderNow(allTasks) || '<div class="empty">Run in progress — waiting for the first live update.</div>'}
+        ${timeline ? `<div class="card recent-activity"><div class="recent-title">Milestones · newest first</div>${timeline}</div>` : ''}
+      </section>`;
+  }
+
+  /** Once the run is over (or before it starts): the full milestone history, folded away. */
+  function renderActivityLog() {
+    const timeline = renderTimeline();
+    const count = (report.activity || []).length;
+    return `
+      <section id="activity">
+        <div class="section-head"><h2>Milestone activity logs</h2><span class="section-note">Every milestone of every run</span></div>
+        ${timeline ? `<details class="card activity-log"><summary>Show all ${count} ${count === 1 ? 'entry' : 'entries'}, newest first</summary>${timeline}</details>` : '<div class="empty">No activity yet.</div>'}
+      </section>`;
+  }
+
+  function renderTimeline() {
+    const entries = (report.activity || []).slice().reverse();
+    if (!entries.length) return '';
+    return `<ol class="timeline">${entries.map((entry) => `
+      <li class="${isNewTimestamp(entry.at) ? 'is-new' : ''}"><time>${escapeHtml(entry.at || '')}</time>${formatInline(entry.text || '')}</li>`).join('')}</ol>`;
+  }
+
+  /** "running" while a run is executing, "finished" once a run has ended (plan done or paused), else "planned". */
+  function pageView() {
+    const status = effectiveStatus();
+    if (status === 'in-progress') return 'running';
+    if (['paused', 'complete', 'incomplete'].includes(status)) return 'finished';
+    return 'planned';
+  }
+
+
+  function renderFooter() {
+    return `<footer>Generated by the <a href="${SKILLS_DOWNLOAD_URL}" target="_blank" rel="noopener noreferrer">Babylon Toolkit Desktop Agent</a></footer>`;
+  }
+
+  function renderMissingData() {
+    appRoot.innerHTML = `
+      <main class="page">
+        <div class="card error-panel">
+          <h2>No dashboard data found</h2>
+          <p>This page reads <code>documents/&lt;slug&gt;_dashboard.js</code> next to it. The file is missing, misnamed, or has a syntax error
+          (open the browser console for details). bt-plan writes it when the plan is created, and bt-execute updates it after every phase.</p>
+        </div>
+      </main>`;
+  }
+
+  /* ===================== Updated notifications ===================== */
+
+  function updatedBadge(updates) {
+    if (!updates || !updates.length) return '';
+    const latest = updates[updates.length - 1];
+    const label = `Updated${latest.at ? ` ${latest.at}` : ''}${latest.by ? ` · ${latest.by}` : ''}`;
+    return `<span class="updated-badge ${isNew(updates) ? 'is-new' : ''}" title="${escapeAttribute(latest.note || '')}">${escapeHtml(label)}</span>`;
+  }
+
+  function updateNotes(updates) {
+    if (!updates || !updates.length) return '';
+    const items = updates.map((update) => `<li><span class="when">${escapeHtml(update.at || '')}${update.by ? ` · ${escapeHtml(update.by)}` : ''}</span>${formatInline(update.note || '')}</li>`).join('');
+    return `<ul class="update-notes" aria-label="Updates">${items}</ul>`;
+  }
+
+  function isNew(updates) {
+    return Boolean(updates && updates.some((update) => isNewTimestamp(update.at)));
+  }
+
+  /** Timestamps use "YYYY-MM-DD HH:MM", so plain string comparison orders them. */
+  function isNewTimestamp(timestamp) {
+    return Boolean(lastVisit && timestamp && String(timestamp) > lastVisit);
+  }
+
+  /* ===================== Data helpers ===================== */
+
+  function collectTasks() {
+    return (report.phases || []).flatMap((phase) => phase.tasks || []);
+  }
+
+  /** Every update anywhere in the report, with where it lives, for the Updates section. */
+  function collectUpdates() {
+    const collected = [];
+    const add = (updates, where, anchor) => (updates || []).forEach((update) => collected.push({ ...update, where, anchor }));
+    if (report.afterAction) {
+      add(report.afterAction.updates, 'After Action Report', 'after-action');
+      (report.afterAction.snapshots || []).forEach((snapshot) => add(snapshot.updates, `After Action Report — ${snapshot.title || 'snapshot'}`, 'after-action'));
+    }
+    (report.phases || []).forEach((phase) => {
+      const anchor = `phase-${phase.number}`;
+      add(phase.updates, `Phase ${phase.number} — ${phase.name || ''}`, anchor);
+      (phase.snapshots || []).forEach((snapshot) => add(snapshot.updates, `Phase ${phase.number} snapshot — ${snapshot.title || ''}`, anchor));
+      (phase.tasks || []).forEach((task) => {
+        add(task.updates, `${task.id} — ${task.title || ''}`, anchor);
+        (task.snapshots || []).forEach((snapshot) => add(snapshot.updates, `${task.id} snapshot — ${snapshot.title || ''}`, anchor));
+      });
+    });
+    (report.decisions || []).forEach((decision) => add(decision.updates, `Decision ${decision.id || ''}`, 'decisions'));
+    return collected;
+  }
+
+  /* ===================== Formatting & safety ===================== */
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value);
+  }
+
+  /** Escapes text, then allows `code` and **bold** — the only markup report text may use. */
+  function formatInline(text) {
+    return escapeHtml(text)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  }
+
+  /** Report links and images are relative paths inside the feature folder; anything with a scheme other than http(s) is dropped. */
+  function cleanUrl(url) {
+    const value = String(url || '').trim();
+    return /^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:/i.test(value) ? '#' : value;
+  }
+
+  /** `cleanUrl`, escaped for use inside an HTML attribute. */
+  function safeUrl(url) {
+    return escapeAttribute(cleanUrl(url));
+  }
+
+  /* ===================== Interaction ===================== */
+
+  function animateRing(fraction) {
+    const ring = document.getElementById('ring-value');
+    if (!ring) return;
+    const circumference = 2 * Math.PI * 52;
+    ring.style.strokeDasharray = String(circumference);
+    ring.style.strokeDashoffset = String(circumference);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      ring.style.strokeDashoffset = String(circumference * (1 - fraction));
+    }));
+  }
+
+  /** Seconds each stage stays on screen while a progression plays. */
+  const PROGRESSION_PLAY_SECONDS = 2.2;
+
+  function wireProgressions() {
+    document.querySelectorAll('[data-progression]').forEach((figure) => {
+      const snapshot = progressions[Number(figure.dataset.progression)];
+      const frames = snapshot.frames;
+      const stageFrame = figure.querySelector('.shot-frame');
+      const stageImage = figure.querySelector('.stage-image');
+      const missingNote = figure.querySelector('.shot-missing');
+      const counter = figure.querySelector('.stage-counter');
+      const progressFill = figure.querySelector('.stage-progress div');
+      const caption = figure.querySelector('.stage-caption');
+      const playButton = figure.querySelector('[data-play]');
+      const filmstrip = figure.querySelector('.filmstrip');
+      const filmButtons = Array.from(figure.querySelectorAll('.film-frame'));
+      let currentStage = 0;
+      let playTimer = null;
+
+      const showStage = (stageIndex) => {
+        currentStage = (stageIndex + frames.length) % frames.length;
+        const frame = frames[currentStage];
+        stageImage.src = cleanUrl(frame.src);
+        stageImage.alt = frame.stage || `Stage ${currentStage + 1}`;
+        stageFrame.dataset.zoom = cleanUrl(frame.src) || '#';
+        stageFrame.dataset.caption = [frame.stage, frame.caption].filter(Boolean).join(' — ');
+        counter.textContent = `Stage ${currentStage + 1} / ${frames.length}`;
+        progressFill.style.width = `${((currentStage + 1) / frames.length) * 100}%`;
+        caption.innerHTML = `
+          <div class="stage-name">${formatInline(frame.stage || `Stage ${currentStage + 1}`)}${frame.task ? ` <span class="tag">${escapeHtml(frame.task)}</span>` : ''}${frame.at ? ` <span class="tag">${escapeHtml(frame.at)}</span>` : ''}</div>
+          ${frame.caption ? `<div class="stage-note">${formatInline(frame.caption)}</div>` : ''}`;
+        filmButtons.forEach((button, buttonIndex) => button.setAttribute('aria-current', String(buttonIndex === currentStage)));
+        const activeButton = filmButtons[currentStage];
+        const overflowsLeft = activeButton.offsetLeft < filmstrip.scrollLeft;
+        const overflowsRight = activeButton.offsetLeft + activeButton.offsetWidth > filmstrip.scrollLeft + filmstrip.clientWidth;
+        if (overflowsLeft || overflowsRight) filmstrip.scrollTo({ left: activeButton.offsetLeft - 16, behavior: 'smooth' });
+      };
+
+      const stopPlaying = () => {
+        clearInterval(playTimer);
+        playTimer = null;
+        playButton.textContent = '▶ Play';
+      };
+
+      stageImage.addEventListener('load', () => { missingNote.hidden = true; stageImage.style.opacity = ''; fitFrameToImage(stageFrame, stageImage); });
+      stageImage.addEventListener('error', () => { missingNote.hidden = false; stageImage.style.opacity = '0'; });
+      figure.querySelectorAll('[data-step]').forEach((button) => button.addEventListener('click', () => {
+        stopPlaying();
+        showStage(currentStage + Number(button.dataset.step));
+      }));
+      filmButtons.forEach((button) => button.addEventListener('click', () => {
+        stopPlaying();
+        showStage(Number(button.dataset.stage));
+      }));
+      playButton.addEventListener('click', () => {
+        if (playTimer) {
+          stopPlaying();
+          return;
+        }
+        playButton.textContent = '❚❚ Pause';
+        if (currentStage === frames.length - 1) showStage(0);
+        playTimer = setInterval(() => {
+          if (currentStage === frames.length - 1) {
+            stopPlaying();
+            return;
+          }
+          showStage(currentStage + 1);
+        }, PROGRESSION_PLAY_SECONDS * 1000);
+      });
+      showStage(0);
+    });
+  }
+
+  function wireCompareSliders() {
+    wireProgressions();
+    document.querySelectorAll('.shot-frame.compare').forEach((frame) => {
+      const slider = frame.querySelector('input[type="range"]');
+      slider.addEventListener('input', () => frame.style.setProperty('--split', `${slider.value}%`));
+      const afterImage = frame.querySelector('img:not(.before-layer)');
+      if (afterImage) afterImage.addEventListener('load', () => fitFrameToImage(frame, afterImage));
+    });
+    document.querySelectorAll('.shot-frame.single img:not(.stage-image)').forEach((image) => {
+      image.addEventListener('load', () => fitFrameToImage(image.parentElement, image));
+    });
+  }
+
+  /** Matches the frame to the snapshot's own proportions so nothing is letterboxed. */
+  function fitFrameToImage(frame, image) {
+    if (image.naturalWidth && image.naturalHeight) {
+      frame.style.aspectRatio = `${image.naturalWidth} / ${image.naturalHeight}`;
+    }
+  }
+
+  function wireLightbox() {
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImage = document.getElementById('lightbox-image');
+    const lightboxCaption = document.getElementById('lightbox-caption');
+    document.addEventListener('click', (event) => {
+      const trigger = event.target.closest('[data-zoom]');
+      if (!trigger || trigger.dataset.zoom === '#') return;
+      lightboxImage.src = trigger.dataset.zoom;
+      lightboxCaption.textContent = trigger.dataset.caption || '';
+      lightbox.classList.add('is-open');
+    });
+    const close = () => lightbox.classList.remove('is-open');
+    lightbox.addEventListener('click', close);
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+  }
+
+  /** While a run is in progress the page reloads itself, so an open tab always shows the latest phase. */
+  /**
+   * Keeps an open tab current in every state: re-reads the data files in the background and reloads only when
+   * something changed — a new task result, a finished run, a plan reopened with an added task, the next run starting.
+   */
+  function wireAutoUpdate() {
+    const toggle = document.getElementById('live-toggle');
+    toggle.addEventListener('click', () => {
+      writeStorage(localStorage, `${storageKey}:live`, isLiveEnabled() ? 'off' : 'on');
+      toggle.setAttribute('aria-pressed', String(isLiveEnabled()));
+      toggle.textContent = autoUpdateLabel();
+    });
+    const dashboardSource = scriptSource('_dashboard.js');
+    const liveSource = scriptSource('_live.js');
+    const renderedFingerprint = fingerprint(report, live);
+    const checkSeconds = pageView() === 'running' ? RUNNING_CHECK_SECONDS : IDLE_CHECK_SECONDS;
+    setInterval(async () => {
+      if (!isLiveEnabled() || document.querySelector('.lightbox.is-open')) return;
+      const nextReport = await reloadGlobal(dashboardSource, 'FEATURE_DASHBOARD');
+      if (!nextReport) return; // missing or caught mid-write — try again next time
+      const nextLive = liveSource ? await reloadGlobal(liveSource, 'FEATURE_LIVE') : null;
+      if (fingerprint(nextReport, nextLive) === renderedFingerprint) return;
+      writeStorage(sessionStorage, `${storageKey}:scroll`, String(window.scrollY));
+      location.reload();
+    }, checkSeconds * 1000);
+    setInterval(refreshAges, AGE_REFRESH_SECONDS * 1000);
+  }
+
+  function autoUpdateLabel() {
+    return `Auto-update ${isLiveEnabled() ? 'on' : 'off'}`;
+  }
+
+  function scriptSource(suffix) {
+    const script = Array.from(document.scripts).find((candidate) => (candidate.getAttribute('src') || '').endsWith(suffix));
+    return script ? script.getAttribute('src') : '';
+  }
+
+  /** Loads a data file again from disk (the query string defeats the cache) and returns the global it assigns. */
+  function reloadGlobal(source, globalName) {
+    return new Promise((resolve) => {
+      window[globalName] = undefined;
+      const script = document.createElement('script');
+      script.src = `${source}?check=${Date.now()}`;
+      script.onload = () => { script.remove(); resolve(window[globalName] || null); };
+      script.onerror = () => { script.remove(); resolve(null); };
+      document.head.appendChild(script);
+    });
+  }
+
+  function fingerprint(dashboardData, liveData) {
+    return JSON.stringify([dashboardData, liveData || null]);
+  }
+
+  /** Re-words every "updated N min ago" label as time passes, without reloading the page. */
+  function refreshAges() {
+    document.querySelectorAll('[data-age]').forEach((label) => {
+      const age = describeAge(label.dataset.age);
+      label.textContent = age.text;
+      const card = label.closest('.now');
+      if (card) card.classList.toggle('is-stale', age.isStale);
+    });
+  }
+
+  /**
+   * The status the page acts on. The data's `status` is written by bt-execute, but "complete" is only believed
+   * when every task really is done; otherwise the plan is shown as paused, with a warning in the header.
+   */
+  function effectiveStatus() {
+    const status = report.status || 'planned';
+    if (status === 'complete' && unfinishedTasks().length) return 'paused';
+    return status;
+  }
+
+  function unfinishedTasks() {
+    return collectTasks().filter((task) => task.status !== 'done');
+  }
+
+  function isLiveEnabled() {
+    return readStorage(localStorage, `${storageKey}:live`) !== 'off';
+  }
+
+  function restoreScroll() {
+    const savedScroll = readStorage(sessionStorage, `${storageKey}:scroll`);
+    if (savedScroll == null) return;
+    document.documentElement.style.scrollBehavior = 'auto';
+    window.scrollTo(0, Number(savedScroll) || 0);
+    document.documentElement.style.scrollBehavior = '';
+    writeStorage(sessionStorage, `${storageKey}:scroll`, null);
+  }
+
+  /** Browser storage can be blocked for file:// pages; the report works without it. */
+  function readStorage(storage, key) {
+    try {
+      return storage.getItem(key);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeStorage(storage, key, value) {
+    try {
+      if (value == null) storage.removeItem(key);
+      else storage.setItem(key, value);
+    } catch (error) {
+      /* storage unavailable — live toggle and "new" markers simply reset */
+    }
+  }
+})();
+</script>
+</body>
+</html>
