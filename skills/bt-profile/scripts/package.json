@@ -1,0 +1,10 @@
+{
+  "name": "bt-profile-tools",
+  "private": true,
+  "type": "module",
+  "description": "Capture, analysis and report tools for the bt-profile skill. Installed into <project>/.agents/profile/.tools, never into the project's own package.json.",
+  "dependencies": {
+    "puppeteer-core": "23.11.1",
+    "source-map-js": "1.2.1"
+  }
+}

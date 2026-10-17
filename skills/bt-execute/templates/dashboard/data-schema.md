@@ -77,7 +77,7 @@ instead of a blank page if something still cannot render — it keeps checking a
 - A task added to the plan after it was complete is added here as `pending`, in plan order, with an `updates`
   note saying why — and `complete` becomes `paused`.
 - The status picks the page's top slot: `in-progress` shows *Current run activity* (the live file and the
-  milestones); `paused`, `complete` and `incomplete` show *The plan summary* (the After Action Report, marked
+  milestones); `paused`, `complete` and `incomplete` show *Final plan summary* (the After Action Report, marked
   *Interim* while paused).
 - **Cadence is per task.** A task's entry changes the moment it starts (`in-progress`), the moment it is built
   (`built` — summary, files, tests and snapshots filled in right then), while the verifier checks it
@@ -95,8 +95,8 @@ Top level:
 | `status` | see *Status* |
 | `detail` | `"normal"`, or `"verbose"` once any run used `bt-execute --verbose` (never set back) |
 | `updatedAt` | last write, `"YYYY-MM-DD HH:MM"` |
-| `estimate` | the plan's Total line, e.g. `"3–6 h"` |
-| `activeTime` | from the run log's `⏱` lines, e.g. `"2 h 10 min"` |
+| `estimate` | the plan's Total, short: `"3–6 h"` or `"about 7 h"` — the card shows its hours; keep ranges and working-out in the plan |
+| `activeTime` | the plan's total active time across **every run so far** — each run's `active` from its `⏱ Run <n> end` line, added up — as the duration only: `"14 h 10 min"`, no notes. The card shows it beside the estimate, so one run's time alone understates the plan |
 | `runs` | number of bt-execute runs so far |
 | `afterAction` | the After Action Report (below) |
 | `phases` | the plan's phases, each with its tasks (below) |
@@ -154,6 +154,7 @@ Each task:
 | `files` | paths changed |
 | `tests` | `{ "passed", "failed", "files": [".agents/specs/<slug>/tests/…"], "note" }` or `null` |
 | `verifier` | `"PASS — independent subagent; live check in Chrome"` |
+| `checkedLive` | every run, not only `--verbose`: one line on what the verifier ran live and where — `"two-tab Shared race in headless Chrome, 150 ms lag"`; `""` when it was proven by tests alone. The page's *live check* badge and column read it (a task the plan marked `live` always counts) |
 | `attempts`, `commit`, `doneAt` | as recorded |
 | `deferredReason` | why it was deferred, if it was |
 | `decisions` | `"DECISION T1: … — source"` lines |

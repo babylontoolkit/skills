@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.66)
+# Babylon Toolkit Desktop Agent (1.1.68)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -281,6 +281,7 @@ pair or schedule the bridge.
 | [`bt-hero`](skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. |
 | [`bt-atlas`](skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. |
 | [`bt-optimize`](skills/bt-optimize/SKILL.md) | `/bt-optimize` | Make an exported Unity scene run fast in the browser: profile the BabylonJS frame (draw calls per pass, lights, shadows, post-processing, resolution, materials, textures), fix the causes on a copy of the scene — runtime lights, shadows, post, exporter settings, static / lightmap / mirrored unlocks — and merge static meshes and LOD groups (packed lightmap UVs, LOD clusters); then re-bake, export and verify frame rate and look against the original. `--no-combine`, `--combine-only`. |
+| [`bt-profile`](skills/bt-profile/SKILL.md) | `/bt-profile` | Find and fix what makes a BabylonJS / Babylon Toolkit web game slow: drive the running game in Chrome through a repeatable scenario (a cold load, a level start, a countdown), record the CPU profile, allocations and every frame, map each millisecond to its source line and owner (your code, the toolkit runtime, BabylonJS, Havok, React), then fix the bottlenecks one at a time and re-measure each. Writes `.agents/profile/<slug>/dashboard.html`. `--analyze`, `--snapshots`, `--project`, `--slug`. |
 
 Every tool derives the slash-command from the **folder name** (`bt-spec/` → `/bt-spec`) and reads
 the frontmatter `name` + `description` to decide when the skill applies. The `allowed-tools`
@@ -445,7 +446,7 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 > for everything else (Codex, Copilot, Gemini CLI, Antigravity). By default use the
 > GLOBAL (per-user home) locations; use the project-local locations only when the user
 > explicitly asks for a project install. Copy **whole folders** into each — the
-> `bt-atlas/scripts/` and `bt-optimize/scripts/` assets must be present in every location.
+> `bt-atlas/scripts/`, `bt-optimize/scripts/` and `bt-profile/scripts/` + `bt-profile/templates/` assets must be present in every location.
 
 
 # Babylon Toolkit Loop Engineering (Gauntlet Loop)

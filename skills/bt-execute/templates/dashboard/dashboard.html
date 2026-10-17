@@ -299,10 +299,12 @@
   .stat-sub { margin-top: 4px; font-size: 12.5px; color: var(--text-muted); }
 
   /* ---------- Phase route ---------- */
-  .route { display: flex; gap: 6px; margin-top: 16px; }
+  .route { display: flex; gap: 10px; margin-top: 16px; }
   .route a {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
     text-decoration: none;
     color: inherit;
   }
@@ -310,11 +312,30 @@
   .route-fill { height: 100%; border-radius: 999px; background: var(--done); }
   .route a.is-in-progress .route-fill { background: var(--active); }
   .route a.is-deferred .route-fill, .route a.is-partial .route-fill { background: var(--deferred); }
+  /* Each name sits on a panel as wide as its bar; every panel is the row's height, sized for two lines. */
   .route-label {
+    flex: 1;
     margin-top: 7px;
+    padding: 7px 9px;
+    min-height: calc(2 * 1.3em + 14px);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-small);
+    background: var(--bg-raised);
     font: 500 11.5px/1.3 var(--font-mono);
     color: var(--text-muted);
+    transition: border-color 0.15s, color 0.15s;
   }
+  /* At most two lines, so one long phase name never stretches the row; the full name is the tooltip. */
+  .route-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+  .route a:hover .route-label { border-color: var(--line-strong); color: var(--text); }
+  .route a.is-in-progress .route-label { border-color: color-mix(in srgb, var(--active) 45%, transparent); background: var(--active-soft); color: var(--text); }
 
   /* ---------- Summary ---------- */
   .headline { margin: 0 0 12px; font-size: 21px; line-height: 1.35; letter-spacing: -0.01em; }
@@ -802,6 +823,8 @@
   const VERDICT_BADGE_MAX_LENGTH = 16;
   // The report's task-by-task testing table starts open for a short plan and folded for a long one.
   const TESTING_TABLE_OPEN_ROWS = 12;
+  // A verifier result that names a live check: "live two-tab race in headless Chrome", "end-to-end on WebGPU".
+  const LIVE_CHECK_WORDS = /\blive\b|chrome|browser|webgl|webgpu|unity editor|play ?mode/i;
   /** Where the Babylon Toolkit Desktop Agent, whose skills generate this dashboard, is published. */
   const SKILLS_DOWNLOAD_URL = 'https://www.npmjs.com/package/@babylonjs-toolkit/agent';
   /** Minutes without a live update before the Now banner warns that the run has gone quiet. */
@@ -863,7 +886,7 @@
 
     const view = pageView();
     // Stat tiles and phase bars first; then one slot that follows the run: Current run activity while it runs,
-    // the plan summary (After Action Report) once it is over.
+    // the Final plan summary (the After Action Report) once it is over.
     appRoot.innerHTML = [
       renderMasthead(feature, allTasks.length, doneCount),
       renderNav(allUpdates.length, view),
@@ -923,7 +946,7 @@
   function renderNav(updateCount, view) {
     const links = [
       view === 'running' ? ['current-activity', 'Current run'] : null,
-      view === 'finished' ? ['after-action', 'Plan summary'] : null,
+      view === 'finished' ? ['after-action', 'Summary'] : null,
       ['phases', 'Phases'],
       ['decisions', 'Decisions'],
       ['follow-ups', 'Follow ups'],
@@ -938,19 +961,20 @@
     const phases = report.phases || [];
     const donePhases = phases.filter((phase) => phase.status === 'done').length;
     const deferredCount = allTasks.filter((task) => task.status === 'deferred' || task.status === 'failed').length;
-    const testTotals = allTasks.reduce((totals, task) => {
-      if (task.tests) {
-        totals.passed += Number(task.tests.passed) || 0;
-        totals.failed += Number(task.tests.failed) || 0;
-      }
-      return totals;
-    }, { passed: 0, failed: 0 });
+    // The final suites are the true count; each task reports the whole suite it ran, so a sum of tasks over-counts.
+    const suites = finalSuites();
+    const testsTile = suites.length
+      ? statTile('Tests', `${suites.reduce((total, suite) => total + (Number(suite.passed) || 0), 0)}<small> passed</small>`, sumFailed(suites) ? `${sumFailed(suites)} failing` : 'final suites, all green')
+      : statTile('Tests', `${allTasks.filter(hasTests).length}<small> / ${allTasks.length}</small>`, 'tasks with tests');
+    const activeTime = shortDuration(report.activeTime);
+    const estimate = shortEstimate(report.estimate);
 
     const tiles = [
       statTile('Tasks', `${doneCount}<small> / ${allTasks.length}</small>`, 'verified and ticked'),
       statTile('Phases', `${donePhases}<small> / ${phases.length}</small>`, 'independently verified'),
-      statTile('Tests', `${testTotals.passed}<small> passed</small>`, testTotals.failed ? `${testTotals.failed} failing` : 'no failures recorded'),
-      statTile('Active time', escapeHtml(report.activeTime || '—'), report.estimate ? `estimate ${escapeHtml(report.estimate)}` : 'no estimate'),
+      testsTile,
+      statTile('Active time', activeTime ? durationHtml(activeTime) : '—', estimate ? `of ${/[–-]/.test(estimate) ? '' : '~'}${escapeHtml(estimate)} estimated` : 'no estimate',
+        [report.activeTime, report.estimate && `Estimate: ${report.estimate}`].filter(Boolean).join('\n')),
       statTile('Deferred', String(deferredCount), deferredCount ? 'see Follow ups' : 'nothing deferred'),
       statTile('Runs', String(report.runs || 0), 'bt-execute runs so far'),
     ].join('');
@@ -962,15 +986,52 @@
       const fill = tasks.length ? Math.round(((finished + awaitingVerifier / 2) / tasks.length) * 100) : 0;
       return `<a href="#phase-${escapeAttribute(phase.number)}" class="is-${escapeAttribute(phase.status || 'pending')}" title="Phase ${escapeAttribute(phase.number)} — ${escapeAttribute(phase.name || '')}">
           <div class="route-bar"><div class="route-fill" style="width:${fill}%"></div></div>
-          <div class="route-label">P${escapeHtml(phase.number)} · ${escapeHtml(phase.name || '')}</div>
+          <div class="route-label"><span class="route-name">P${escapeHtml(phase.number)} · ${escapeHtml(phase.name || '')}</span></div>
         </a>`;
     }).join('');
 
     return `<div class="stats">${tiles}</div>${route ? `<nav class="route" aria-label="Phase progress">${route}</nav>` : ''}`;
   }
 
-  function statTile(label, valueHtml, subText) {
-    return `<div class="card stat"><div class="stat-label">${label}</div><div class="stat-value">${valueHtml}</div><div class="stat-sub">${subText}</div></div>`;
+  function statTile(label, valueHtml, subText, title = '') {
+    return `<div class="card stat"${title ? ` title="${escapeAttribute(title)}"` : ''}><div class="stat-label">${label}</div><div class="stat-value">${valueHtml}</div><div class="stat-sub">${subText}</div></div>`;
+  }
+
+  /**
+   * The first duration in a time note — "5 h 54 min (run 5); earlier runs in the run log" → { hours: 5, minutes: 54 }.
+   * The data holds whatever the run log said; the card shows only the time, the full note is its tooltip.
+   */
+  function shortDuration(text) {
+    const match = /(?:(\d+(?:\.\d+)?)\s*h(?:ours?)?\b)?\s*(?:(\d+)\s*min)?/i;
+    for (const candidate of String(text || '').matchAll(new RegExp(match.source, 'gi'))) {
+      if (candidate[1] || candidate[2]) {
+        const total = Math.round(Number(candidate[1] || 0) * 60) + Number(candidate[2] || 0);
+        return { hours: Math.floor(total / 60), minutes: total % 60 };
+      }
+    }
+    return null;
+  }
+
+  function durationText({ hours, minutes }) {
+    return hours ? `${hours} h${minutes ? ` ${minutes} min` : ''}` : `${minutes} min`;
+  }
+
+  function durationHtml({ hours, minutes }) {
+    if (!hours) return `${minutes}<small> min</small>`;
+    return `${hours}<small> h</small>${minutes ? ` ${minutes}<small> min</small>` : ''}`;
+  }
+
+  /**
+   * The headline figure of an estimate note: "about 944 min ≈ 15.7 h of agent time (range …)" → "15.7 h";
+   * "3–6 h" stays a range. Brackets are detail; after a "≈" comes the rounded figure.
+   */
+  function shortEstimate(text) {
+    let main = String(text || '').split('(')[0];
+    if (main.includes('≈')) main = main.slice(main.lastIndexOf('≈') + 1);
+    const hours = /(\d+(?:\.\d+)?(?:\s*[–-]\s*\d+(?:\.\d+)?)?)\s*h\b/i.exec(main);
+    if (hours) return `${hours[1].replace(/\s+/g, '')} h`;
+    const duration = shortDuration(main);
+    return duration ? `${duration.hours ? `${duration.hours} h ` : ''}${duration.minutes ? `${duration.minutes} min` : ''}`.trim() : '';
   }
 
   /**
@@ -1011,7 +1072,7 @@
     }
     return `
       <section id="after-action">
-        <div class="section-head"><h2>The plan summary</h2><span class="section-note">The whole plan's execution, start to finish</span></div>
+        <div class="section-head"><h2>Final plan summary</h2><span class="section-note">The whole plan's execution, start to finish</span></div>
         ${body}
       </section>`;
   }
@@ -1033,8 +1094,8 @@
       testsFigure,
       ['Needed a second attempt', String(retried)],
       ['Deferred', String(deferred)],
-      ['Active time', report.activeTime || '—'],
-      ['Estimate', report.estimate || '—'],
+      ['Active time', shortDuration(report.activeTime) ? durationText(shortDuration(report.activeTime)) : '—'],
+      ['Estimate', shortEstimate(report.estimate) || '—'],
       ['Runs', String(report.runs || 0)],
     ];
     return `<dl class="figures">${rows.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>`;
@@ -1097,7 +1158,7 @@
     const tags = [
       snapshotBadge(task.snapshots),
       task.kind ?`<span class="tag">${escapeHtml(task.kind)}</span>` : '',
-      task.verifyLevel === 'live' ? '<span class="tag">live check</span>' : '',
+      hasLiveCheck(task) ? `<span class="tag" title="${escapeAttribute(liveCheckNote(task))}">live check</span>` : '',
       task.attempts > 1 ? `<span class="tag">${escapeHtml(task.attempts)} attempts</span>` : '',
       status === 'built' || status === 'verifying' ? `<span class="status status-${status}">${STATUS_LABELS[status]}</span>` : '',
       updatedBadge(task.updates),
@@ -1240,8 +1301,22 @@
     return Boolean(task.tests && (Number(task.tests.passed) || Number(task.tests.failed)));
   }
 
+  /**
+   * Whether the task was checked by running the real thing. The plan's `verifyLevel` is only the intent — a
+   * verifier often checks a `standard` task live too — so the record of the check counts as well: the
+   * `checkedLive` note, a verbose `liveCheck`, a verifier result that names a live check, or a snapshot
+   * captured in the browser or Unity.
+   */
   function hasLiveCheck(task) {
-    return task.verifyLevel === 'live' || Boolean(task.details && task.details.liveCheck);
+    return task.verifyLevel === 'live'
+      || Boolean(task.checkedLive || (task.details && task.details.liveCheck))
+      || LIVE_CHECK_WORDS.test(task.verifier || '')
+      || (task.snapshots || []).some((snapshot) => ['browser', 'unity'].includes(snapshot.source));
+  }
+
+  function liveCheckNote(task) {
+    return task.checkedLive || (task.details && task.details.liveCheck) || (LIVE_CHECK_WORDS.test(task.verifier || '') ? task.verifier : '')
+      || ((task.snapshots || []).length ? 'Snapshots captured from the running result' : 'Checked live');
   }
 
   function testCasesOf(task) {
@@ -1285,7 +1360,7 @@
             : `<span class="cell-note" title="${escapeAttribute(tests.note || '')}">${tests.note ? escapeHtml(tests.note) : '—'}</span>`,
           (tests.files || []).length ? tests.files.map((file) => `<code>${escapeHtml(file)}</code>`).join('<br>') : '—',
           cases.length ? `${cases.length}${casesFailed ? `<div class="count count-fail">${casesFailed} failed</div>` : ''}` : '—',
-          hasLiveCheck(task) ? `<span title="${escapeAttribute((task.details && task.details.liveCheck) || 'Checked live')}">Yes</span>` : '—',
+          hasLiveCheck(task) ? `<span title="${escapeAttribute(liveCheckNote(task))}">Yes</span>` : '—',
         ];
       }));
 
