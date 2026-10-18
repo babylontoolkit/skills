@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.69)
+# Babylon Toolkit Desktop Agent (1.1.76)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -324,7 +324,7 @@ storyboard, plus before/after sliders and stills where those prove the point. Wh
 revises an earlier result, the earlier entry is marked **Updated** with who changed it and why —
 nothing is rewritten silently.
 
-The top of the page follows the run. While a run is going it shows **Current run activity** — the *Now*
+The top of the page follows the run. Before the first run it shows **Start this plan** — ready-made `bt-execute` commands with copy buttons (every task unattended, every task with you on hand, one phase, the first task, fully written up) and a builder for any task range with `--auto-pilot`, `--strict`, `--verbose` or `--no-time-limit`; a paused plan shows the same as **Continue this plan**. While a run is going it shows **Current run activity** — the *Now*
 banner and the milestones so far. Once the run is over, that slot becomes the **After Action Report**
 (marked *Interim* if the plan is not finished yet), and the milestone history folds into the Milestone
 activity logs at the bottom. The After Action Report is the whole plan's execution summarized — what
