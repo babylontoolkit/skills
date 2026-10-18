@@ -6,22 +6,27 @@
  * Every write reads `data/progress.js`, parses its strict JSON, changes it and writes it back atomically (a temp file
  * renamed over the original), so the page never loads a half-written file.
  *
- *   node progress.mjs start  <slug-folder> [--title "…"] [--brief "…"] [--project <path>] [--url <url>] [--mode fix|analyze]
+ *   node progress.mjs start  <slug-folder> [--title "…"] [--brief "…"] [--project <path>] [--url <url>] [--mode report|auto-fix] [--open true]
+ *   node progress.mjs set    <slug-folder> [--url <url>] [--title "…"] [--brief "…"] [--project <path>]   details found after start
  *   node progress.mjs stage  <slug-folder> <preflight|baseline|diagnose|fix|verify|report> [--status active|done|skipped] [--note "…"]
  *   node progress.mjs now    <slug-folder> "<what is happening this minute>" [--step "<log line, if different>"]
  *   node progress.mjs fix    <slug-folder> <F1> [--title "…"] [--status planned|trying|measuring|kept|reverted|skipped] [--before "…"] [--after "…"] [--note "…"]
  *   node progress.mjs metric <slug-folder> "<label>" "<value>" [--note "…"]
  *   node progress.mjs note   <slug-folder> "<milestone>"
  *   node progress.mjs end    <slug-folder> [--status done|stopped|failed] [--summary "…"]
+ *   node progress.mjs stop    <slug-folder> [--reason "…"]       ends a running capture (and its Chrome) and marks the run stopped
+ *   node progress.mjs resume  <slug-folder>                      reopens a stopped run where it stopped; prints where to continue (JSON)
+ *   node progress.mjs restart <slug-folder> [--title "…"] [--brief "…"]   archives the runs, findings and report, then starts over
  *   node progress.mjs check  <slug-folder>
  *   node progress.mjs watch  <slug-folder> [--watch <folder>]… [--interval-seconds 60] [--quiet-minutes 5] [--stall-minutes 30] [--max-hours 12]
  *
  * <slug-folder> is .agents/profile/<slug> (it holds dashboard.html and data/). Timestamps are this machine's local time.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
+import { spawn } from "node:child_process";
 
-import { PROGRESS_MARKER, livePage } from "./lib/progress-panel.mjs";
+import { PROGRESS_MARKER, livePage, withProgressPanel } from "./lib/progress-panel.mjs";
 
 const PREFIX = "window.PROFILE_PROGRESS";
 /** The stages every profile run goes through, in order. */
@@ -121,15 +126,21 @@ function setNow(progress, activity, step, source = "agent") {
 /** Starts a run: a fresh progress file, and a live dashboard when the slug has none that carries the panel. */
 function start(folder, argumentList) {
     const { options } = parseOptions(argumentList);
-    const mode = options.mode === "analyze" ? "analyze" : "fix";
+    // Fixing is opt-in (--auto-fix): without it the run measures, diagnoses and lists the fixes, and changes no code.
+    const mode = (options.mode === "auto-fix" || options.mode === "fix") ? "auto-fix" : "report";
     const stamp = localTime().stamp;
     const stages = STAGES.map((stage) => ({ ...stage, status: "pending", started: "", finished: "", note: "" }));
     stages[0].status = "active";
     stages[0].started = localTime().clock;
-    if (mode === "analyze") Object.assign(stages.find((stage) => stage.id === "fix"), { status: "skipped", note: "--analyze: no code changes" });
+    if (mode === "report") {
+        Object.assign(stages.find((stage) => stage.id === "fix"), { status: "skipped", note: "fixes listed, not applied (add --auto-fix to apply them)" });
+        Object.assign(stages.find((stage) => stage.id === "verify"), { status: "skipped", note: "no code changed, nothing to verify" });
+    }
     const progress = {
         schema: 1,
         status: "running",
+        slug: basename(folder),
+        run: Number(options.run || 1),
         title: String(options.title || `${basename(folder)} profile`),
         brief: String(options.brief || ""),
         project: String(options.project || ""),
@@ -150,12 +161,38 @@ function start(folder, argumentList) {
     const dashboard = join(folder, "dashboard.html");
     const current = existsSync(dashboard) ? readFileSync(dashboard, "utf8") : "";
     if (!current.includes(PROGRESS_MARKER)) {
-        // A report from before the panel existed is kept beside the data, not lost while the run replaces it.
+        // Never replace a report: one from before the panel existed keeps every chart, table and finding, with the live
+        // panel added on top (a copy stays in data/previous-dashboard.html). Only a slug with no report gets the bare live page.
+        const upgraded = current ? withProgressPanel(current) : null;
         if (current) writeFileSync(join(folder, "data", "previous-dashboard.html"), current);
-        writeFileSync(dashboard, livePage({ title: progress.title }));
-        console.log(`wrote the live page ${dashboard}${current ? " (the previous report is in data/previous-dashboard.html)" : ""}`);
+        writeFileSync(dashboard, upgraded || livePage({ title: progress.title }));
+        console.log(upgraded ? `added the live panel to the existing report ${dashboard}` : `wrote the live page ${dashboard}${current ? " (the previous report is in data/previous-dashboard.html)" : ""}`);
     }
     console.log(`progress: started ${progress.title} (${mode})`);
+    // The user watches the run live, so the page opens with it (once — it reloads itself from then on).
+    if (options.open === "true" || options.open === true) openInBrowser(dashboard);
+}
+
+/** Opens a file in the default browser, without waiting for it. */
+function openInBrowser(file) {
+    const opener = process.platform === "darwin" ? ["open", [file]] : process.platform === "win32" ? ["cmd", ["/c", "start", "", file]] : ["xdg-open", [file]];
+    try {
+        spawn(opener[0], opener[1], { detached: true, stdio: "ignore" }).on("error", () => console.log(`open ${file} in a browser`)).unref();
+    } catch {
+        console.log(`open ${file} in a browser`);
+    }
+}
+
+/** Updates the run's details once they are known (the URL is often found after `start`, by reading the code). */
+function set(folder, argumentList) {
+    const { options } = parseOptions(argumentList);
+    const progress = readProgress(folder);
+    const changed = [];
+    for (const field of ["title", "brief", "project", "url"]) {
+        if (options[field] !== undefined && options[field] !== true) { progress[field] = String(options[field]); changed.push(field); }
+    }
+    if (!changed.length) throw new Error("progress.mjs set <slug-folder> [--url …] [--title …] [--brief …] [--project …]");
+    writeProgress(folder, progress);
 }
 
 function stage(folder, argumentList) {
@@ -371,10 +408,104 @@ function heartbeat(folder, progress, roots, quietMinutes, stallMinutes) {
     console.log(`watchdog ${localTime(moment).clock}: ${activity}`);
 }
 
-const commands = { start, stage, now, fix, metric, note, end, check, watch };
+/* ===================== Stop, resume, restart ===================== */
+
+/** True while a process id is alive (signal 0 only checks). */
+function isAlive(pid) {
+    try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+/**
+ * Ends the slug's running capture — the profile.mjs process and its Chrome, named by data/capture.lock.json — then
+ * marks the run stopped (the watchdog exits on its own once the run is no longer running). The agent rebuilds the
+ * report from what was captured; `resume` continues from the stage it stopped in.
+ */
+function stop(folder, argumentList) {
+    const { options } = parseOptions(argumentList);
+    const lockPath = join(folder, "data", "capture.lock.json");
+    const ended = [];
+    if (existsSync(lockPath)) {
+        let lock = null;
+        try { lock = JSON.parse(readFileSync(lockPath, "utf8")); } catch { /* unreadable: nothing to end */ }
+        for (const [label, pid] of [["capture", lock && lock.pid], ["Chrome", lock && lock.browserPid]]) {
+            if (!pid || !isAlive(pid)) continue;
+            try { process.kill(pid, "SIGTERM"); ended.push(`${label} ${pid}`); } catch { /* already gone */ }
+        }
+        const deadline = Date.now() + 3000;
+        const pause = new Int32Array(new SharedArrayBuffer(4));
+        while (Date.now() < deadline && lock && [lock.pid, lock.browserPid].some((pid) => pid && isAlive(pid))) Atomics.wait(pause, 0, 0, 100); // let them exit
+        for (const pid of lock ? [lock.pid, lock.browserPid] : []) if (pid && isAlive(pid)) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }
+        rmSync(lockPath, { force: true });
+    }
+    const progress = readProgress(folder);
+    const active = (progress.stages || []).find((candidate) => candidate.status === "active");
+    const reason = options.reason && options.reason !== true ? String(options.reason) : "Stopped by the user";
+    Object.assign(progress, { status: "stopped", finishedAt: localTime().stamp, stoppedStage: active ? active.id : "", summary: `${reason}${active ? ` during ${active.name}` : ""}.` });
+    setNow(progress, `Stopped${active ? ` during ${active.name}` : ""} — continue with /bt-profile --resume:${progress.slug || basename(folder)}`, "Run stopped");
+    addMilestone(progress, `Run ${progress.run || 1} stopped${active ? ` during ${active.name}` : ""}${ended.length ? ` (ended ${ended.join(", ")})` : ""}`);
+    writeProgress(folder, progress);
+    console.log(`stopped ${progress.slug || basename(folder)}${active ? ` during ${active.name}` : ""}${ended.length ? ` — ended ${ended.join(", ")}` : " — no capture was running"}`);
+}
+
+/**
+ * Reopens a stopped (or failed) run where it stopped, as the next run number, and prints where to continue as JSON:
+ * the stage to resume, the stages already done, and every fix with its status (re-measure one left trying / measuring).
+ */
+function resume(folder) {
+    const progress = readProgress(folder);
+    if (progress.status === "running") throw new Error("the run is still running — stop it first, or just keep going");
+    if (progress.status === "done") throw new Error("the run finished — use restart to profile it again from a fresh baseline");
+    const stages = progress.stages || [];
+    const target = stages.find((candidate) => candidate.id === progress.stoppedStage) || stages.find((candidate) => candidate.status === "active") || stages.find((candidate) => candidate.status === "pending") || stages[stages.length - 1];
+    for (const candidate of stages) if (candidate.status === "active" && candidate !== target) candidate.status = "done";
+    Object.assign(target, { status: "active", note: target.note || "resumed" });
+    progress.run = Number(progress.run || 1) + 1;
+    Object.assign(progress, { status: "running", finishedAt: "", summary: "" });
+    delete progress.stoppedStage;
+    setNow(progress, `Run ${progress.run} — resuming ${target.name}`, `Run ${progress.run} resumed`);
+    addMilestone(progress, `Run ${progress.run} — resumed during ${target.name}`);
+    writeProgress(folder, progress);
+    console.log(JSON.stringify({
+        run: progress.run,
+        resumeStage: target.id,
+        doneStages: stages.filter((candidate) => candidate.status === "done").map((candidate) => candidate.id),
+        fixes: (progress.fixes || []).map((entry) => ({ id: entry.id, title: entry.title, status: entry.status })),
+    }, null, 2));
+}
+
+/**
+ * Starts the slug over from a fresh baseline with the same config and scenario: the earlier runs, findings and
+ * report move to data/archive/<date-time>/ (kept, so the new run can be compared with them), then a new run opens.
+ */
+function restart(folder, argumentList) {
+    const { options } = parseOptions(argumentList);
+    let previous = null;
+    try { previous = readProgress(folder); } catch { /* no earlier run */ }
+    if (previous && previous.status === "running") throw new Error("the run is still running — stop it first");
+    const stamp = localTime().stamp.replace(/[^0-9]/g, "").slice(0, 12);
+    const archive = join(folder, "data", "archive", stamp);
+    mkdirSync(archive, { recursive: true });
+    for (const name of ["runs", "findings.json", "progress.js"]) {
+        const source = join(folder, "data", name);
+        if (existsSync(source)) renameSync(source, join(archive, name));
+    }
+    if (existsSync(join(folder, "dashboard.html"))) copyFileSync(join(folder, "dashboard.html"), join(archive, "dashboard.html"));
+    mkdirSync(join(folder, "data", "runs"), { recursive: true });
+    const carried = ["title", "brief", "project", "url", "mode"].flatMap((key) => {
+        const value = options[key] && options[key] !== true ? options[key] : (previous ? previous[key] : "");
+        return value ? [`--${key}`, String(value)] : [];
+    });
+    start(folder, [...carried, "--run", String(previous ? Number(previous.run || 1) + 1 : 1)]);
+    const progress = readProgress(folder);
+    addMilestone(progress, `Restarted from a fresh baseline — the earlier runs are in data/archive/${stamp}/`);
+    writeProgress(folder, progress);
+    console.log(`restarted ${basename(folder)} — earlier runs, findings and report archived in data/archive/${stamp}/`);
+}
+
+const commands = { start, set, stage, now, fix, metric, note, end, check, watch, stop, resume, restart };
 
 if (!commands[command] || !slugFolder) {
-    console.error("usage: node progress.mjs <start|stage|now|fix|metric|note|end|check|watch> <slug-folder> [options] — see the header of this file");
+    console.error("usage: node progress.mjs <start|set|stage|now|fix|metric|note|end|stop|resume|restart|check|watch> <slug-folder> [options] — see the header of this file");
     process.exit(2);
 }
 try {

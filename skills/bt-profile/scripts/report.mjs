@@ -5,14 +5,17 @@
  * Usage (from `.agents/profile/<slug>/data`):
  *   node ../../.tools/report.mjs --analysis runs/<run>/cold/analysis.json [--out ../dashboard.html]
  *     [--baseline runs/<baseline>/cold/analysis.json] [--warm runs/<run>/warm/analysis.json]
- *     [--findings ./findings.json] [--title "Race start"]
+ *     [--findings ./findings.json] [--title "Race start"] [--pdf false]
  *     [--snapshots runs/<snapshots run>/cold] [--snapshots-before <dir of earlier shots>]
  * `--snapshots` shows the screenshots of a separate `--snapshots true` capture (so the measured run stays free of
  * screenshot overhead); `--snapshots-before` sets them beside earlier shots of the same names (e.g. the smoke run).
  *
  * findings.json (written by the agent — the diagnosis in plain language):
  *   { "title", "summary", "findings": [{ "id", "title", "severity": "critical|major|minor", "status": "fixed|proposed|reverted|not-fixed",
- *     "phases": [..], "cost", "cause", "evidence": [..], "code": [{ "file", "line", "label" }], "fix", "before", "after", "diff" }] }
+ *     "phases": [..], "cost", "cause", "evidence": [..], "code": [{ "file", "line", "label" }], "fix", "before", "after", "diff",
+ *     "gain", "risk", "verify" }] }   (gain / risk / verify: optional — the expected win, what could break, how to prove it)
+ * Every build also writes findings.md beside the dashboard: the same diagnosis as a spec-ready document (one section per
+ * finding — cause, evidence, code, proposed fix, gain, risk, how to verify) to fix later with a full spec (bt-spec).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -151,7 +154,9 @@ h3 { font-size: 15px; margin: 0 0 6px; }
 .meta { color: var(--text-muted); font: 12px/1.6 var(--mono); }
 .verdict.disturbed { border-left-color: var(--serious); }
 .verdict { background: var(--surface-1); border: 1px solid var(--surface-3); border-left: 3px solid var(--accent); border-radius: 8px; padding: 14px 16px; margin: 16px 0; color: var(--text-primary); font-size: 15px; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+/* Balanced rows of equal tiles: renderTiles sets --tile-columns (8 tiles → 2 × 4, 6 → 2 × 3); two per row on a phone */
+.tiles { display: grid; grid-template-columns: repeat(var(--tile-columns, 4), minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 10px; }
+@media (max-width: 720px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .tile { background: var(--surface-1); border: 1px solid var(--surface-3); border-radius: 8px; padding: 12px 14px; }
 .tile .label { color: var(--text-secondary); font-size: 12px; }
 .tile .value { font-size: 26px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -211,6 +216,30 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--text-second
 .signals li { margin: 4px 0; color: var(--text-secondary); }
 .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 12px; }
 @media (max-width: 520px) { .two { grid-template-columns: 1fr; } .tile .value { font-size: 22px; } }
+footer.generated-by { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--surface-3); color: var(--text-muted); font-size: 12.5px; }
+footer.generated-by a { color: inherit; }
+table.fixes td.pick, table.fixes th.pick { width: 28px; } table.fixes td.id { font: 600 12px var(--mono); white-space: nowrap; }
+table.fixes td.act { text-align: right; white-space: nowrap; }
+table.fixes .badge { white-space: nowrap; }
+td.nw { white-space: nowrap; }
+.hint { color: var(--text-secondary); font-size: 13px; margin: 0 0 10px; }
+.copy-spec { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--surface-3); border-radius: 6px; font-size: 12px; padding: 4px 10px; cursor: pointer; }
+.copy-spec:disabled { opacity: 0.5; cursor: default; }
+.spec-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.spec-bar code { flex: 1 1 320px; font: 12px var(--mono); background: var(--surface-0); border: 1px solid var(--surface-3); border-radius: 6px; padding: 6px 10px; overflow-wrap: anywhere; }
+@media print { .pick, .act, .spec-bar, #fixes .hint { display: none !important; } }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+a.toggle { text-decoration: none; display: inline-block; }
+@media print {
+  :root, :root[data-theme] { color-scheme: light; --surface-0: #ffffff; --surface-1: #ffffff; --surface-2: #f4f4f2; --surface-3: #d9d8d3; --text-primary: #0b0b0b; --text-secondary: #3d3c39; --text-muted: #5f5e59; }
+  body { background: #ffffff !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  .actions, .btp-toolbar, .btp-next, .btp-copy { display: none !important; }
+  .panel, .finding, .tile, .verdict, figure, tr, .btp-card { break-inside: avoid; page-break-inside: avoid; }
+  h2 { break-after: avoid; page-break-after: avoid; }
+  .panel { overflow: visible !important; }
+  a { color: inherit; text-decoration: none; }
+}
 .toggle { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--surface-3); border-radius: 6px; font-size: 12px; padding: 4px 10px; cursor: pointer; }
 `;
 
@@ -249,7 +278,7 @@ function settledPhase(analysis) {
 
 function renderTiles() {
   const settled = settledPhase(run), settledBase = base ? settledPhase(base) : null;
-  const worstPhase = [...run.phases].filter((p) => p.frames.fps != null && p.durationSeconds >= 1).sort((a, b) => a.frames.fps - b.frames.fps)[0];
+  const worstPhase = [...run.phases].filter((p) => !p.beforeFirstFrame && p.frames.fps != null && p.durationSeconds >= 1).sort((a, b) => a.frames.fps - b.frames.fps)[0];
   const worstBase = base && worstPhase ? base.phases.find((p) => p.name === worstPhase.name) : null;
   const gc = (a) => (a.overall.lists.owners.find((o) => o.owner === "gc") || { pctBusy: 0 }).pctBusy;
   const shaders = (a) => a.timeline.reduce((sum, b) => sum + (b.shaders || 0), 0);
@@ -263,6 +292,8 @@ function renderTiles() {
     { label: "Allocated", value: run.heap ? fmt(run.heap.mbPerSecond, 0) + " MB/s" : "–", delta: base && base.heap && run.heap ? delta(run.heap.mbPerSecond, base.heap.mbPerSecond, true, " MB/s", 0) : "" },
     { label: "Shaders compiled in run", value: fmt(shaders(run), 0), delta: base ? delta(shaders(run), shaders(base), true, "", 0) : "" },
   ];
+  const rows = Math.ceil(tiles.length / 4);
+  $("#tiles").style.setProperty("--tile-columns", String(Math.max(1, Math.ceil(tiles.length / rows))));
   $("#tiles").innerHTML = tiles.map((t) => '<div class="tile"><div class="label">' + esc(t.label) + '</div><div class="value">' + t.value + '</div>' + (t.delta || "") + '</div>').join("");
 }
 
@@ -389,6 +420,45 @@ function renderTimeline() {
   } else $("#film-wrap").style.display = "none";
 }
 
+/**
+ * The fixes, listed whether or not they were applied: spec one (its row's button) or a group (tick them) with bt-spec.
+ * The spec command points bt-spec at findings.md, which carries each fix's cause, evidence, code, gain, risk and check.
+ */
+function renderFixes() {
+  const wrap = $("#fixes-wrap");
+  const list = (findings && findings.findings ? findings.findings : []).filter((f) => f.fix);
+  if (!list.length) { wrap.style.display = "none"; return; }
+  const source = "@.agents/profile/" + DATA.slug + "/findings.md";
+  const join = (ids) => ids.length <= 1 ? ids.join("") : ids.slice(0, -1).join(", ") + " and " + ids[ids.length - 1];
+  const command = (ids) => "/bt-spec Fix " + join(ids) + " from " + source;
+  // A fix is done once it is in the code: "kept" (applied and proven by the fix loop) or "fixed".
+  const isDone = (f) => f.status === "kept" || f.status === "fixed";
+  const open = list.filter((f) => !isDone(f)).map((f) => f.id);
+  const rows = list.map((f) => '<tr><td class="pick"><input type="checkbox" value="' + esc(f.id) + '"' + (!isDone(f) ? " checked" : "") + ' aria-label="Select ' + esc(f.id) + '"></td>' +
+    '<td class="id"><a href="#' + esc(f.id) + '">' + esc(f.id) + '</a></td><td>' + esc(f.title) + '</td>' +
+    '<td><span class="badge ' + esc(f.status) + '">' + esc(f.status) + '</span></td>' +
+    '<td>' + esc(f.gain || f.cost || "–") + '</td><td>' + esc(f.risk || "–") + '</td>' +
+    '<td class="act"><button type="button" class="copy-spec" data-ids="' + esc(f.id) + '">Copy spec command</button></td></tr>').join("");
+  $("#fixes").innerHTML = '<div class="panel"><p class="hint">Each fix can be specced on its own, or several together: tick them and copy one command for <code>/bt-spec</code>. ' +
+    (open.length ? open.length + " not fixed yet." : "All of them are fixed.") + '</p>' +
+    '<div class="scroll"><table class="fixes"><thead><tr><th class="pick"></th><th>ID</th><th>Fix</th><th>Status</th><th>Expected gain</th><th>Risk</th><th class="act"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<div class="spec-bar"><code id="spec-selected"></code><button type="button" class="copy-spec" id="copy-selected">Copy for the selected</button>' +
+    (open.length ? '<button type="button" class="copy-spec" data-ids="' + esc(open.join(" ")) + '">Copy for all open fixes</button>' : "") + '</div></div>';
+  const selected = () => [...document.querySelectorAll("#fixes input[type=checkbox]:checked")].map((box) => box.value);
+  const refresh = () => { const ids = selected(); $("#spec-selected").textContent = ids.length ? command(ids) : "Tick the fixes to spec together"; $("#copy-selected").disabled = !ids.length; };
+  $("#fixes").addEventListener("change", refresh);
+  $("#fixes").addEventListener("click", (event) => {
+    const button = event.target.closest(".copy-spec");
+    if (!button) return;
+    const ids = button.id === "copy-selected" ? selected() : button.dataset.ids.split(" ");
+    if (!ids.length) return;
+    const text = command(ids);
+    const done = () => { const label = button.textContent; button.textContent = "Copied"; setTimeout(() => { button.textContent = label; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, done); else done();
+  });
+  refresh();
+}
+
 function renderFindings() {
   const box = $("#findings");
   if (!findings || !findings.findings || !findings.findings.length) {
@@ -455,7 +525,8 @@ function renderHeap() {
 }
 
 function renderWorst() {
-  $("#worst").innerHTML = "<div class='scroll'><table><thead><tr><th class='num'>at</th><th>Phase</th><th class='num'>CPU ms</th><th class='num'>gap ms</th><th>Filled by</th><th>Your code in it</th></tr></thead><tbody>" + run.worstFrames.map((f) => "<tr><td class='num'>" + fmt(f.t) + "s</td><td>" + esc(f.phase || "") + "</td><td class='num'>" + fmt(f.cpuMs) + "</td><td class='num'>" + fmt(f.intervalMs) + "</td><td class='where'>" + esc(f.top.map((e) => e.name + " " + e.ms).join(" · ")) + "</td><td class='where'>" + (f.yours.map((e) => link(e.file, e.line, e.name + " " + e.ms + " ms")).join(" · ") || "–") + "</td></tr>").join("") + "</tbody></table></div>";
+  const kindLabel = { cpu: "CPU work", wait: "waited", gap: "gap" };
+  $("#worst").innerHTML = "<div class='scroll'><table><thead><tr><th class='num'>at</th><th>Phase</th><th>Kind</th><th class='num'>CPU ms</th><th class='num'>gap ms</th><th class='num'>script ms</th><th class='num'>new pipelines</th><th>Filled by</th><th>Your code in it</th></tr></thead><tbody>" + run.worstFrames.map((f) => "<tr><td class='num'>" + fmt(f.t) + "s</td><td class='nw'>" + esc(f.phase || "") + "</td><td class='nw'>" + esc(kindLabel[f.kind] || "–") + "</td><td class='num'>" + fmt(f.cpuMs) + "</td><td class='num'>" + fmt(f.intervalMs) + "</td><td class='num'>" + fmt(f.scriptMs) + "</td><td class='num'>" + fmt(f.pipelinesNear) + "</td><td class='where'>" + esc(f.top.map((e) => e.name + " " + e.ms).join(" · ")) + "</td><td class='where'>" + (f.yours.map((e) => link(e.file, e.line, e.name + " " + e.ms + " ms")).join(" · ") || "–") + "</td></tr>").join("") + "</tbody></table></div>";
 }
 
 function renderShots() {
@@ -486,17 +557,25 @@ function renderMeta() {
   ].map(([k, v]) => "<tr><th>" + esc(k) + "</th><td>" + (k === "CPU profile" ? v : esc(v)) + "</td></tr>").join("") + "</tbody></table>";
 }
 
+// Print (and Save as PDF from the print dialog): every collapsed section opens for the print and closes again after.
+let openedForPrint = [];
+addEventListener("beforeprint", () => {
+  openedForPrint = [...document.querySelectorAll("details:not([open])")];
+  openedForPrint.forEach((details) => { details.open = true; });
+});
+addEventListener("afterprint", () => { openedForPrint.forEach((details) => { details.open = false; }); openedForPrint = []; });
+$("#print").addEventListener("click", () => window.print());
 $("#theme").addEventListener("click", () => {
   const root = document.documentElement;
   const dark = root.dataset.theme ? root.dataset.theme === "dark" : !matchMedia("(prefers-color-scheme: light)").matches;
   root.dataset.theme = dark ? "light" : "dark";
 });
-renderTiles(); renderFindings(); renderTimeline(); renderPhases(); renderOwners(); renderFunctions(); renderHeap(); renderWorst(); renderShots(); renderWarm(); renderMeta();
+renderTiles(); renderFindings(); renderFixes(); renderTimeline(); renderPhases(); renderOwners(); renderFunctions(); renderHeap(); renderWorst(); renderShots(); renderWarm(); renderMeta();
 let resizeTimer; addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderTimeline, 150); });
 `;
 
 /** Builds the HTML page. */
-function buildPage({ title, verdict, data }) {
+function buildPage({ title, verdict, data, pdfName }) {
     const json = JSON.stringify(data).replace(/</g, "\\u003c");
     return `<!doctype html>
 <html lang="en">
@@ -510,7 +589,11 @@ function buildPage({ title, verdict, data }) {
 <main>
   <header class="top">
     <h1>${escapeHtml(title)}</h1>
-    <button class="toggle" id="theme" type="button">Light / dark</button>
+    <div class="actions">
+      <button class="toggle" id="print" type="button" title="Print the report, or choose Save as PDF in the print dialog">Print</button>
+      ${pdfName ? `<a class="toggle" id="pdf" href="${escapeHtml(pdfName)}" download title="The report as a PDF, written with it">Download PDF</a>` : ""}
+      <button class="toggle" id="theme" type="button">Light / dark</button>
+    </div>
   </header>
   ${progressMarkup()}
   <div class="meta">${escapeHtml(data.run.capture.capturedAt)} · ${escapeHtml(data.run.capture.engine || "")} · scenario ${escapeHtml(data.run.capture.scenario || "")} · ${escapeHtml(data.run.capture.wallSeconds)} s${data.baseline ? " · compared with baseline " + escapeHtml(data.baseline.capture.capturedAt) : ""}</div>
@@ -520,6 +603,8 @@ function buildPage({ title, verdict, data }) {
 
   <h2>The bottlenecks</h2>
   <section id="findings"></section>
+
+  <div id="fixes-wrap"><h2>The fixes</h2><section id="fixes"></section></div>
 
   <h2>Frame rate over the run</h2>
   <section class="panel"><div class="legend" id="fps-legend"></div><div id="chart-fps"></div></section>
@@ -548,6 +633,7 @@ function buildPage({ title, verdict, data }) {
   <section class="panel" id="heap"></section>
 
   <h2>Worst frames</h2>
+  <p class="meta">“CPU work”: the frame's own script was the cost. “Waited”: a long gap the main thread mostly sat through — the GPU process compiling pipelines (new pipelines just before it), a GPU-bound frame, or browser work.</p>
   <section class="panel" id="worst"></section>
 
   <div id="warm-wrap"><h2>Cold load vs warm load</h2><section class="panel" id="warm"></section></div>
@@ -555,6 +641,7 @@ function buildPage({ title, verdict, data }) {
 
   <h2>Capture</h2>
   <section class="panel" id="capture"></section>
+  <footer class="generated-by">Generated by the <a href="https://www.npmjs.com/package/@babylonjs-toolkit/agent" target="_blank" rel="noopener noreferrer">Babylon Toolkit Desktop Agent</a></footer>
 </main>
 <div class="tooltip" id="tooltip" role="status"></div>
 <script type="application/json" id="bt-data">${json}</script>
@@ -576,8 +663,105 @@ function shotsFrom(dir, reportDir) {
     }));
 }
 
+/**
+ * The diagnosis as a spec-ready Markdown document (findings.md beside the dashboard): what was measured and how, what is
+ * still to fix, then one section per finding with its cause, evidence, code, proposed fix, expected gain, risk and how
+ * to verify it — the input for a later fix with a full spec (`bt-spec @.agents/profile/<slug>/findings.md`).
+ * @returns {string} the Markdown
+ */
+function findingsMarkdown(findings, analysis, slugName) {
+    const capture = analysis.capture || {};
+    const list = (findings && Array.isArray(findings.findings)) ? findings.findings : [];
+    // A fix is done once it is in the code: "kept" (applied and proven by the fix loop) or "fixed".
+    const isDone = (finding) => finding.status === "kept" || finding.status === "fixed";
+    const open = list.filter((finding) => !isDone(finding));
+    const lines = [];
+    const push = (text = "") => lines.push(text);
+    push(`# ${findings && findings.title ? findings.title : "Performance findings"}`);
+    push();
+    if (findings && findings.summary) { push(findings.summary); push(); }
+    push(`- **Measured:** ${capture.url || "–"} · scenario \`${capture.scenario || "–"}\` · ${capture.engine || "no Babylon engine (browser frames)"} · captured ${capture.capturedAt || "–"}`);
+    push(`- **Dashboard:** \`dashboard.html\` beside this file · **Data:** \`data/\` (runs, findings.json)`);
+    push(`- **Re-measure after a fix:** \`/bt-profile --slug:${slugName}\` (same scenario) and compare the phases named below`);
+    push();
+    const fixable = list.filter((finding) => finding.fix);
+    const source = `@.agents/profile/${slugName}/findings.md`;
+    const join = (ids) => ids.length <= 1 ? ids.join("") : `${ids.slice(0, -1).join(", ")} and ${ids[ids.length - 1]}`;
+    const cell = (text) => String(text || "–").replace(/\|/g, "\\|").replace(/\n/g, " ");
+    push(`## The fixes (${open.length} not fixed yet)`);
+    push();
+    push("Spec them one at a time, or several together — each command points bt-spec at this file, which carries every fix's cause, evidence, code, gain, risk and how to verify it.");
+    push();
+    if (fixable.length) {
+        push("| ID | Fix | Status | Expected gain | Risk | Spec it |");
+        push("|---|---|---|---|---|---|");
+        for (const finding of fixable) push(`| ${finding.id} | ${cell(finding.title)} | ${finding.status || "proposed"} | ${cell(finding.gain || finding.cost)} | ${cell(finding.risk)} | \`/bt-spec Fix ${finding.id} from ${source}\` |`);
+        push();
+        const openIds = open.filter((finding) => finding.fix).map((finding) => finding.id);
+        if (openIds.length > 1) { push(`**All open fixes together:** \`/bt-spec Fix ${join(openIds)} from ${source}\``); push(); }
+        // The example group names real fixes: the first and last open ones, or the first two in the table.
+        const exampleIds = openIds.length > 2 ? [openIds[0], openIds[openIds.length - 1]] : fixable.slice(0, 2).map((finding) => finding.id);
+        if (exampleIds.length > 1) push(`**A group of your choice:** \`/bt-spec Fix ${join(exampleIds)} from ${source}\` (any IDs from the table)`);
+    } else {
+        push("No fixes proposed.");
+    }
+    push();
+    for (const finding of list) {
+        push(`## ${finding.id} · ${finding.title}`);
+        push();
+        push(`**Severity:** ${finding.severity || "–"} · **Status:** ${finding.status || "–"} · **Phases:** ${(finding.phases || []).join(", ") || "–"}${finding.cost ? ` · **Cost:** ${finding.cost}` : ""}`);
+        push();
+        if (finding.cause) { push("### Why it is slow"); push(); push(finding.cause); push(); }
+        if (finding.evidence && finding.evidence.length) { push("### Evidence"); push(); for (const item of finding.evidence) push(`- ${item}`); push(); }
+        if (finding.code && finding.code.length) { push("### Code"); push(); for (const location of finding.code) push(`- \`${location.file}${location.line ? `:${location.line}` : ""}\`${location.label ? ` — ${location.label}` : ""}`); push(); }
+        if (finding.fix) { push(isDone(finding) ? "### The fix" : "### Proposed fix"); push(); push(finding.fix); push(); }
+        if (finding.gain) { push(`**Expected gain:** ${finding.gain}`); push(); }
+        if (finding.risk) { push(`**Risk:** ${finding.risk}`); push(); }
+        if (finding.verify) { push(`**How to verify:** ${finding.verify}`); push(); }
+        if (finding.before || finding.after) { push(`**Before:** ${finding.before || "–"} · **After:** ${finding.after || "not fixed yet"}`); push(); }
+        if (finding.diff) { push("<details><summary>The change</summary>"); push(); push("```diff"); push(finding.diff); push("```"); push(); push("</details>"); push(); }
+    }
+    return lines.join("\n");
+}
+
+/**
+ * Prints the report to a PDF beside it (the page's Download PDF button), with the Chrome the capture drives: the print
+ * stylesheet, every collapsed section open, backgrounds kept. A machine without puppeteer or Chrome only skips the PDF.
+ */
+async function writePdf(htmlFile, pdfFile) {
+    let puppeteer = null;
+    try {
+        puppeteer = (await import("puppeteer-core")).default;
+    } catch {
+        process.stdout.write("skipped the PDF (puppeteer-core is not installed next to report.mjs)\n");
+        return;
+    }
+    let browser = null;
+    try {
+        const { findChrome } = await import("./lib/chrome.mjs");
+        browser = await puppeteer.launch({ executablePath: findChrome(), headless: "new", args: ["--allow-file-access-from-files"] });
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
+        await page.goto("file://" + path.resolve(htmlFile), { waitUntil: "load" });
+        await new Promise((resolve) => setTimeout(resolve, 1200)); // charts and the progress panel render after load
+        await page.evaluate(() => {
+            // The PDF is the report: a run still marked running (the report is written just before the run ends) keeps
+            // its live panel off the page.
+            if (document.documentElement.classList.contains("btp-running")) document.querySelectorAll("#bt-progress, .btp-toolbar").forEach((element) => element.remove());
+            document.querySelectorAll("details").forEach((details) => { details.open = true; });
+        });
+        await page.emulateMediaType("print");
+        await page.pdf({ path: pdfFile, format: "A4", printBackground: true, margin: { top: "12mm", right: "10mm", bottom: "12mm", left: "10mm" } });
+        process.stdout.write(`wrote ${pdfFile}\n`);
+    } catch (error) {
+        process.stdout.write(`skipped the PDF: ${error.message}\n`);
+    } finally {
+        if (browser) await browser.close();
+    }
+}
+
 /** Entry point. */
-function main() {
+async function main() {
     const flags = parseArguments(process.argv.slice(2));
     if (!flags.analysis) throw new Error("Pass --analysis <analysis.json> [--out <dashboard.html>]");
     const runDir = (file) => (file ? path.dirname(path.resolve(file)) : null);
@@ -598,14 +782,22 @@ function main() {
         warm: warm ? pageData(warm, reportDir, runDir(flags.warm)) : null,
         findings,
         groups: OWNER_GROUPS,
+        slug: path.basename(reportDir),
     };
     if (flags.snapshots) data.run.shots = shotsFrom(path.resolve(flags.snapshots), reportDir);
     if (flags["snapshots-before"]) {
         // Shown beside this run's shots of the same names (needs --baseline, whose own shots they replace).
         if (data.baseline) data.baseline.shots = shotsFrom(path.resolve(flags["snapshots-before"]), reportDir);
     }
-    fs.writeFileSync(outFile, buildPage({ title, verdict: findings && findings.summary, data }));
+    const pdfFile = flags.pdf === "false" ? null : outFile.replace(/\.html?$/i, "") + ".pdf";
+    fs.writeFileSync(outFile, buildPage({ title, verdict: findings && findings.summary, data, pdfName: pdfFile ? path.basename(pdfFile) : null }));
     process.stdout.write(`wrote ${outFile}\n`);
+    if (findings) {
+        const markdownFile = path.join(path.dirname(outFile), "findings.md");
+        fs.writeFileSync(markdownFile, findingsMarkdown(findings, analysis, path.basename(path.dirname(outFile))));
+        process.stdout.write(`wrote ${markdownFile}\n`);
+    }
+    if (pdfFile) return writePdf(outFile, pdfFile);
 }
 
-main();
+main().catch((error) => { process.stderr.write(String(error && error.stack ? error.stack : error) + "\n"); process.exit(1); });

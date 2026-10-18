@@ -4,10 +4,12 @@
  *
  * It records, on `window.__btProfile`:
  * - one entry per rendered Babylon frame: begin time, CPU work (begin → end of the engine frame), draw calls, active
- *   meshes and particles, and the SceneInstrumentation timers the engine exposes;
+ *   meshes and particles, and the SceneInstrumentation timers the engine exposes — or, on a page with no Babylon engine,
+ *   one entry per browser frame (requestAnimationFrame: time only, `frameSource: "raf"`);
  * - counters sampled every half second: meshes, materials, textures, particle systems, compiled effects (shader
  *   programs / pipelines), JS heap;
  * - long animation frames (LoAF) with their script attribution, when the browser supports them;
+ * - every shader module / pipeline (WebGPU) and program (WebGL) the page creates, with its time (`gpuCompiles`);
  * - phase marks set by the scenario (`__btProfile.mark("countdown")`).
  *
  * Every time is an epoch time in milliseconds (`performance.timeOrigin + performance.now()`), so frames, marks and
@@ -20,6 +22,8 @@ export function installProbe() {
     const ATTACH_POLL_MS = 50;
     /** Frames longer than this (ms) keep their full instrumentation breakdown in the spike list. */
     const LONG_FRAME_MS = 50;
+    /** Most shader / pipeline creations kept (a run creates tens to a few thousand). */
+    const MAX_GPU_COMPILES = 20000;
 
     const epochNow = () => performance.timeOrigin + performance.now();
     const state = {
@@ -30,6 +34,7 @@ export function installProbe() {
         loafs: [],
         engineAttachedAt: null,
         scenesSeen: 0,
+        rafFrames: [],
     };
     window.__btProfile = state;
 
@@ -123,6 +128,17 @@ export function installProbe() {
     };
     setInterval(attach, ATTACH_POLL_MS);
 
+    // Any web app: until a Babylon engine is found, the browser's own frames (requestAnimationFrame) are timed, so a page
+    // with no Babylon at all still gets FPS, frame gaps and the timeline. They are used only when no engine ever attaches.
+    let rafPrevious = null;
+    const onAnimationFrame = (now) => {
+        if (hookedEngine != null) return;
+        if (rafPrevious != null) state.rafFrames.push({ at: performance.timeOrigin + now, cpuMs: null });
+        rafPrevious = now;
+        requestAnimationFrame(onAnimationFrame);
+    };
+    requestAnimationFrame(onAnimationFrame);
+
     /** Counts what the scene holds and how many shader programs / pipelines the engine has compiled so far. */
     const sampleCounters = () => {
         const engine = hookedEngine;
@@ -145,6 +161,27 @@ export function installProbe() {
         state.counters.push(entry);
     };
     setInterval(sampleCounters, COUNTER_INTERVAL_MS);
+
+    // GPU work the main thread does not see: every shader module, render / compute pipeline (WebGPU) and linked program
+    // (WebGL) the page creates, with its time. A frame gap with little script in it right after a burst of these is the GPU
+    // process compiling pipelines — the classic first-visit stutter (the browser's shader caches hide it on later visits).
+    state.gpuCompiles = [];
+    const recordCompile = (kind) => { if (state.gpuCompiles.length < MAX_GPU_COMPILES) state.gpuCompiles.push({ at: epochNow(), kind }); };
+    const wrapCompile = (prototype, method, kind) => {
+        if (!prototype || typeof prototype[method] !== "function") return;
+        const original = prototype[method];
+        prototype[method] = function (...args) { recordCompile(kind); return original.apply(this, args); };
+    };
+    if (typeof GPUDevice !== "undefined") {
+        wrapCompile(GPUDevice.prototype, "createShaderModule", "shaderModule");
+        wrapCompile(GPUDevice.prototype, "createRenderPipeline", "renderPipeline");
+        wrapCompile(GPUDevice.prototype, "createRenderPipelineAsync", "renderPipeline");
+        wrapCompile(GPUDevice.prototype, "createComputePipeline", "computePipeline");
+        wrapCompile(GPUDevice.prototype, "createComputePipelineAsync", "computePipeline");
+    }
+    for (const name of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
+        if (typeof window[name] !== "undefined") wrapCompile(window[name].prototype, "linkProgram", "program");
+    }
 
     // Long Animation Frames name the script, function and invoker behind every frame over 50 ms.
     try {
@@ -216,10 +253,88 @@ export function installProbe() {
         engine: state.engine || null,
         engineAttachedAt: state.engineAttachedAt,
         scenesSeen: state.scenesSeen,
-        frames: state.frames,
+        frameSource: state.engine ? "babylon" : "raf",
+        frames: state.engine ? state.frames : state.rafFrames,
         counters: state.counters,
         marks: state.marks,
         loafs: state.loafs,
+        gpuCompiles: state.gpuCompiles,
+        gpuCold: window.__btGpuCold || null,
         location: location.href,
     });
+}
+
+/**
+ * `--gpu-cold true`: makes every fragment shader unique to this page load, so the GPU process cannot reuse a pipeline
+ * compiled on an earlier visit. A fresh Chrome profile only makes the browser cold — on macOS the compiled Metal pipelines
+ * live in a system cache outside it, so without this only the first capture after a shader change is a true first visit.
+ * Each fragment shader gets a branch that is never taken but cannot be folded away (it compares the pixel position with a
+ * random bound), so it renders exactly the same. Nothing on disk is touched. Serialised into every document like
+ * `installProbe`, so it must stay self-contained.
+ */
+export function installGpuCold() {
+    const bound = (1000000 + Math.floor(Math.random() * 1000000)) + 0.123;
+    const stats = { bound, tagged: 0, untagged: 0 };
+    window.__btGpuCold = stats;
+
+    /** WGSL: finds the @fragment entry point and the name of its pixel position, and opens its body with the branch. */
+    const tagWgsl = (code) => {
+        const head = /@fragment\s+fn\s+\w+\s*\(/.exec(code);
+        if (!head) return null;
+        // The parameter list holds attributes with their own parentheses (@location(0)): find its matching ")".
+        const open = head.index + head[0].length;
+        let depth = 1;
+        let close = open;
+        for (; close < code.length && depth > 0; close++) {
+            if (code[close] === "(") depth++;
+            else if (code[close] === ")") depth--;
+        }
+        close--; // the matching ")"
+        const body = code.indexOf("{", close);
+        if (depth !== 0 || body < 0) return null;
+        const parameters = code.slice(open, close);
+        const at = body + 1;
+        let position = null;
+        const direct = /@builtin\s*\(\s*position\s*\)\s*(\w+)\s*:/.exec(parameters);
+        if (direct) position = direct[1];
+        else {
+            for (const typed of parameters.matchAll(/(?:^|,)\s*(\w+)\s*:\s*(\w+)\s*(?=,|$)/g)) {
+                const struct = new RegExp(`struct\\s+${typed[2]}\\s*\\{([^}]*)\\}`).exec(code);
+                const field = struct && /@builtin\s*\(\s*position\s*\)\s*(\w+)\s*:/.exec(struct[1]);
+                if (field) { position = `${typed[1]}.${field[1]}`; break; }
+            }
+        }
+        if (position) return `${code.slice(0, at)}\n  if (${position}.x < -${bound}) { discard; }${code.slice(at)}`;
+        // No pixel position among the inputs (a blit, a mip-map pass): add one — a builtin input never shifts the vertex
+        // stage's @location interface.
+        const kept = parameters.replace(/,\s*$/, "");
+        const signature = `${kept}${kept.trim() ? ", " : ""}@builtin(position) btGpuColdPosition : vec4<f32>`;
+        return `${code.slice(0, open)}${signature}${code.slice(close, at)}\n  if (btGpuColdPosition.x < -${bound}) { discard; }${code.slice(at)}`;
+    };
+    if (typeof GPUDevice !== "undefined") {
+        const createShaderModule = GPUDevice.prototype.createShaderModule;
+        GPUDevice.prototype.createShaderModule = function (descriptor) {
+            const code = descriptor && typeof descriptor.code === "string" ? descriptor.code : null;
+            if (code == null || !code.includes("@fragment")) return createShaderModule.call(this, descriptor);
+            const tagged = tagWgsl(code);
+            if (tagged == null) { stats.untagged++; return createShaderModule.call(this, descriptor); }
+            stats.tagged++;
+            return createShaderModule.call(this, { ...descriptor, code: tagged });
+        };
+    }
+    // GLSL (WebGL): a fragment shader's main() opens with the same never-taken branch on gl_FragCoord.
+    for (const name of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
+        if (typeof window[name] === "undefined") continue;
+        const shaderSource = window[name].prototype.shaderSource;
+        window[name].prototype.shaderSource = function (shader, source) {
+            let fragment = false;
+            try { fragment = this.getShaderParameter(shader, this.SHADER_TYPE) === this.FRAGMENT_SHADER; } catch { /* not a shader */ }
+            const main = fragment && typeof source === "string" ? /void\s+main\s*\(\s*(void)?\s*\)\s*\{/.exec(source) : null;
+            if (!fragment) return shaderSource.call(this, shader, source);
+            if (!main) { stats.untagged++; return shaderSource.call(this, shader, source); }
+            stats.tagged++;
+            const at = main.index + main[0].length;
+            return shaderSource.call(this, shader, `${source.slice(0, at)}\n  if (gl_FragCoord.x < -${bound}) discard;${source.slice(at)}`);
+        };
+    }
 }

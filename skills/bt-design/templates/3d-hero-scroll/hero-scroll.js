@@ -295,19 +295,32 @@ export function initHeroScroll(root = document, userConfig = {}) {
   let lastP = 0;
   let journeyTop = 0;
   let journeyScroll = 1;
+  // Layout is read here, on load and resize — never in the frame loop, where a read after a style write
+  // forces a synchronous layout every frame (Agent Reference › Live HUD Values — ENFORCED).
+  let journeyHeight = 0;
+  let viewportHeight = 0;
+  let frameEndY = 0;
+
+  /** Writes text into an element only when it differs from what is shown. */
+  function writeText(element, text) {
+    if (element && element.textContent !== text) element.textContent = text;
+  }
   let frameRaf = null;
 
   function measure() {
     const sTop = isDocScroller ? 0 : scroller.getBoundingClientRect().top;
     journeyTop = journey.getBoundingClientRect().top - sTop + getY();
-    journeyScroll = Math.max(1, journey.offsetHeight - viewportH());
+    journeyHeight = journey.offsetHeight;
+    viewportHeight = viewportH();
+    journeyScroll = Math.max(1, journeyHeight - viewportHeight);
+    frameEndY = endY();
   }
 
   // where PLAY/END consider "the end": journey end (sweep:"hero") or
   // document bottom (sweep:"page")
   const endY = () =>
     CFG.sweep === "hero"
-      ? journeyTop + journey.offsetHeight - viewportH()
+      ? journeyTop + journeyHeight - viewportHeight
       : maxY();
 
   function frame() {
@@ -329,25 +342,23 @@ export function initHeroScroll(root = document, userConfig = {}) {
     lastP = smoothP;
 
     if (hud) {
-      if (hudValue) hudValue.textContent = Math.round(valueAt(smoothP));
+      writeText(hudValue, String(Math.round(valueAt(smoothP))));
       if (hudProgress)
         hudProgress.style.transform = `scaleX(${smoothP.toFixed(4)})`;
-      if (hudPct)
-        hudPct.textContent =
-          String(Math.round(smoothP * 100)).padStart(3, "0") + "%";
+      writeText(hudPct, String(Math.round(smoothP * 100)).padStart(3, "0") + "%");
       if (hudSeg && TEL && TEL.segments) {
         let seg = TEL.segments[0][1];
         for (const [at, label] of TEL.segments) if (smoothP >= at) seg = label;
-        hudSeg.textContent = seg;
+        writeText(hudSeg, seg);
       }
       hud.classList.toggle(
         "hs-hud-off",
-        getY() > journeyTop + journey.offsetHeight - viewportH() * 0.55
+        getY() > journeyTop + journeyHeight - viewportHeight * 0.55
       );
     }
 
     if (gotoTop) gotoTop.classList.toggle("hs-nav-dim", getY() < 4);
-    if (gotoEnd) gotoEnd.classList.toggle("hs-nav-dim", getY() >= endY() - 4);
+    if (gotoEnd) gotoEnd.classList.toggle("hs-nav-dim", getY() >= frameEndY - 4);
 
     for (const o of overlays) styleOverlay(o, smoothP);
 
@@ -509,6 +520,12 @@ export function initHeroScroll(root = document, userConfig = {}) {
   // (element scroll doesn't bubble to window; capture on document catches it).
   const onResize = () => measure();
   on(window, "resize", onResize);
+  // Content that grows after load (images, fonts) changes the page height without a window resize.
+  const sizeWatcher = typeof ResizeObserver === "function" ? new ResizeObserver(onResize) : null;
+  if (sizeWatcher) {
+    sizeWatcher.observe(journey);
+    for (const child of (isDocScroller ? document.body : scroller).children) sizeWatcher.observe(child);
+  }
 
   /* ── go ────────────────────────────────────────────────────────── */
 
@@ -527,6 +544,7 @@ export function initHeroScroll(root = document, userConfig = {}) {
     timers.clear();
     for (const [target, ev, fn, opts] of bound)
       target.removeEventListener(ev, fn, opts);
+    if (sizeWatcher) sizeWatcher.disconnect();
     if (veil.parentNode) veil.parentNode.removeChild(veil);
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     delete document.body.dataset.hsState;

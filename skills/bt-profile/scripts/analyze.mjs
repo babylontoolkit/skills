@@ -208,7 +208,7 @@ function frameStats(frames, from, to) {
     const intervals = [];
     for (let i = 1; i < inside.length; i++) intervals.push(inside[i].at - inside[i - 1].at);
     const sortedIntervals = [...intervals].sort((first, second) => first - second);
-    const cpu = inside.map((frame) => frame.cpuMs).sort((first, second) => first - second);
+    const cpu = inside.map((frame) => frame.cpuMs).filter((value) => typeof value === "number").sort((first, second) => first - second);
     const seconds = (inside[inside.length - 1].at - inside[0].at) / 1000;
     const mean = (key) => {
         const values = inside.map((frame) => frame[key]).filter((value) => typeof value === "number");
@@ -221,8 +221,8 @@ function frameStats(frames, from, to) {
         intervalP95Ms: round(percentile(sortedIntervals, 0.95)),
         worstIntervalMs: round(sortedIntervals[sortedIntervals.length - 1]),
         slowFrames: intervals.filter((interval) => interval > FRAME_BUDGET_MS * 1.5).length,
-        cpuMeanMs: round(cpu.reduce((sum, value) => sum + value, 0) / cpu.length, 2),
-        cpuP95Ms: round(percentile(cpu, 0.95), 2),
+        cpuMeanMs: cpu.length ? round(cpu.reduce((sum, value) => sum + value, 0) / cpu.length, 2) : null,
+        cpuP95Ms: cpu.length ? round(percentile(cpu, 0.95), 2) : null,
         draws: round(mean("draws"), 0),
         activeMeshes: round(mean("activeMeshes"), 0),
         particles: round(mean("particles"), 0),
@@ -369,15 +369,46 @@ function excerpt(symbolizer, file, line, hot) {
     return { file, from, to, rows };
 }
 
-/** The worst frames of the run, each with the functions and owners that filled it. */
-function worstFrames(frames, prepared, info, phases, top) {
-    const candidates = frames.map((frame, index) => ({ ...frame, intervalMs: index > 0 ? frame.at - frames[index - 1].at : null }));
-    const worst = [...candidates].sort((a, b) => b.cpuMs - a.cpuMs).slice(0, top);
-    return worst.map((frame) => {
-        const aggregate = aggregateWindow(prepared, info, frame.at, frame.at + frame.cpuMs);
-        const phase = phases.find((candidate) => frame.at >= candidate.from && frame.at < candidate.to);
+/** Counts the shader modules and pipelines / programs the page created inside a window. */
+function compilesIn(gpuCompiles, from, to) {
+    let pipelines = 0;
+    let shaderModules = 0;
+    for (const entry of gpuCompiles || []) {
+        if (entry.at < from || entry.at >= to) continue;
+        if (entry.kind === "shaderModule") shaderModules++;
+        else pipelines++;
+    }
+    return { pipelines, shaderModules };
+}
+
+/**
+ * The worst frames of the run, each with the functions and owners that filled it. A frame is bad for one of two reasons:
+ * its own CPU work (`kind: "cpu"`), or a long gap before it while the main thread mostly waited (`kind: "wait"`) — the GPU
+ * process compiling pipelines, a GPU-bound frame, the browser's own work. A wait never shows in CPU time, so both rank.
+ */
+function worstFrames(frames, prepared, info, phases, gpuCompiles, top) {
+    const candidates = frames.map((frame, index) => {
+        const previous = index > 0 ? frames[index - 1] : null;
+        const intervalMs = previous ? frame.at - previous.at : null;
+        const timed = typeof frame.cpuMs === "number";
+        // The gap before this frame, minus the CPU work of the frame that opened it, is time the main thread did not draw.
+        const waitMs = intervalMs == null ? 0 : intervalMs - (previous && typeof previous.cpuMs === "number" ? previous.cpuMs : 0);
+        const cpuCost = timed ? frame.cpuMs : 0;
+        const waits = !timed || waitMs > cpuCost;
         return {
-            at: frame.at, cpuMs: round(frame.cpuMs), intervalMs: round(frame.intervalMs), phase: phase ? phase.name : null,
+            ...frame, intervalMs, kind: timed ? (waits ? "wait" : "cpu") : "gap", cost: waits ? (intervalMs ?? 0) : cpuCost,
+            from: waits ? frame.at - (intervalMs ?? 0) : frame.at, to: waits ? frame.at : frame.at + cpuCost,
+        };
+    });
+    const worst = [...candidates].sort((a, b) => b.cost - a.cost).slice(0, top);
+    return worst.map((frame) => {
+        const aggregate = aggregateWindow(prepared, info, frame.from, frame.to);
+        const phase = phases.find((candidate) => frame.at >= candidate.from && frame.at < candidate.to);
+        // Pipelines created just before a wait (up to 2 s) are what the GPU process may still be compiling during it.
+        const compiles = compilesIn(gpuCompiles, frame.from - 2000, frame.to);
+        return {
+            at: frame.at, cpuMs: round(frame.cpuMs), intervalMs: round(frame.intervalMs), kind: frame.kind, phase: phase ? phase.name : null,
+            scriptMs: round(aggregate.busyMs), pipelinesNear: compiles.pipelines, shaderModulesNear: compiles.shaderModules,
             draws: frame.draws, particles: frame.particles,
             top: [...aggregate.self].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([key, ms]) => ({ name: aggregate.symbols.get(key).name, owner: aggregate.symbols.get(key).owner, ms: round(ms) })),
             yours: [...aggregate.responsible.values()].sort((a, b) => b.totalMs - a.totalMs).slice(0, 3).map((blame) => ({ name: blame.symbol.name, file: blame.symbol.file, line: blame.symbol.line, ms: round(blame.totalMs) })),
@@ -444,10 +475,18 @@ function signals(analysis) {
     if (ownerPct("gc") >= 5) notes.push(`Garbage collection takes ${ownerPct("gc")}% of busy time — look at the allocation list (heap.yoursTop) for per-frame garbage.`);
     if (ownerPct("shader") >= 5) notes.push(`GLSL → WGSL shader translation takes ${ownerPct("shader")}% of busy time — new material / particle shader variants are being compiled on the main thread.`);
     for (const phase of analysis.phases) {
-        if (phase.frames.fps != null && phase.frames.fps < 45 && phase.durationSeconds >= 1) {
-            const lead = phase.lists.inclusiveTop.find((entry) => !entry.shell && entry.owner !== "program");
-            notes.push(`Phase "${phase.name}" runs at ${phase.frames.fps} FPS (CPU ${phase.frames.cpuMeanMs} ms/frame, main thread ${phase.busyPct}% busy)${phase.lists.yoursTop[0] ? `; your heaviest code: ${phase.lists.yoursTop[0].name} (${phase.lists.yoursTop[0].msPerFrame} ms/frame)` : ""}${lead ? `; heaviest stack entry: ${lead.name}` : ""}.`);
-        }
+        if (phase.beforeFirstFrame || phase.frames.fps == null || phase.frames.fps >= 45 || phase.durationSeconds < 1) continue;
+        const lead = phase.lists.inclusiveTop.find((entry) => !entry.shell && entry.owner !== "program");
+        const cpu = phase.frames.cpuMeanMs != null ? `CPU ${phase.frames.cpuMeanMs} ms/frame, ` : "";
+        const rate = phase.frames.frames < 2 ? `draws ${phase.frames.frames} frame(s) in ${phase.durationSeconds} s` : `runs at ${phase.frames.fps} FPS`;
+        notes.push(`Phase "${phase.name}" ${rate} (${cpu}main thread ${phase.busyPct}% busy)${phase.lists.yoursTop[0] ? `; your heaviest code: ${phase.lists.yoursTop[0].name} (${phase.lists.yoursTop[0].msPerFrame != null ? `${phase.lists.yoursTop[0].msPerFrame} ms/frame` : `${phase.lists.yoursTop[0].ms} ms`})` : ""}${lead ? `; heaviest stack entry: ${lead.name}` : ""}.`);
+    }
+    // The first-visit stutter signature: long frames the main thread spent waiting, right after new pipelines were created.
+    const waits = analysis.worstFrames.filter((frame) => frame.kind === "wait" && frame.intervalMs >= 250 && frame.scriptMs < frame.intervalMs * 0.25);
+    if (waits.length) {
+        const withCompiles = waits.filter((frame) => frame.pipelinesNear > 0);
+        notes.push(`${waits.length} frame(s) of ${waits.map((frame) => `${frame.intervalMs} ms at ${frame.t}s`).slice(0, 4).join(", ")} were spent waiting, not running script (main thread ${waits.map((frame) => frame.scriptMs).slice(0, 4).join(" / ")} ms)` +
+            (withCompiles.length ? ` — ${withCompiles.length} of them right after new GPU pipelines / programs were created: the GPU process compiling shaders.${analysis.gpuCold ? " This capture was GPU-cold (--gpu-cold), as on a first visit." : " A later visit may hide it (shader caches): confirm with --gpu-cold true."}` : ` — GPU-bound frames or browser work; check draws and the GPU timers.`));
     }
     const shaderBuckets = analysis.timeline.filter((bucket) => bucket.newShaders > 0);
     if (shaderBuckets.length) {
@@ -534,10 +573,18 @@ function printSummary(analysis) {
     for (const phase of analysis.phases) {
         line(`  ${phase.name.padEnd(14)} ${String(phase.durationSeconds + "s").padStart(6)}  ${String(phase.frames.fps ?? "-").padStart(5)} fps  p95 ${String(phase.frames.intervalP95Ms ?? "-").padStart(6)} ms  cpu ${String(phase.frames.cpuMeanMs ?? "-").padStart(6)} ms/frame  busy ${String(phase.busyPct).padStart(3)}%  particles ${phase.frames.particles ?? "-"}  draws ${phase.frames.draws ?? "-"}`);
         line(`      owners: ${phase.lists.owners.slice(0, 6).map((entry) => `${entry.owner} ${entry.pctBusy}%`).join(" · ")}`);
-        line(`      yours:  ${phase.lists.yoursTop.slice(0, 3).map((entry) => `${entry.name} ${entry.msPerFrame}ms/f`).join(" · ") || "-"}`);
+        line(`      yours:  ${phase.lists.yoursTop.slice(0, 3).map((entry) => (entry.msPerFrame != null ? `${entry.name} ${entry.msPerFrame}ms/f` : `${entry.name} ${entry.ms}ms`)).join(" · ") || "-"}`);
+        if (phase.gpuCompiles && (phase.gpuCompiles.pipelines || phase.gpuCompiles.shaderModules)) line(`      gpu:    ${phase.gpuCompiles.pipelines} pipelines / programs, ${phase.gpuCompiles.shaderModules} shader modules created`);
         if (phase.heap) line(`      alloc:  ${phase.heap.mbPerSecond} MB/s · ${phase.heap.selfTop.slice(0, 3).map((entry) => `${entry.name} ${entry.mbPerSecond}MB/s`).join(" · ")}`);
         line(`      hot:    ${phase.lists.inclusiveTop.filter((entry) => entry.owner !== "program" && !entry.shell).slice(0, 5).map((entry) => `${entry.name} ${entry.pctBusy}%`).join(" · ")}`);
     }
+    line();
+    line("WORST FRAMES — cpu: the frame's own work · wait: a gap the main thread mostly waited through (GPU, browser)");
+    for (const frame of analysis.worstFrames.slice(0, 8)) {
+        const cost = frame.kind === "cpu" ? `${frame.cpuMs} ms cpu` : `${frame.intervalMs} ms ${frame.kind}`;
+        line(`  ${String(frame.t + "s").padStart(8)}  ${cost.padEnd(16)} ${String(frame.phase || "-").padEnd(14)} script ${frame.scriptMs} ms · ${frame.pipelinesNear} pipelines near · ${frame.top.slice(0, 2).map((entry) => `${entry.name} ${entry.ms}`).join(", ") || "-"}`);
+    }
+    if (analysis.gpuCold) line(`  (--gpu-cold: ${analysis.gpuCold.tagged} fragment shaders made unique, so every pipeline compiled as on a first visit)`);
     line();
     line("YOUR CODE — time spent, including the library work it triggers (whole run)");
     for (const entry of analysis.overall.lists.yoursTop.slice(0, 15)) {
@@ -603,6 +650,9 @@ function main() {
             startSeconds: round((phase.from - startMs) / 1000, 1),
             durationSeconds: round((phase.to - phase.from) / 1000, 1),
             busyPct: round((aggregate.busyMs / Math.max(aggregate.totalMs, 1e-6)) * 100, 0),
+            // A phase over before the first frame (the page loading) has no frame rate to judge — it is load time.
+            beforeFirstFrame: frames.length === 0 || phase.to <= frames[0].at,
+            gpuCompiles: compilesIn(probe.gpuCompiles, phase.from, phase.to),
             frames: stats,
             lists: topLists(aggregate, stats.frames, Math.min(top, 15), symbolizer.labels),
         };
@@ -638,7 +688,9 @@ function main() {
         phases: phaseResults,
         timeline: buildTimeline(prepared, info, frames, probe.counters, startMs, endMs),
         marks: probe.marks.map((mark) => ({ name: mark.name, t: round((mark.at - startMs) / 1000, 2) })),
-        worstFrames: worstFrames(frames, prepared, info, phases, 15).map((frame) => ({ ...frame, t: round((frame.at - startMs) / 1000, 2) })),
+        worstFrames: worstFrames(frames, prepared, info, phases, probe.gpuCompiles, 15).map((frame) => ({ ...frame, t: round((frame.at - startMs) / 1000, 2) })),
+        gpuCompiles: (probe.gpuCompiles || []).map((entry) => ({ kind: entry.kind, t: round((entry.at - startMs) / 1000, 2) })),
+        gpuCold: capture.gpuCold || null,
         hotLines: lines,
         excerpts: [...excerptsFor.values()],
         heap: analyzeHeap(heapProfiles.map((entry) => entry.profile), symbolizer, (endMs - startMs) / 1000, top),

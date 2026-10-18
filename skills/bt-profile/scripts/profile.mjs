@@ -17,14 +17,22 @@
  * Usage (from `.agents/profile/<slug>/data`, whose profile.config.json supplies the defaults for --url and --scenario):
  *   node ../../.tools/profile.mjs --out runs/baseline [--url http://localhost:5173/play] [--scenario scenario.mjs]
  *   [--seconds 150] [--dpr 2] [--width 1600] [--height 900] [--headed true] [--interval 250] [--warm true]
- *   [--trace true] [--uncapped true] [--heap false] [--snapshots true] [--filmstrip-interval 1] [--autoplay gesture] [--args key=value,key2=value2]
+ *   [--trace true] [--uncapped true] [--heap false] [--snapshots true] [--filmstrip-interval 1] [--autoplay gesture] [--watch true]
+ *   [--gpu-cold true] [--args key=value,key2=value2]
+ *
+ * `--gpu-cold true` makes every fragment shader unique to the load, so the GPU compiles every pipeline as on a first visit
+ * (a fresh Chrome profile alone does not: macOS keeps compiled Metal pipelines in a system cache outside it).
+ *
+ * A scenario that fails or runs past --seconds still ends the capture: every step after it has a time limit, and the run
+ * folder gets `shots/failed.png` plus the page's address, title and console errors in the log.
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import puppeteer from "puppeteer-core";
-import { installProbe } from "./lib/probe.mjs";
+import { installProbe, installGpuCold } from "./lib/probe.mjs";
+import { findChrome } from "./lib/chrome.mjs";
 
 /** Default sampling interval of the CPU profiler, in microseconds (DevTools uses 100–1000). */
 const DEFAULT_SAMPLING_INTERVAL_US = 250;
@@ -70,29 +78,29 @@ function parseScenarioArguments(text) {
     return options;
 }
 
-/**
- * Finds a Chrome or Chromium executable: CHROME_PATH, the usual install locations, then puppeteer's own cache.
- * @returns {string} absolute path of the browser executable
- * @throws {Error} when no browser can be found
- */
-function findChrome() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        "/usr/bin/google-chrome",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    ].filter(Boolean);
-    const found = candidates.find((candidate) => fs.existsSync(candidate));
-    if (found) return found;
-    throw new Error("No Chrome found. Set CHROME_PATH to a Chrome or Chromium executable.");
-}
-
 /** Pauses for the given number of seconds. */
 const sleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+
+/**
+ * Waits for a DevTools call at most `seconds`. The browser has no per-call timeout (a scenario may wait minutes), so every
+ * step after the scenario uses this: a stuck page must never keep the capture from finishing.
+ * @returns {Promise<*>} the call's result, or `fallback` when it fails or takes too long
+ */
+async function limit(promise, seconds, fallback, log, what) {
+    let timer;
+    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(limit.TIMED_OUT), seconds * 1000); });
+    try {
+        const result = await Promise.race([promise, timeout]);
+        if (result === limit.TIMED_OUT) { log(`${what}: no answer within ${seconds} s — skipped`); return fallback; }
+        return result;
+    } catch (error) {
+        log(`${what}: ${String(error && error.message ? error.message : error).split("\n")[0]}`);
+        return fallback;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+limit.TIMED_OUT = Symbol("timed out");
 
 /**
  * Runs the sync marker in the page: a named function that busy-waits a few milliseconds. Its first sample in the CPU
@@ -191,9 +199,10 @@ function createScenarioContext(page, targetUrl, shotsDir, options, log, snapshot
         /** Waits until a page function returns truthy (polls every 100 ms). */
         waitFor: (pageFunction, { timeout = 600000, polling = 100, args = [] } = {}) =>
             page.waitForFunction(pageFunction, { timeout, polling }, ...args),
-        /** Waits until the Babylon engine has rendered at least `count` frames. */
+        /** Waits until the page has rendered at least `count` frames (Babylon frames on a Babylon page, else browser frames). */
         waitForFrames: (count = 10, timeout = 600000) =>
-            page.waitForFunction((minimum) => window.__btProfile && window.__btProfile.frames.length >= minimum, { timeout, polling: 100 }, count),
+            // Babylon frames on a Babylon page; the browser's own frames on any other page
+            page.waitForFunction((minimum) => window.__btProfile && (window.BABYLON ? window.__btProfile.frames.length : window.__btProfile.rafFrames.length) >= minimum, { timeout, polling: 100 }, count),
         evaluate: (pageFunction, ...args) => page.evaluate(pageFunction, ...args),
         keyDown: (key) => page.keyboard.down(key),
         keyUp: (key) => page.keyboard.up(key),
@@ -365,6 +374,11 @@ async function captureOnce(browser, flags, scenario, runDir, label) {
     // Document loads only: a router's history.pushState / replaceState is a same-document "navigation" and is not a reload.
     page.on("domcontentloaded", () => navigations.push({ at: Date.now(), url: page.url() }));
     page.on("pageerror", (error) => consoleErrors.push({ type: "pageerror", text: String(error).slice(0, 600) }));
+    // A document that fails to load (a bad response, a decoding error) shows a white page and no console line of its own.
+    page.on("requestfailed", (request) => {
+        if (request.resourceType() === "document" || request.resourceType() === "script") consoleErrors.push({ type: "requestfailed", text: `${request.resourceType()} ${request.url().slice(0, 300)} — ${request.failure() ? request.failure().errorText : "failed"}` });
+    });
+    if (flags["gpu-cold"] === "true") await page.evaluateOnNewDocument(installGpuCold);
     await page.evaluateOnNewDocument(installProbe);
 
     // Start on a same-origin document so the renderer process (and the V8 isolate the profiler is attached to)
@@ -412,24 +426,35 @@ async function captureOnce(browser, flags, scenario, runDir, label) {
         log(`scenario failed: ${scenarioError.split("\n")[0]}`);
     }
     if (timedOut) log(`scenario still running after --seconds ${maxSeconds}; stopping the capture there`);
-    await context.mark("end").catch(() => {});
+    // From here on the page may be stuck (a failed load, a hung game): every call has a time limit.
+    await limit(context.mark("end"), 10, null, log, "mark end");
 
-    const filmstrip = stopFilmstrip ? await stopFilmstrip() : [];
-    const { profile } = await session.send("Profiler.stop");
+    const filmstrip = stopFilmstrip ? await limit(stopFilmstrip(), 15, [], log, "filmstrip") : [];
+    const stopped = await limit(session.send("Profiler.stop"), 120, null, log, "CPU profile");
+    const profile = stopped ? stopped.profile : { nodes: [], samples: [], timeDeltas: [], startTime: 0, endTime: 0 };
     fs.writeFileSync(path.join(runDir, "cpu.cpuprofile"), JSON.stringify(profile));
-    if (heapEnabled && heapPhase !== "end") await rotateHeap("end");
-    if (stopTrace) await stopTrace();
-    const probe = await page.evaluate(() => (window.__btProfile ? window.__btProfile.dump() : null));
+    if (heapEnabled && heapPhase !== "end") await limit(rotateHeap("end"), 60, null, log, "allocation profile");
+    if (stopTrace) await limit(stopTrace(), 180, null, log, "trace");
+    const probe = await limit(page.evaluate(() => (window.__btProfile ? window.__btProfile.dump() : null)), 30, null, log, "probe");
     if (probe) {
         const recorded = new Set(probe.marks.map((mark) => mark.name));
         for (const mark of context.nodeMarks) if (!recorded.has(mark.name)) probe.marks.push({ ...mark, fromNode: true });
         probe.marks.sort((first, second) => first.at - second.at);
     }
-    const census = await page.evaluate(() => (window.__btProfile ? window.__btProfile.census() : null)).catch(() => null);
-    if (snapshots) await page.screenshot({ path: path.join(shotsDir, "end.png") }).catch(() => {});
-    const scripts = await saveProfiledScripts(session, profile, scriptsDir);
-    await session.detach();
-    await page.close();
+    const census = await limit(page.evaluate(() => (window.__btProfile ? window.__btProfile.census() : null)), 20, null, log, "census");
+    if (snapshots) await limit(page.screenshot({ path: path.join(shotsDir, "end.png") }), 20, null, log, "end screenshot");
+    // A failed or overrun scenario leaves the evidence behind: what the page showed, where it was, what it complained about.
+    if (scenarioError || timedOut) {
+        const failedShot = path.join(shotsDir, "failed.png");
+        const shot = await limit(page.screenshot({ path: failedShot }), 20, null, log, "failure screenshot");
+        const where = await limit(page.evaluate(() => ({ url: location.href, title: document.title, text: (document.body ? document.body.innerText : "").trim().slice(0, 300) })), 10, null, log, "page state");
+        log(`failure evidence: ${shot ? "shots/failed.png" : "no screenshot"} · page ${where ? `${where.url} "${where.title}" · text: ${JSON.stringify(where.text) || "(none)"}` : "not answering"}`);
+        for (const entry of consoleErrors.slice(-12)) log(`  console ${entry.type}: ${entry.text.split("\n")[0].slice(0, 240)}`);
+        if (consoleErrors.length === 0) log("  console: no errors or warnings");
+    }
+    const scripts = stopped ? await limit(saveProfiledScripts(session, profile, scriptsDir), 300, [], log, "saving scripts") : [];
+    await limit(session.detach(), 10, null, log, "detach");
+    await limit(page.close(), 15, null, log, "closing the page");
 
     const capture = {
         label,
@@ -445,6 +470,7 @@ async function captureOnce(browser, flags, scenario, runDir, label) {
         samplingIntervalUs: Number(flags.interval || DEFAULT_SAMPLING_INTERVAL_US),
         heapIncludesCollected,
         snapshots,
+        gpuCold: flags["gpu-cold"] === "true" ? (probe && probe.gpuCold) || { tagged: 0, untagged: 0 } : null,
         filmstripFrames: filmstrip.length,
         sync: { markerName: SYNC_MARKER_NAME, epochMs: syncEpochMs },
         census,
@@ -456,7 +482,9 @@ async function captureOnce(browser, flags, scenario, runDir, label) {
     };
     fs.writeFileSync(path.join(runDir, "capture.json"), JSON.stringify(capture));
     if (capture.disturbed) log(`WARNING: ${capture.disturbed.reason} — this capture is not comparable; profile a server with file watching off (SKILL.md › Other sessions)`);
-    log(`done: ${probe ? probe.frames.length : 0} frames, ${profile.samples.length} CPU samples, ${scripts.length} scripts, engine ${probe && probe.engine}`);
+    if (capture.gpuCold) log(`gpu-cold: ${capture.gpuCold.tagged} fragment shader(s) made unique${capture.gpuCold.untagged ? `, ${capture.gpuCold.untagged} left as they were (no fragment entry found)` : ""}`);
+    const compiles = probe && probe.gpuCompiles ? probe.gpuCompiles.filter((entry) => entry.kind !== "shaderModule").length : 0;
+    log(`done: ${probe ? probe.frames.length : 0} frames, ${profile.samples.length} CPU samples, ${scripts.length} scripts, ${compiles} pipelines / programs created, engine ${probe && probe.engine}`);
     return capture;
 }
 
@@ -488,12 +516,31 @@ async function main() {
     if (flags.autoplay !== "gesture") args.push("--autoplay-policy=no-user-gesture-required");
     if (flags.uncapped === "true") args.push("--disable-frame-rate-limit", "--disable-gpu-vsync");
     const browser = await puppeteer.launch({
+        // No 180 s cap on one DevTools call: a scenario may wait minutes (a slow load, a user who drives the run).
+        protocolTimeout: 0,
         executablePath: findChrome(),
-        headless: flags.headed === "true" ? false : "new",
+        // --watch true (or --headed true): a visible window the user can watch while the profile runs
+        headless: (flags.headed === "true" || flags.watch === "true") ? false : "new",
         defaultViewport: null,
         userDataDir,
         args,
     });
+    // The lock names this capture's process and its Chrome, so `progress.mjs stop` (/bt-profile --stop) can end both. It
+    // lives in the slug's data folder (the working folder of every capture), and goes when the capture ends.
+    const lockPath = fs.existsSync("profile.config.json") ? path.resolve("capture.lock.json") : path.join(runDir, "capture.lock.json");
+    const browserProcess = typeof browser.process === "function" ? browser.process() : null;
+    fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, browserPid: browserProcess ? browserProcess.pid : null, out: runDir, startedAt: new Date().toISOString() }, null, 2));
+    const removeLock = () => { try { fs.rmSync(lockPath, { force: true }); } catch { /* already gone */ } };
+    process.on("exit", removeLock);
+    const removeProfile = () => { try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch { /* Chrome still letting go */ } };
+    for (const signal of ["SIGTERM", "SIGINT"]) {
+        process.on(signal, () => {
+            removeLock();
+            try { browser.process()?.kill("SIGKILL"); } catch { /* gone */ }
+            removeProfile();
+            process.exit(130);
+        });
+    }
     try {
         const cold = await captureOnce(browser, flags, scenario, path.join(runDir, "cold"), "cold");
         const summary = { runDir, cold: path.join(runDir, "cold") };
@@ -501,13 +548,15 @@ async function main() {
             await captureOnce(browser, flags, scenario, path.join(runDir, "warm"), "warm");
             summary.warm = path.join(runDir, "warm");
         }
-        if (cold.probe && cold.probe.engine == null) process.stderr.write("WARNING: the probe never found a Babylon engine (window.BABYLON.EngineStore). Frame data is empty.\n");
+        if (cold.scenarioError || cold.timedOut) process.stderr.write("WARNING: the scenario did not finish — this capture shows the failure, not the moment; see the failure evidence above.\n");
+        else if (cold.probe && cold.probe.engine == null) process.stderr.write("note: no Babylon engine on this page — frames are browser frames (requestAnimationFrame): FPS and frame gaps, no draw calls or engine timers.\n");
         if (cold.census && /swiftshader|llvmpipe|software/i.test(cold.census.adapter || "")) process.stderr.write("WARNING: Chrome rendered with a software adapter — GPU numbers are not representative.\n");
         fs.writeFileSync(path.join(runDir, "run.json"), JSON.stringify({ ...summary, flags, scenario: scenario.meta }, null, 2));
         process.stdout.write(JSON.stringify(summary) + "\n");
     } finally {
-        await browser.close();
-        fs.rmSync(userDataDir, { recursive: true, force: true });
+        const closed = await limit(browser.close(), 20, null, (message) => process.stderr.write(`[bt-profile] ${message}\n`), "closing Chrome");
+        if (closed === null) try { browser.process()?.kill("SIGKILL"); } catch { /* gone */ }
+        removeProfile();
     }
 }
 
