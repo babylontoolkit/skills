@@ -1,6 +1,6 @@
 ---
 name: bt-spec
-description: "The Babylon Toolkit Spec Skill creates a feature spec file and branch from a short idea. Use when asked to spec out, plan, or scaffold a new feature."
+description: "The Babylon Toolkit Spec Skill creates a feature spec file and branch from a short idea, plus the feature's dashboard (`.agents/specs/<slug>/dashboard.html`), which shows the bt-plan commands to copy until the feature is planned. Use when asked to spec, spec out, plan, or scaffold a new feature (\"spec out a mute toggle\", \"let's spec this\")."
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Bash(git switch:*), AskUserQuestion, Agent, Task
 ---
 
@@ -23,14 +23,14 @@ Turn a short feature idea into a spec file that `bt-plan` can plan from. Follow 
 ## Ground rules
 
 - **TIME MATTERS** — on by default; `--no-time-limit` turns it off. Treat the arguments as ending with `TIME MATTERS`: the user is waiting on this run, so finish quickly — research only what the spec needs, keep subagents few and their questions narrow, and do not re-read what you already have. Begin every subagent prompt with `TIME MATTERS.` Print `⏱️ [bt-spec] TIME MATTERS` at the start (`--no-time-limit`: print `⏱️ [bt-spec] No time limit`, and do not add it). Speed never skips a required step or lowers the quality of the spec.
-- **Planning only.** Research read-only and write only the spec file into the new feature folder (plus `SPEC.md` from the scaffold, if the user says yes below, and a builder skill's intake file in the same `documents/` folder — Step 3). No source edits, no builds, no tests, no other shell commands.
+- **Planning only.** Research read-only and write only the spec file and the feature dashboard into the new feature folder (Step 6; plus `SPEC.md` from the scaffold, if the user says yes below, a builder skill's intake file in the same `documents/` folder — Step 3 — and the one `.gitignore` line Step 6 names). No source edits, no builds, no tests, no other shell commands.
 - **Babylon work:** if you have not read the Babylon Toolkit Agent Reference in this session, read it once: https://raw.githubusercontent.com/babylontoolkit/agent/main/reference.md — it is the authority for conventions and API; read its sub-documents only when relevant, and again only if a context compaction made you forget it. If it cannot be read, stop and tell the user — do not guess at the API.
 - **Say what you are doing.** Before any step that takes more than a few seconds (a fetch, a big read, subagents) print one short line — `🔎 [bt-spec] <what> …` — and one line when it returns. A silent run looks like a hang and gets cancelled.
 - **Subagents:** running this skill is the user's request to use them where this skill says so. Use whatever subagent tool your host provides (its name varies by host — e.g. `Agent` or `Task`); if there is none, do the work inline and say so. Tell research subagents they need not read the Agent Reference.
 
 ## Step 1. Arguments, name, branch
 
-From the flag-stripped brief derive `feature_title` (Title Case), `feature_slug` (lowercase kebab-case, `a-z 0-9 -` only, max 40 chars) and `branch_name` = `project/feature/<feature_slug>`. If `.agents/specs/<feature_slug>/` already holds another feature, append `-02`, `-03` … to the slug. If you cannot infer a sensible title, ask. Make a first estimate of the feature's `size` (defined in Step 5) — it sizes the research in Step 2.
+From the flag-stripped brief derive `feature_title` (Title Case), `feature_slug` (lowercase kebab-case, `a-z 0-9 -` only, max 40 chars) and `branch_name` = `project/feature/<feature_slug>`. If `.agents/specs/<feature_slug>/` already holds another feature, or a folder of that name exists anywhere under `.agents/archive/` (archived work), append `-02`, `-03` … to the slug. If you cannot infer a sensible title, ask. Make a first estimate of the feature's `size` (defined in Step 5) — it sizes the research in Step 2.
 
 Git is optional. **Where git is available:** stop now if the working tree has uncommitted or untracked files (ask the user to commit or stash); switch to a new branch `branch_name` (if taken, append `-01`, `-02` …) just before writing the spec in Step 5, so a conflict stop leaves no empty branch behind. **Where it is not** (no binary, sandboxed host such as the Babylon Toolkit App Builder): skip this silently — the branch name recorded in the spec header is the deliverable. Do not mention git as missing.
 
@@ -71,13 +71,13 @@ Interview the user until the design is decided, after Steps 2–3 so questions a
 
 ```
 .agents/specs/<feature_slug>/
-  dashboard.html    the feature dashboard (bt-plan writes it; bt-execute keeps it current)
+  dashboard.html    the feature dashboard (this spec creates it; bt-plan fills in the plan; bt-execute keeps it current)
   documents/        <feature_slug>_spec.md, _plan.md, _autopilot.md, _dashboard.js, _live.js, and any builder intake file
   snapshots/        the meaningful snapshots of the build, shown by the dashboard
   tests/            every test the plan's tasks write
 ```
 
-Print `✍️ [bt-spec] Drafting .agents/specs/<feature_slug>/documents/<feature_slug>_spec.md …`, then write the spec to `.agents/specs/<feature_slug>/documents/<feature_slug>_spec.md` (creating the folders) using the project's `FEATURE.md` template if it exists (add any header field or section below that it lacks), otherwise this structure. No implementation detail or code examples.
+Print `✍️ [bt-spec] Drafting .agents/specs/<feature_slug>/documents/<feature_slug>_spec.md …`, then make sure the default `.agents` folders exist — `.agents/archive/`, `.agents/profile/`, `.agents/recon/` and `.agents/specs/`, each with an empty `.gitkeep` (write only the ones missing; never touch what a folder holds), and write the spec to `.agents/specs/<feature_slug>/documents/<feature_slug>_spec.md` (creating the folders) using the project's `FEATURE.md` template if it exists (add any header field or section below that it lacks), otherwise this structure. No implementation detail or code examples.
 
 ```markdown
 # Spec for <feature-name>
@@ -126,12 +126,23 @@ Create test file(s) in .agents/specs/<feature-name>/tests/ for these named cases
 - <case> → <expected outcome>
 ```
 
-## Step 6. Report
+## Step 6. Write the dashboard (specified state)
+
+Print `🗂️ [bt-spec] Writing the feature dashboard …`. The feature's dashboard exists from the spec on: until a plan is written it shows the `bt-plan` commands that plan this spec — a standard plan, `--heavy`, `--parity`, `--no-time-limit` — each with a copy button, and a *Build your own* with those options and a brief. From bt-execute's `templates/dashboard/` *(where skills load through a tool: `load_skill('bt-execute')` + `read_skill_resource`; where they are files: the sibling `bt-execute/` folder in the skills directory this skill was loaded from)*:
+
+- copy `dashboard.html` to `.agents/specs/<feature_slug>/dashboard.html`, replacing `{{slug}}` with the slug and changing nothing else;
+- write `.agents/specs/<feature_slug>/documents/<feature_slug>_dashboard.js` from the starter `dashboard.template.js`, written whole as strict JSON behind its `window.FEATURE_DASHBOARD =` prefix — double-quoted keys, no comments, no trailing commas (`data-schema.md` documents every field): `feature` (title, slug, branch, `origin: "spec"`, size, proof, a plain-language summary from the spec's Summary), `documents` (the Spec alone), **`status: "specified"`**, `updatedAt` (the current local time, `YYYY-MM-DD HH:MM`), `estimate` empty, **no phases**, an empty `afterAction`, the spec's Decisions as `decisions` when it has any (`D1` …), no follow ups, and one `activity` line: `Spec written — <size>, <proof> proof`;
+- write `.agents/specs/<feature_slug>/documents/<feature_slug>_live.js` from `live.template.js`, the same way: no task, `role: "orchestrator"`, `title: "Spec written — waiting for bt-plan"`, no steps;
+- in a git repository, make sure `.gitignore` (at the repository root) contains the line `.agents/specs/*/documents/*_live.js` — append it once if missing.
+
+If the template cannot be found, skip the dashboard and say so — bt-plan creates it with the plan.
+
+## Step 7. Report
 
 ```
 Branch: <branch_name>
 Spec file: .agents/specs/<feature_slug>/documents/<feature_slug>_spec.md
-Feature folder: .agents/specs/<feature_slug>/   (bt-plan adds the plan and the dashboard)
+Dashboard: .agents/specs/<feature_slug>/dashboard.html   (open it in a browser to copy a bt-plan command)
 Title: <feature_title>
 ```
 

@@ -4,7 +4,7 @@
 
 | File | Holds | Written |
 |---|---|---|
-| `<slug>_dashboard.js` | the feature's record — status, phases, tasks and their results, decisions, snapshots, the After Action Report | at every task boundary (bt-plan creates it from `dashboard.template.js`) |
+| `<slug>_dashboard.js` | the feature's record — status, phases, tasks and their results, decisions, snapshots, the After Action Report | bt-spec creates it from `dashboard.template.js` (`specified`), bt-plan fills in the plan (`planned`), bt-execute writes it at every task boundary; a Quick Plan creates it at bt-plan |
 | `<slug>_live.js` | what is happening this minute — the current task, one sentence, its step log | at every meaningful step of a run (from `live.template.js`) |
 
 They are **data, not code.** Each file is exactly one line of prefix and one strict-JSON value:
@@ -68,7 +68,7 @@ instead of a blank page if something still cannot render — it keeps checking a
 
 | Field | Values |
 |---|---|
-| `status` | `planned` · `in-progress` (a run is executing right now) · `paused` (a run ended, the plan is not finished) · `complete` · `incomplete` (finished with deferrals) |
+| `status` | `specified` (bt-spec wrote the spec; no plan yet — no phases) · `planned` · `in-progress` (a run is executing right now) · `paused` (a run ended, the plan is not finished) · `complete` · `incomplete` (finished with deferrals) |
 | phase `status` | `pending` · `in-progress` · `done` · `partial` · `deferred` |
 | task `status` | `pending` · `in-progress` · `built` (awaiting the verifier) · `verifying` · `done` · `deferred` · `failed` |
 
@@ -76,9 +76,9 @@ instead of a blank page if something still cannot render — it keeps checking a
   every task here is `done`; otherwise it shows the plan as paused with a warning.
 - A task added to the plan after it was complete is added here as `pending`, in plan order, with an `updates`
   note saying why — and `complete` becomes `paused`.
-- The status picks the page's top slot: `in-progress` shows *Current run activity* (the live file and the
+- The status picks the page's top slot: `specified` shows *Plan this feature* (the `bt-plan` commands to copy, and a builder for its options and a brief); `planned` shows *Start this plan* (the `bt-execute` commands, and a builder for any task range and its options); `in-progress` shows *Current run activity* (the live file and the
   milestones); `paused`, `complete` and `incomplete` show *Final plan summary* (the After Action Report, marked
-  *Interim* while paused).
+  *Interim* while paused), with *Continue this plan* — the commands that pick up where it stopped — above it.
 - **Cadence is per task.** A task's entry changes the moment it starts (`in-progress`), the moment it is built
   (`built` — summary, files, tests and snapshots filled in right then), while the verifier checks it
   (`verifying`) and when it passes (`done` — verifier, commit, done time).

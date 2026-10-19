@@ -187,7 +187,7 @@
   .status-done, .status-complete { color: var(--done); background: var(--done-soft); }
   .status-in-progress { color: var(--active); background: var(--active-soft); }
   .status-in-progress::before { animation: pulse 1.6s ease-in-out infinite; }
-  .status-pending, .status-planned, .status-paused { color: var(--pending); background: var(--pending-soft); }
+  .status-pending, .status-specified, .status-planned, .status-paused { color: var(--pending); background: var(--pending-soft); }
   .status-deferred, .status-partial, .status-incomplete { color: var(--deferred); background: var(--deferred-soft); }
   .status-failed { color: var(--failed); background: var(--failed-soft); }
   .status-built, .status-verifying { color: var(--accent); background: var(--accent-soft); }
@@ -670,6 +670,8 @@
   .run-controls { display: flex; flex-wrap: nowrap; gap: 12px 20px; align-items: center; }
   .run-field { flex: 0 1 auto; display: flex; gap: 8px; align-items: center; min-width: 0; font-size: 13px; color: var(--text-muted); }
   .run-field select { flex: 0 1 460px; width: 460px; min-width: 140px; max-width: 100%; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-small); background: var(--bg-sunken); color: var(--text); font: 13px/1.3 var(--font-sans, inherit); text-overflow: ellipsis; }
+  .run-field input[type="text"] { flex: 0 1 460px; width: 460px; min-width: 140px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-small); background: var(--bg-sunken); color: var(--text); font: 13px/1.3 var(--font-sans, inherit); }
+  .run-field input[type="text"]::placeholder { color: var(--text-faint); }
   .run-flags { flex: none; margin: 0 auto; display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: 8px 16px; white-space: nowrap; }
   .run-flag { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
   .run-flag input { accent-color: var(--accent); }
@@ -861,6 +863,13 @@
   ];
   // "Build your own" keeps its choices when the page refreshes its data.
   const runChoice = { tasks: 'ALL', autoPilot: true, strict: false, verbose: false, noTimeLimit: false };
+  /** The bt-plan options the page offers, in the order the command line takes them. */
+  const PLAN_OPTIONS = [
+    { key: 'heavy', flag: '--heavy', label: 'Heavy', hint: 'Decision-complete: Decisions log, Design Reference, self-contained tasks — for long runs or a cheaper executing model' },
+    { key: 'parity', flag: '--parity', label: 'Parity', hint: 'Numeric parity gates against the reference instead of functional proof (slow)' },
+    { key: 'noTimeLimit', flag: '--no-time-limit', label: 'No time limit', hint: 'Turns off the default TIME MATTERS mode' },
+  ];
+  const planChoice = { heavy: false, parity: false, noTimeLimit: false, brief: '' };
   // A verifier result that names a live check: "live two-tab race in headless Chrome", "end-to-end on WebGPU".
   const LIVE_CHECK_WORDS = /\blive\b|chrome|browser|webgl|webgpu|unity editor|play ?mode/i;
   /** Where the Babylon Toolkit Desktop Agent, whose skills generate this dashboard, is published. */
@@ -870,6 +879,7 @@
   /** How many of the current task's latest steps the Now banner lists. */
   const NOW_STEP_COUNT = 6;
   const STATUS_LABELS = {
+    specified: 'Specified — ready to plan',
     planned: 'Planned',
     'in-progress': 'In progress',
     complete: 'Complete',
@@ -932,6 +942,7 @@
       '<main class="page">',
       renderStats(allTasks, doneCount),
       view === 'running' ? renderCurrentActivity(allTasks) : '',
+      view === 'specified' ? renderPlanCommands() : '',
       showsRunCommands(view) ? renderRunCommands(allTasks, view) : '',
       view === 'finished' ? renderAfterAction(allTasks, doneCount) : '',
       renderPhases(),
@@ -986,6 +997,7 @@
   function renderNav(updateCount, view) {
     const links = [
       view === 'running' ? ['current-activity', 'Current run'] : null,
+      view === 'specified' ? ['plan-commands', 'Plan'] : null,
       showsRunCommands(view) ? ['run-commands', view === 'planned' ? 'Start' : 'Continue'] : null,
       view === 'finished' ? ['after-action', 'Summary'] : null,
       ['phases', 'Phases'],
@@ -1009,6 +1021,19 @@
       : statTile('Tests', `${allTasks.filter(hasTests).length}<small> / ${allTasks.length}</small>`, 'tasks with tests');
     const activeTime = shortDuration(report.activeTime);
     const estimate = shortEstimate(report.estimate);
+
+    if (!allTasks.length) {
+      const before = 'written by bt-plan';
+      const tilesBeforePlan = [
+        statTile('Tasks', '—', before),
+        statTile('Phases', '—', before),
+        statTile('Tests', '—', 'none yet'),
+        statTile('Active time', '—', report.estimate ? `of ${escapeHtml(report.estimate)} estimated` : 'estimated by bt-plan'),
+        statTile('Deferred', '0', 'nothing deferred'),
+        statTile('Runs', String(report.runs || 0), 'bt-execute runs so far'),
+      ].join('');
+      return `<div class="stats">${tilesBeforePlan}</div>`;
+    }
 
     const tiles = [
       statTile('Tasks', `${doneCount}<small> / ${allTasks.length}</small>`, 'verified and ticked'),
@@ -1146,7 +1171,7 @@
     const phases = report.phases || [];
     const content = phases.length
       ? phases.map(renderPhase).join('')
-      : '<div class="empty">No phases recorded yet.</div>';
+      : `<div class="empty">${pageView() === 'specified' ? 'bt-plan writes the phases and tasks here — plan this feature with a command above.' : 'No phases recorded yet.'}</div>`;
     return `
       <section id="phases">
         <div class="section-head"><h2>Execution phases</h2><span class="section-note">Each phase is checked by an independent verifier</span></div>
@@ -1651,6 +1676,7 @@
     const status = effectiveStatus();
     if (status === 'in-progress') return 'running';
     if (['paused', 'complete', 'incomplete'].includes(status)) return 'finished';
+    if (status === 'specified') return 'specified';
     return 'planned';
   }
 
@@ -1779,6 +1805,66 @@
   /* ===================== Run commands ===================== */
 
 
+  /** The spec as bt-plan takes it, from the project root: `@.agents/specs/<slug>/documents/<slug>_spec.md`. */
+  function specReference() {
+    const slug = (report.feature && report.feature.slug) || '';
+    const spec = (report.documents || []).find((document) => /spec/i.test(document.label || '') && document.path);
+    const relativePath = spec ? String(spec.path).replace(/^\.?\//, '') : `documents/${slug}_spec.md`;
+    // A legacy flat spec is linked as `../<slug>_spec.md`; fold the `..` into the path.
+    const parts = [];
+    for (const part of `.agents/specs/${slug}/${relativePath}`.split('/')) {
+      if (part === '..') parts.pop();
+      else if (part && part !== '.') parts.push(part);
+    }
+    return `@${parts.join('/')}`;
+  }
+
+  function planCommand(flags, brief = '') {
+    const note = String(brief || '').trim().replace(/"/g, "'");
+    return ['/bt-plan', ...flags, specReference(), note ? `"${note}"` : ''].filter(Boolean).join(' ');
+  }
+
+  function builtPlanCommand() {
+    return planCommand(PLAN_OPTIONS.filter((option) => planChoice[option.key]).map((option) => option.flag), planChoice.brief);
+  }
+
+  /** Before a plan exists: the bt-plan commands that turn this spec into one. */
+  function renderPlanCommands() {
+    const parityByDefault = String((report.feature && report.feature.proof) || '').toLowerCase() === 'parity';
+    const presets = [
+      ['A standard plan', 'Ordered tasks with named tests, phases and a time estimate — the usual choice', planCommand([])],
+      ['A heavy plan', 'Decision-complete: a Decisions log, a Design Reference and self-contained tasks — for a long run, fresh contexts or a cheaper model executing it', planCommand(['--heavy'])],
+      parityByDefault
+        ? ['A heavy plan with parity gates', 'This spec sets `proof: parity`, so every plan gets numeric parity gates — this one is decision-complete as well', planCommand(['--heavy', '--parity'])]
+        : ['With numeric parity gates', 'Pixel thresholds and repeats against the reference instead of the default functional proof — slow', planCommand(['--parity'])],
+      ['No time limit', 'Turns off TIME MATTERS, so the research can take as long as it needs', planCommand(['--no-time-limit'])],
+    ];
+    const rows = presets.map(([what, detail, command]) => `
+      <div class="run-row">
+        <div class="run-what"><strong>${escapeHtml(what)}</strong><span>${formatInline(detail)}</span></div>
+        ${copyableCommand(command)}
+      </div>`).join('');
+    return `
+      <section id="plan-commands">
+        <div class="section-head"><h2>Plan this feature</h2><span class="section-note">Copy a command into your agent — bt-plan writes the plan and fills in this dashboard</span></div>
+        <div class="card run-card">
+          <div class="run-list">${rows}</div>
+          <div class="run-builder">
+            <div class="run-builder-title">Build your own</div>
+            <div class="run-controls">
+              <label class="run-field"><span>Brief</span>
+                <input type="text" data-plan-choice="brief" value="${escapeAttribute(planChoice.brief)}" placeholder="Optional notes for the planner, e.g. mind the physics layer">
+              </label>
+              <div class="run-flags">${PLAN_OPTIONS.map((option) => `
+                <label class="run-flag" title="${escapeAttribute(option.hint)}"><input type="checkbox" data-plan-choice="${option.key}"${planChoice[option.key] ? ' checked' : ''}> ${escapeHtml(option.label)}</label>`).join('')}
+              </div>
+            </div>
+            <div class="run-built">${copyableCommand(builtPlanCommand(), 'built-plan-command')}</div>
+          </div>
+        </div>
+      </section>`;
+  }
+
   /** The commands show while there is work to start: a plan not yet run, or one paused part way. */
   function showsRunCommands(view) {
     return view === 'planned' || effectiveStatus() === 'paused';
@@ -1885,18 +1971,21 @@
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(copied, () => { copyWithSelection(text); copied(); });
       else { copyWithSelection(text); copied(); }
     });
-    document.addEventListener('change', (event) => {
-      const control = event.target.closest('[data-run-choice]');
+    const updateBuilt = (event) => {
+      const control = event.target.closest('[data-run-choice], [data-plan-choice]');
       if (!control) return;
-      const key = control.getAttribute('data-run-choice');
-      runChoice[key] = control.type === 'checkbox' ? control.checked : control.value;
-      const command = builtCommand();
-      const output = document.getElementById('built-command');
+      const forPlan = control.hasAttribute('data-plan-choice');
+      const choice = forPlan ? planChoice : runChoice;
+      choice[control.getAttribute(forPlan ? 'data-plan-choice' : 'data-run-choice')] = control.type === 'checkbox' ? control.checked : control.value;
+      const command = forPlan ? builtPlanCommand() : builtCommand();
+      const output = document.getElementById(forPlan ? 'built-plan-command' : 'built-command');
       if (output) {
         output.textContent = command;
         output.nextElementSibling.setAttribute('data-copy', command);
       }
-    });
+    };
+    document.addEventListener('change', updateBuilt);
+    document.addEventListener('input', updateBuilt);
   }
 
   /** Where the clipboard API is unavailable, copy through a hidden selection; the command also stays visible to copy by hand. */
@@ -2169,6 +2258,8 @@
    */
   function effectiveStatus() {
     const status = report.status || 'planned';
+    // A dashboard still marked specified once a plan has filled in its tasks is planned.
+    if (status === 'specified' && collectTasks().length) return 'planned';
     if (status === 'complete' && unfinishedTasks().length) return 'paused';
     return status;
   }

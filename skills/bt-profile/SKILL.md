@@ -143,6 +143,7 @@ The project is just **the root folder of the web app**: where its source lives (
 ## Phase 0 — Preflight
 
 ```bash
+for folder in archive profile recon specs; do mkdir -p "$PROJ/.agents/$folder"; [ -e "$PROJ/.agents/$folder/.gitkeep" ] || : > "$PROJ/.agents/$folder/.gitkeep"; done   # the default .agents folders
 mkdir -p "$TOOLS" "$DATA/runs" "$DATA/logs"
 cp -R "$SKILL_DIR"/scripts/* "$TOOLS/"                                            # refresh on every skill update
 node "$TOOLS/progress.mjs" start "$S" --title "<Project> — <scenario> performance" --brief "<the user's words>" --project "$PROJ" --url "<url, or the dev server's / until known>" --open true
