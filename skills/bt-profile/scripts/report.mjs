@@ -13,9 +13,18 @@
  * findings.json (written by the agent — the diagnosis in plain language):
  *   { "title", "summary", "findings": [{ "id", "title", "severity": "critical|major|minor", "status": "fixed|proposed|reverted|not-fixed",
  *     "phases": [..], "cost", "cause", "evidence": [..], "code": [{ "file", "line", "label" }], "fix", "before", "after", "diff",
- *     "gain", "risk", "verify" }] }   (gain / risk / verify: optional — the expected win, what could break, how to prove it)
+ *     "gain", "risk", "verify",
+ *     "subsystem", "recon", "confidence": "confirmed|inferred", "guards": [..] }] }
+ *   gain / risk / verify: optional — the expected win, what could break, how to prove it.
+ *   subsystem: the code the fix lives in, in a few words ("Shadow rendering"); fixes that share one share a recon.
+ *   recon: the bt-recon doc of that code, from the project root — the profile's own (".agents/profile/<slug>/recon/
+ *     shadow-rendering_recon.md") or a general one (".agents/recon/shadow-rendering_recon.md").
+ *   confidence: "confirmed" once the cause is traced in the code, "inferred" while it rests on the profile's shape alone.
+ *   guards: what a change there must not break — callers, invariants, the tests that cover it (from the recon).
  * Every build also writes findings.md beside the dashboard: the same diagnosis as a spec-ready document (one section per
  * finding — cause, evidence, code, proposed fix, gain, risk, how to verify) to fix later with a full spec (bt-spec).
+ * Both list a bt-recon command per subsystem (the code behind the fixes, mapped for the spec) and bt-spec commands that
+ * cite those recon docs.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -221,6 +230,9 @@ footer.generated-by a { color: inherit; }
 table.fixes td.pick, table.fixes th.pick { width: 28px; } table.fixes td.id { font: 600 12px var(--mono); white-space: nowrap; }
 table.fixes td.act { text-align: right; white-space: nowrap; }
 table.fixes .badge { white-space: nowrap; }
+table.fixes td.act { white-space: nowrap; } table.fixes td.act .copy-spec + .copy-spec { margin-left: 6px; }
+.badge.confirmed, .badge.recon-deep { color: var(--good); } .badge.inferred, .badge.recon-quick { color: var(--warning); } .badge.recon-none { color: var(--text-muted); }
+.spec-bar code { white-space: pre-wrap; }
 td.nw { white-space: nowrap; }
 .hint { color: var(--text-secondary); font-size: 13px; margin: 0 0 10px; }
 .copy-spec { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--surface-3); border-radius: 6px; font-size: 12px; padding: 4px 10px; cursor: pointer; }
@@ -421,38 +433,61 @@ function renderTimeline() {
 }
 
 /**
- * The fixes, listed whether or not they were applied: spec one (its row's button) or a group (tick them) with bt-spec.
- * The spec command points bt-spec at findings.md, which carries each fix's cause, evidence, code, gain, risk and check.
+ * The fixes, listed whether or not they were applied, in two steps: recon the code behind them (one bt-recon per
+ * subsystem, so the spec has the callers, invariants and tests mapped), then spec one (its row's button) or a group
+ * (tick them) with bt-spec. The spec command points bt-spec at findings.md, which carries each fix's cause, evidence,
+ * code, gain, risk and check, and cites the recon docs it rests on.
  */
 function renderFixes() {
   const wrap = $("#fixes-wrap");
   const list = (findings && findings.findings ? findings.findings : []).filter((f) => f.fix);
   if (!list.length) { wrap.style.display = "none"; return; }
+  const recon = DATA.recon || { groups: [], byId: {} };
+  const groupOf = (id) => recon.groups.find((g) => g.slug === recon.byId[id]);
   const source = "@.agents/profile/" + DATA.slug + "/findings.md";
   const join = (ids) => ids.length <= 1 ? ids.join("") : ids.slice(0, -1).join(", ") + " and " + ids[ids.length - 1];
-  const command = (ids) => "/bt-spec Fix " + join(ids) + " from " + source;
+  const groupsFor = (ids) => [...new Set(ids.map(groupOf).filter(Boolean))];
+  const using = (ids) => { const paths = groupsFor(ids).map((g) => "@" + g.path); return paths.length ? " using " + join(paths) : ""; };
+  const specCommand = (ids) => "/bt-spec Fix " + join(ids) + " from " + source + using(ids);
+  const reconCommands = (ids) => groupsFor(ids).map((g) => g.command).join("\n");
   // A fix is done once it is in the code: "kept" (applied and proven by the fix loop) or "fixed".
   const isDone = (f) => f.status === "kept" || f.status === "fixed";
   const open = list.filter((f) => !isDone(f)).map((f) => f.id);
+  const reconCell = (f) => {
+    const g = groupOf(f.id);
+    if (!g) return "–";
+    const state = g.exists ? '<span class="badge recon-' + esc(g.depth) + '" title="' + esc(g.path) + '">' + esc(g.depth) + "</span>" : '<span class="badge recon-none">none</span>';
+    return state + ' <span class="where">' + esc(g.name) + "</span>";
+  };
   const rows = list.map((f) => '<tr><td class="pick"><input type="checkbox" value="' + esc(f.id) + '"' + (!isDone(f) ? " checked" : "") + ' aria-label="Select ' + esc(f.id) + '"></td>' +
     '<td class="id"><a href="#' + esc(f.id) + '">' + esc(f.id) + '</a></td><td>' + esc(f.title) + '</td>' +
     '<td><span class="badge ' + esc(f.status) + '">' + esc(f.status) + '</span></td>' +
+    '<td>' + (f.confidence ? '<span class="badge ' + esc(f.confidence) + '">' + esc(f.confidence) + "</span>" : "–") + '</td>' +
+    '<td>' + reconCell(f) + '</td>' +
     '<td>' + esc(f.gain || f.cost || "–") + '</td><td>' + esc(f.risk || "–") + '</td>' +
-    '<td class="act"><button type="button" class="copy-spec" data-ids="' + esc(f.id) + '">Copy spec command</button></td></tr>').join("");
-  $("#fixes").innerHTML = '<div class="panel"><p class="hint">Each fix can be specced on its own, or several together: tick them and copy one command for <code>/bt-spec</code>. ' +
+    '<td class="act"><button type="button" class="copy-spec" data-kind="recon" data-ids="' + esc(f.id) + '">Copy recon command</button>' +
+    '<button type="button" class="copy-spec" data-kind="spec" data-ids="' + esc(f.id) + '">Copy spec command</button></td></tr>').join("");
+  $("#fixes").innerHTML = '<div class="panel"><p class="hint"><strong>1. Recon</strong> the code behind the fixes with <code>/bt-recon</code>: it maps how that code works, every caller, and what a change must not break. Fixes in the same code share one recon; run each command on its own. ' +
+    '<strong>2. Spec</strong> them one at a time or several together with <code>/bt-spec</code>; the command cites the recon docs. ' +
     (open.length ? open.length + " not fixed yet." : "All of them are fixed.") + '</p>' +
-    '<div class="scroll"><table class="fixes"><thead><tr><th class="pick"></th><th>ID</th><th>Fix</th><th>Status</th><th>Expected gain</th><th>Risk</th><th class="act"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-    '<div class="spec-bar"><code id="spec-selected"></code><button type="button" class="copy-spec" id="copy-selected">Copy for the selected</button>' +
-    (open.length ? '<button type="button" class="copy-spec" data-ids="' + esc(open.join(" ")) + '">Copy for all open fixes</button>' : "") + '</div></div>';
+    '<div class="scroll"><table class="fixes"><thead><tr><th class="pick"></th><th>ID</th><th>Fix</th><th>Status</th><th>Cause</th><th>Recon</th><th>Expected gain</th><th>Risk</th><th class="act"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<div class="spec-bar"><code id="recon-selected"></code><button type="button" class="copy-spec" data-kind="recon" id="copy-recon-selected">1. Copy recon for the selected</button></div>' +
+    '<div class="spec-bar"><code id="spec-selected"></code><button type="button" class="copy-spec" data-kind="spec" id="copy-selected">2. Copy spec for the selected</button>' +
+    (open.length ? '<button type="button" class="copy-spec" data-kind="spec" data-ids="' + esc(open.join(" ")) + '">Copy spec for all open fixes</button>' : "") + '</div></div>';
   const selected = () => [...document.querySelectorAll("#fixes input[type=checkbox]:checked")].map((box) => box.value);
-  const refresh = () => { const ids = selected(); $("#spec-selected").textContent = ids.length ? command(ids) : "Tick the fixes to spec together"; $("#copy-selected").disabled = !ids.length; };
+  const refresh = () => {
+    const ids = selected();
+    $("#recon-selected").textContent = ids.length ? reconCommands(ids) : "Tick the fixes to recon together";
+    $("#spec-selected").textContent = ids.length ? specCommand(ids) : "Tick the fixes to spec together";
+    $("#copy-selected").disabled = $("#copy-recon-selected").disabled = !ids.length;
+  };
   $("#fixes").addEventListener("change", refresh);
   $("#fixes").addEventListener("click", (event) => {
     const button = event.target.closest(".copy-spec");
     if (!button) return;
-    const ids = button.id === "copy-selected" ? selected() : button.dataset.ids.split(" ");
+    const ids = button.id === "copy-selected" || button.id === "copy-recon-selected" ? selected() : button.dataset.ids.split(" ");
     if (!ids.length) return;
-    const text = command(ids);
+    const text = button.dataset.kind === "recon" ? reconCommands(ids) : specCommand(ids);
     const done = () => { const label = button.textContent; button.textContent = "Copied"; setTimeout(() => { button.textContent = label; }, 1500); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, done); else done();
   });
@@ -469,11 +504,12 @@ function renderFindings() {
     const code = (f.code || []).map((c) => "<li>" + link(c.file, c.line, (c.label ? c.label + " — " : "") + shortPath(c.file) + (c.line ? ":" + c.line : "")) + "</li>").join("");
     const diff = f.diff ? '<details><summary>The change</summary><pre class="code diff">' + f.diff.split("\n").map((l) => '<div class="row ' + (l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : "") + '"><span class="ln"></span>' + esc(l) + '</div>').join("") + '</pre></details>' : "";
     return '<article class="finding" id="' + esc(f.id) + '"><header><span class="badge ' + esc(f.severity) + '">' + esc(f.severity) + '</span><span class="badge ' + esc(f.status) + '">' + esc(f.status) + '</span><h3>' + esc(f.id + " · " + f.title) + '</h3>' + (f.cost ? '<span class="cost">' + esc(f.cost) + '</span>' : "") + '</header>' +
-      (f.phases && f.phases.length ? '<div class="meta">phases: ' + esc(f.phases.join(", ")) + '</div>' : "") +
+      (f.phases && f.phases.length || f.subsystem ? '<div class="meta">' + [f.phases && f.phases.length ? "phases: " + esc(f.phases.join(", ")) : "", f.subsystem ? "code: " + esc(f.subsystem) : "", f.confidence ? "cause " + (f.confidence === "confirmed" ? "confirmed in the code" : "inferred from the profile") : ""].filter(Boolean).join(" · ") + '</div>' : "") +
       (f.cause ? "<p><strong>Why it is slow.</strong> " + esc(f.cause) + "</p>" : "") +
       (f.evidence && f.evidence.length ? "<p><strong>Evidence.</strong></p><ul>" + f.evidence.map((e) => "<li>" + esc(e) + "</li>").join("") + "</ul>" : "") +
       (code ? "<p><strong>Code.</strong></p><ul>" + code + "</ul>" : "") +
       (f.fix ? "<p><strong>Fix.</strong> " + esc(f.fix) + "</p>" : "") +
+      (f.guards && f.guards.length ? "<p><strong>Must not break.</strong></p><ul>" + f.guards.map((g) => "<li>" + esc(g) + "</li>").join("") + "</ul>" : "") +
       (f.before || f.after ? '<div class="beforeafter">' + (f.before ? "<span>before: " + esc(f.before) + "</span>" : "") + (f.after ? "<span>after: " + esc(f.after) + "</span>" : "") + "</div>" : "") + diff + "</article>";
   }).join("");
 }
@@ -663,13 +699,80 @@ function shotsFrom(dir, reportDir) {
     }));
 }
 
+/** Lowercase kebab-case, `a-z 0-9 -` only, at most 40 characters — bt-recon's slug rule. */
+function kebab(text) {
+    return String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "");
+}
+
+/** Reads a recon doc's depth from its header (`depth: quick`); a recon written before the field existed is deep. */
+function reconDepth(file) {
+    try {
+        const head = fs.readFileSync(file, "utf8").slice(0, 2000);
+        const match = head.match(/depth:\s*(quick|deep)/);
+        return match ? match[1] : "deep";
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Groups the fixes by the code they live in — one bt-recon per subsystem — and builds each group's recon command.
+ * A finding's `recon` path names its group; else its `subsystem`; else its own title. A profile's recons live in its
+ * own `recon/` folder; a general recon of the same name in the project's `.agents/recon/` is used when the profile has
+ * none. The folders are read to tell which recons exist and how deep they are.
+ * @param {object[]} list the findings
+ * @param {string} profileSlug the profile's slug
+ * @param {string} projectAgents the project's `.agents` folder
+ * @returns {{ groups: object[], byId: Object<string, string> }} the groups, and each finding id's group slug
+ */
+function reconGroups(list, profileSlug, projectAgents) {
+    const ownFolder = `.agents/profile/${profileSlug}/recon`;
+    const groups = new Map();
+    const byId = {};
+    for (const finding of list.filter((item) => item.fix)) {
+        const fromPath = finding.recon ? path.basename(String(finding.recon)).replace(/_recon\.md$/, "") : "";
+        const slug = kebab(fromPath || finding.subsystem || finding.title) || kebab(finding.id);
+        if (!groups.has(slug)) {
+            // The profile's own recon first, then a general one; a new recon goes in the profile's folder.
+            const candidates = [`${ownFolder}/${slug}_recon.md`, `.agents/recon/${slug}_recon.md`];
+            if (finding.recon) candidates.unshift(String(finding.recon).replace(/^\.?\//, ""));
+            const found = candidates.map((relative) => ({ relative, depth: reconDepth(path.join(projectAgents, "..", relative)) })).find((candidate) => candidate.depth !== null);
+            groups.set(slug, {
+                slug, name: finding.subsystem || finding.title,
+                path: found ? found.relative : candidates[candidates.length - 2], exists: Boolean(found), depth: found ? found.depth : null,
+                ids: [], code: [],
+            });
+        }
+        const group = groups.get(slug);
+        group.ids.push(finding.id);
+        for (const location of finding.code || []) {
+            const where = `${location.file}${location.line ? `:${location.line}` : ""}`;
+            if (!group.code.includes(where)) group.code.push(where);
+        }
+        byId[finding.id] = slug;
+    }
+    for (const group of groups.values()) {
+        const ids = group.ids.length <= 1 ? group.ids.join("") : `${group.ids.slice(0, -1).join(", ")} and ${group.ids[group.ids.length - 1]}`;
+        const anchors = group.code.slice(0, 6).join(", ");
+        // A deep recon that exists only needs refreshing after code changes; a quick one (or none) gets a deep one,
+        // written into the profile's own recon folder.
+        if (group.exists && group.depth === "deep") {
+            group.command = `/bt-recon --refresh @${group.path}`;
+        } else {
+            group.path = `${ownFolder}/${group.slug}_recon.md`;
+            group.command = `/bt-recon --slug ${group.slug} --out ${ownFolder} --no-guide "${group.name.replace(/"/g, "'")} — the code behind ${ids} in @.agents/profile/${profileSlug}/findings.md${anchors ? ` (${anchors})` : ""}: how it works, every caller, what drives its per-frame cost, and what a change there must not break"`;
+        }
+    }
+    return { groups: [...groups.values()], byId };
+}
+
 /**
  * The diagnosis as a spec-ready Markdown document (findings.md beside the dashboard): what was measured and how, what is
  * still to fix, then one section per finding with its cause, evidence, code, proposed fix, expected gain, risk and how
  * to verify it — the input for a later fix with a full spec (`bt-spec @.agents/profile/<slug>/findings.md`).
  * @returns {string} the Markdown
  */
-function findingsMarkdown(findings, analysis, slugName) {
+function findingsMarkdown(findings, analysis, slugName, recon) {
     const capture = analysis.capture || {};
     const list = (findings && Array.isArray(findings.findings)) ? findings.findings : [];
     // A fix is done once it is in the code: "kept" (applied and proven by the fix loop) or "fixed".
@@ -690,18 +793,34 @@ function findingsMarkdown(findings, analysis, slugName) {
     const cell = (text) => String(text || "–").replace(/\|/g, "\\|").replace(/\n/g, " ");
     push(`## The fixes (${open.length} not fixed yet)`);
     push();
-    push("Spec them one at a time, or several together — each command points bt-spec at this file, which carries every fix's cause, evidence, code, gain, risk and how to verify it.");
+    push("Two steps: **recon** the code behind the fixes (bt-recon maps how it works, every caller and what a change must not break), then **spec** them one at a time or several together. Each spec command points bt-spec at this file, which carries every fix's cause, evidence, code, gain, risk and how to verify it, and cites the recon docs as its grounding.");
     push();
+    // The recon docs a set of fixes rests on, as bt-spec's `using` clause.
+    const using = (ids) => {
+        const paths = [...new Set(ids.map((id) => recon.byId[id]).filter(Boolean))].map((slug) => `@${recon.groups.find((group) => group.slug === slug).path}`);
+        return paths.length ? ` using ${join(paths)}` : "";
+    };
+    const specCommand = (ids) => `/bt-spec Fix ${join(ids)} from ${source}${using(ids)}`;
     if (fixable.length) {
-        push("| ID | Fix | Status | Expected gain | Risk | Spec it |");
-        push("|---|---|---|---|---|---|");
-        for (const finding of fixable) push(`| ${finding.id} | ${cell(finding.title)} | ${finding.status || "proposed"} | ${cell(finding.gain || finding.cost)} | ${cell(finding.risk)} | \`/bt-spec Fix ${finding.id} from ${source}\` |`);
+        push("### 1. Recon the code behind them");
+        push();
+        push("One recon per subsystem — fixes in the same code share it. Run each command on its own.");
+        push();
+        push("| Subsystem | Fixes | Recon | Command |");
+        push("|---|---|---|---|");
+        for (const group of recon.groups) push(`| ${cell(group.name)} | ${group.ids.join(", ")} | ${group.exists ? `\`${group.path}\` (${group.depth})` : "not yet"} | \`${cell(group.command)}\` |`);
+        push();
+        push("### 2. Spec them");
+        push();
+        push("| ID | Fix | Status | Cause | Expected gain | Risk | Spec it |");
+        push("|---|---|---|---|---|---|---|");
+        for (const finding of fixable) push(`| ${finding.id} | ${cell(finding.title)} | ${finding.status || "proposed"} | ${finding.confidence || "–"} | ${cell(finding.gain || finding.cost)} | ${cell(finding.risk)} | \`${specCommand([finding.id])}\` |`);
         push();
         const openIds = open.filter((finding) => finding.fix).map((finding) => finding.id);
-        if (openIds.length > 1) { push(`**All open fixes together:** \`/bt-spec Fix ${join(openIds)} from ${source}\``); push(); }
+        if (openIds.length > 1) { push(`**All open fixes together:** \`${specCommand(openIds)}\``); push(); }
         // The example group names real fixes: the first and last open ones, or the first two in the table.
         const exampleIds = openIds.length > 2 ? [openIds[0], openIds[openIds.length - 1]] : fixable.slice(0, 2).map((finding) => finding.id);
-        if (exampleIds.length > 1) push(`**A group of your choice:** \`/bt-spec Fix ${join(exampleIds)} from ${source}\` (any IDs from the table)`);
+        if (exampleIds.length > 1) push(`**A group of your choice:** \`${specCommand(exampleIds)}\` (any IDs from the table)`);
     } else {
         push("No fixes proposed.");
     }
@@ -711,12 +830,18 @@ function findingsMarkdown(findings, analysis, slugName) {
         push();
         push(`**Severity:** ${finding.severity || "–"} · **Status:** ${finding.status || "–"} · **Phases:** ${(finding.phases || []).join(", ") || "–"}${finding.cost ? ` · **Cost:** ${finding.cost}` : ""}`);
         push();
+        const group = recon.groups.find((candidate) => candidate.slug === recon.byId[finding.id]);
+        if (finding.confidence || finding.subsystem || group) {
+            push(`**Cause:** ${finding.confidence === "confirmed" ? "confirmed in the code" : finding.confidence === "inferred" ? "inferred from the profile — not yet traced in the code" : "–"}${finding.subsystem ? ` · **Subsystem:** ${finding.subsystem}` : ""}${group ? ` · **Recon:** \`${group.path}\` ${group.exists ? `(${group.depth})` : "(not yet — run the command above)"}` : ""}`);
+            push();
+        }
         if (finding.cause) { push("### Why it is slow"); push(); push(finding.cause); push(); }
         if (finding.evidence && finding.evidence.length) { push("### Evidence"); push(); for (const item of finding.evidence) push(`- ${item}`); push(); }
         if (finding.code && finding.code.length) { push("### Code"); push(); for (const location of finding.code) push(`- \`${location.file}${location.line ? `:${location.line}` : ""}\`${location.label ? ` — ${location.label}` : ""}`); push(); }
         if (finding.fix) { push(isDone(finding) ? "### The fix" : "### Proposed fix"); push(); push(finding.fix); push(); }
         if (finding.gain) { push(`**Expected gain:** ${finding.gain}`); push(); }
         if (finding.risk) { push(`**Risk:** ${finding.risk}`); push(); }
+        if (finding.guards && finding.guards.length) { push("### Must not break"); push(); for (const guard of finding.guards) push(`- ${guard}`); push(); }
         if (finding.verify) { push(`**How to verify:** ${finding.verify}`); push(); }
         if (finding.before || finding.after) { push(`**Before:** ${finding.before || "–"} · **After:** ${finding.after || "not fixed yet"}`); push(); }
         if (finding.diff) { push("<details><summary>The change</summary>"); push(); push("```diff"); push(finding.diff); push("```"); push(); push("</details>"); push(); }
@@ -784,6 +909,9 @@ async function main() {
         groups: OWNER_GROUPS,
         slug: path.basename(reportDir),
     };
+    // The profile's slug folder is <project>/.agents/profile/<slug>/: its recons sit in recon/ inside it, general ones in
+    // <project>/.agents/recon/.
+    data.recon = reconGroups(findings && Array.isArray(findings.findings) ? findings.findings : [], data.slug, path.join(reportDir, "..", ".."));
     if (flags.snapshots) data.run.shots = shotsFrom(path.resolve(flags.snapshots), reportDir);
     if (flags["snapshots-before"]) {
         // Shown beside this run's shots of the same names (needs --baseline, whose own shots they replace).
@@ -794,7 +922,7 @@ async function main() {
     process.stdout.write(`wrote ${outFile}\n`);
     if (findings) {
         const markdownFile = path.join(path.dirname(outFile), "findings.md");
-        fs.writeFileSync(markdownFile, findingsMarkdown(findings, analysis, path.basename(path.dirname(outFile))));
+        fs.writeFileSync(markdownFile, findingsMarkdown(findings, analysis, path.basename(path.dirname(outFile)), data.recon));
         process.stdout.write(`wrote ${markdownFile}\n`);
     }
     if (pdfFile) return writePdf(outFile, pdfFile);

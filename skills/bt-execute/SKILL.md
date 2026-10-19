@@ -78,6 +78,7 @@ Every feature lives in one folder, created by bt-spec (or by bt-plan for a Quick
   documents/<slug>_summary.js      the plan summary's data
   snapshots/                       the meaningful snapshots the dashboard shows
   tests/                           every test this plan's tasks write
+  recon/                           copies of the recons the spec rests on (bt-spec, when its brief cites any)
 ```
 
 `<slug>` is the folder name (the plan sits at `<slug>/documents/<slug>_plan.md`). **Legacy flat plan** (`.agents/specs/<slug>_plan.md`): run it where it is, keep its run log and the test paths its `Tests:` lines name, and still create `.agents/specs/<slug>/` for `dashboard.html`, `documents/<slug>_dashboard.js`, `documents/<slug>_live.js` and `snapshots/` — move nothing unless the user asks.

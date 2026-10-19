@@ -7,7 +7,7 @@ allowed-tools: Read, Grep, Glob, Write, Bash(git log:*), Bash(git show:*), Bash(
 Run reconnaissance on existing code nobody has documented — one subsystem or the whole codebase — and bring back everything it does as a grounding spec that `bt-spec` and `bt-plan` build future features on, plus a plain-language user guide when there is something a user operates. Follow the project's agent instructions (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md). The user's message after the skill name is the `arguments`.
 
 ```
-/bt-recon [--guide|--no-guide] [--no-live] [--quick] [--out <dir>] <brief>
+/bt-recon [--guide|--no-guide] [--no-live] [--quick] [--out <dir>] [--slug <name>] <brief>
 /bt-recon --refresh @.agents/recon/<slug>_recon.md
 
 /bt-recon "the default camera system"
@@ -20,7 +20,8 @@ Run reconnaissance on existing code nobody has documented — one subsystem or t
 - `--guide` — always write the user guide. `--no-guide` — never write it. Neither → write it when the scope has UI — anything a person operates (Step 8).
 - `--no-live` — skip the live pass (Step 5) even when the brief gives a URL.
 - `--quick` — a lighter recon: one reader per slice, no coverage audit (Step 6). The output keeps the same sections.
-- `--out <dir>` — write the outputs to `<dir>` instead of `.agents/recon/`.
+- `--out <dir>` — write the outputs to `<dir>` instead of `.agents/recon/` (the doc, the guide and the screenshot folder all go there). Other skills use it to keep a recon inside the folder it belongs to — bt-profile writes a profile's recons to `.agents/profile/<slug>/recon/`, so everything about one profiled moment moves or archives as one folder.
+- `--slug <name>` — use this `recon_slug` instead of deriving one from the brief (same rule: `a-z 0-9 -`, max 40 chars). Other skills pass it so they know the file name in advance and can cite it (bt-profile's report builds the `bt-spec … using @<recon>` command before the recon exists).
 - `--refresh @<recon file>` — update an existing recon against what changed since it was written (Refresh mode, at the end).
 - Strip the flags first; they are never part of the brief or the file name. No brief → ask for one. Never guess a path or URL.
 
@@ -43,7 +44,7 @@ From the flag-stripped brief derive `recon_title` (Title Case, e.g. `Session Cam
 
 Note any URL (it enables the live pass), and any audience or emphasis hints ("focus on the CMS endpoints") — emphasis deepens a section, it never drops one. If you cannot infer a sensible title, ask.
 
-If `.agents/recon/<recon_slug>_recon.md` already exists, ask whether to refresh it (Refresh mode) or replace it. Never overwrite it silently.
+If `<out>/<recon_slug>_recon.md` already exists (`<out>` is `--out`, else `.agents/recon`), ask whether to refresh it (Refresh mode) or replace it. Never overwrite it silently — with one exception: a deep run replaces an existing **quick** recon (`depth: quick` in its header) without asking, and says so. Asking there would only ever get one answer, and a skill that runs recon unattended (bt-profile) must not stop on a question.
 
 ## Step 2. Locate and map the scope
 
@@ -117,7 +118,7 @@ Include every section. A section that genuinely does not apply says so in one li
 
 scope: <the brief, one line> · kind: <subsystem|codebase>
 commit: <short sha> · date: <YYYY-MM-DD> · files: <n> (<total> lines)
-guide: <.agents/recon/<slug>_guide.md | none> · live: <yes | no (<reason>)>
+guide: <.agents/recon/<slug>_guide.md | none> · live: <yes | no (<reason>)> · depth: <deep | quick>
 confidence tags: [code] read in source · [live] seen running · [history] from git · [inferred] deduced
 
 ## Summary
