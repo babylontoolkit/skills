@@ -77,7 +77,7 @@ Interview the user until the design is decided, after Steps 2–3 so questions a
   tests/            every test the plan's tasks write
 ```
 
-Print `✍️ [bt-spec] Drafting .agents/specs/<feature_slug>/documents/<feature_slug>_spec.md …`, then make sure the default `.agents` folders exist — `.agents/archive/`, `.agents/profile/`, `.agents/recon/` and `.agents/specs/`, each with an empty `.gitkeep` (write only the ones missing; never touch what a folder holds), and write the spec to `.agents/specs/<feature_slug>/documents/<feature_slug>_spec.md` (creating the folders) using the project's `FEATURE.md` template if it exists (add any header field or section below that it lacks), otherwise this structure. No implementation detail or code examples.
+Print `✍️ [bt-spec] Drafting .agents/specs/<feature_slug>/documents/<feature_slug>_spec.md …`, then make sure the default `.agents` folders exist — `.agents/archive/`, `.agents/profile/`, `.agents/recon/` and `.agents/specs/`, each with an empty `.gitkeep` (write only the ones missing; never touch what a folder holds), and write the spec to `.agents/specs/<feature_slug>/documents/<feature_slug>_spec.md` (creating the folders) using the project's `FEATURE.md` template if it exists (add any header field or section below that it lacks), otherwise this structure. No implementation detail or code examples. Then go straight to Step 6 for this feature.
 
 ```markdown
 # Spec for <feature-name>
@@ -127,6 +127,8 @@ Create test file(s) in .agents/specs/<feature-name>/tests/ for these named cases
 ```
 
 ## Step 6. Write the dashboard (specified state)
+
+Write the dashboard **straight after its spec, before anything else** — a spec never sits on disk without its dashboard. When one request produces several specs, finish each feature (spec, then dashboard) before drafting the next; never write the specs first and the dashboards in a batch at the end.
 
 Print `🗂️ [bt-spec] Writing the feature dashboard …`. The feature's dashboard exists from the spec on: until a plan is written it shows the `bt-plan` commands that plan this spec — a standard plan, `--heavy`, `--parity`, `--no-time-limit` — each with a copy button, and a *Build your own* with those options and a brief. From bt-execute's `templates/dashboard/` *(where skills load through a tool: `load_skill('bt-execute')` + `read_skill_resource`; where they are files: the sibling `bt-execute/` folder in the skills directory this skill was loaded from)*:
 
