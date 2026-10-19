@@ -348,6 +348,7 @@
   .after-action-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
   .after-action-head .kicker { margin: 0; }
   .after-action .headline { margin: 14px 0 18px; font-size: 24px; }
+  .after-action .plan-summary-link { margin: -6px 0 18px; }
   .plan-compare .shot { box-shadow: none; }
   .plan-compare .shot-frame { aspect-ratio: auto !important; height: min(64vh, 54vw); }
   .after-action-columns { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; margin-top: 22px; }
@@ -1122,6 +1123,7 @@
             <span class="meta">${snapshotBadge([...(comparison && comparison.before && comparison.after ? [comparison] : []), ...(afterAction.snapshots || [])])}${isFinal ? '' :'<span class="status status-in-progress">Interim — plan not finished</span>'}${updatedBadge(afterAction.updates)}</span>
           </div>
           ${afterAction.headline ? `<h3 class="headline">${formatInline(afterAction.headline)}</h3>` : ''}
+          ${afterAction.planSummary && effectiveStatus() === 'complete' ? `<div class="doc-links plan-summary-link"><a href="${safeUrl(afterAction.planSummary)}">📄 Plan summary — the plan in plain language</a></div>` : ''}
           ${comparison && comparison.before && comparison.after ? `<div class="plan-compare">${renderSnapshot(comparison)}</div>` : ''}
           <div class="after-action-columns">
             <div>
@@ -1732,6 +1734,7 @@
       afterAction.updates = asUpdates(afterAction.updates);
       afterAction.snapshots = repairSnapshots(afterAction.snapshots);
       ['body', 'highlights', 'sections'].forEach((key) => { if (afterAction[key] !== undefined) afterAction[key] = asList(afterAction[key]); });
+      if (afterAction.planSummary !== undefined && typeof afterAction.planSummary !== 'string') delete afterAction.planSummary;
       if (afterAction.testing !== undefined) {
         if (afterAction.testing === null || typeof afterAction.testing !== 'object') afterAction.testing = null;
         else {

@@ -116,6 +116,7 @@ Top level:
 | `snapshots` | optional: the plan's key progression, or the end-to-end proof |
 | `testing` | how the plan was tested — every run, not only `--verbose` (below) |
 | `sections` | `--verbose` only: `[{ "title", "body": [paragraphs], "items": [bullets] }]`, in this order where they apply — Architecture · Phase by phase · Problems and resolutions · Deviations from the plan · Known limitations · Lessons learned · Estimate vs actual · Recommended next steps |
+| `planSummary` | `"summary.md"` once the plan is `complete` and its plain-language summary is written (bt-execute's `templates/plan-summary.md`); the report links to it while the plan is complete. Absent before that |
 | `updates` | see *Updated notifications* |
 
 `afterAction.testing` — the page shows it as *Testing and verification*, beside a task-by-task table and
