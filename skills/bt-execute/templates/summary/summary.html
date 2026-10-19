@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan Summary</title>
+<!--
+  Plan Summary — one feature's plan told in plain language for readers who never see the code.
+
+  This page is a fixed template: copy it to .agents/specs/<slug>/documents/<slug>_summary.html, replace {{slug}} below
+  with the feature slug, and never hand-edit anything else. Everything shown comes from the data file beside it,
+  <slug>_summary.js — strict JSON behind a one-line `window.PLAN_SUMMARY =` prefix (fields and
+  writing rules: summary-guide.md). It opens straight from disk (file://) — no server, no build, no network.
+-->
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --paper: #ffffff;
+    --line: #e4dfd4;
+    --text: #1d232b;
+    --text-muted: #5b6573;
+    --text-faint: #8a93a0;
+    --accent: #0f6fa8;
+    --accent-soft: rgba(15, 111, 168, 0.09);
+    --impact: #8a5a00;
+    --impact-soft: rgba(196, 136, 0, 0.11);
+    --wrong: #b3372b;
+    --wrong-soft: rgba(179, 55, 43, 0.09);
+    --changed: #18794e;
+    --changed-soft: rgba(24, 121, 78, 0.10);
+    --unchanged: #5b6573;
+    --unchanged-soft: rgba(91, 101, 115, 0.10);
+    --checked: #0f6fa8;
+    --checked-soft: rgba(15, 111, 168, 0.09);
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, ui-serif, serif;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --paper: #141a22;
+      --line: #252f3b;
+      --text: #e6edf3;
+      --text-muted: #9aa6b4;
+      --text-faint: #6b7787;
+      --accent: #5cc8ff;
+      --accent-soft: rgba(92, 200, 255, 0.12);
+      --impact: #f2c060;
+      --impact-soft: rgba(242, 192, 96, 0.12);
+      --wrong: #ff8a7a;
+      --wrong-soft: rgba(255, 138, 122, 0.11);
+      --changed: #3fd18b;
+      --changed-soft: rgba(63, 209, 139, 0.12);
+      --unchanged: #9aa6b4;
+      --unchanged-soft: rgba(154, 166, 180, 0.12);
+      --checked: #5cc8ff;
+      --checked-soft: rgba(92, 200, 255, 0.12);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.65 var(--font-sans);
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  strong { font-weight: 650; }
+  main { max-width: 760px; margin: 0 auto; padding: 56px 16px 72px; }
+
+  /* ---------- Header ---------- */
+  .kicker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    margin: 0 0 18px;
+    color: var(--text-muted);
+    font: 600 12.5px/1.4 var(--font-sans);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .kicker .plan { color: var(--accent); }
+  .stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    background: var(--changed-soft);
+    color: var(--changed);
+    letter-spacing: 0.02em;
+    text-transform: none;
+    font-size: 13px;
+  }
+  .stamp::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  h1 {
+    margin: 0 0 22px;
+    font: 600 clamp(30px, 6vw, 42px)/1.15 var(--font-serif);
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  .lead p { margin: 0 0 14px; font-size: 19px; line-height: 1.6; }
+  .lead p:last-child { margin-bottom: 0; }
+
+  /* ---------- Sections ---------- */
+  section {
+    margin-top: 40px;
+    padding: 28px 30px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--paper);
+    --tone: var(--accent);
+    --tone-soft: var(--accent-soft);
+  }
+  section.impact { --tone: var(--impact); --tone-soft: var(--impact-soft); }
+  section.wrong { --tone: var(--wrong); --tone-soft: var(--wrong-soft); }
+  section.changed { --tone: var(--changed); --tone-soft: var(--changed-soft); }
+  section.unchanged { --tone: var(--unchanged); --tone-soft: var(--unchanged-soft); }
+  section.checked { --tone: var(--checked); --tone-soft: var(--checked-soft); }
+  h2 {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin: 0 0 16px;
+    font: 600 23px/1.3 var(--font-serif);
+  }
+  h2::before {
+    content: "";
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--tone);
+    box-shadow: 0 0 0 5px var(--tone-soft);
+  }
+  section > p { margin: 0 0 14px; }
+  section > :last-child { margin-bottom: 0; }
+
+  ul, ol { margin: 0 0 14px; padding: 0; list-style: none; }
+  li { position: relative; margin: 0 0 12px; padding-left: 26px; }
+  li:last-child { margin-bottom: 0; }
+  ul > li::before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 0.66em;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--tone);
+  }
+  ol { counter-reset: item; }
+  ol > li { counter-increment: item; padding-left: 40px; }
+  ol > li::before {
+    content: counter(item);
+    position: absolute;
+    left: 0;
+    top: 0.1em;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--tone-soft);
+    color: var(--tone);
+    font: 700 13px/1 var(--font-sans);
+  }
+  li ul, li ol { margin: 10px 0 0; }
+  li li { margin-bottom: 6px; }
+  li li::before { opacity: 0.6; }
+
+  /* ---------- Footer and states ---------- */
+  footer {
+    margin-top: 44px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    color: var(--text-faint);
+    font-size: 13.5px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    justify-content: space-between;
+  }
+  .notice {
+    margin-top: 80px;
+    padding: 28px 30px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--paper);
+    color: var(--text-muted);
+  }
+  .notice h1 { font-size: 26px; color: var(--text); }
+
+  @media (max-width: 560px) {
+    main { padding-top: 36px; }
+    section { padding: 22px 18px; }
+    .lead p { font-size: 18px; }
+  }
+  @media print {
+    :root { --bg: #ffffff; --paper: #ffffff; }
+    body { font-size: 12pt; }
+    main { padding: 0; max-width: none; }
+    section { break-inside: avoid; border-color: #ccc; }
+    footer a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<main id="summary"></main>
+<script src="{{slug}}_summary.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /** Section kinds the page colours; anything else gets the accent colour. */
+  const KINDS = new Set(['impact', 'wrong', 'changed', 'unchanged', 'checked']);
+  const root = document.getElementById('summary');
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /** Escapes text, then allows **bold** — the only markup summary text may use. */
+  function formatInline(text) {
+    return escapeHtml(text).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  }
+
+  /** A list field written as one string becomes a one-item list; anything else that is not a list, empty. */
+  function asList(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string' && value.trim()) return [value];
+    return [];
+  }
+
+  /** A list item: a string, or { "text", "items", "numbered" } for an item with its own sub-list. */
+  function renderItem(item) {
+    if (item && typeof item === 'object') {
+      const children = asList(item.items);
+      return `<li>${formatInline(item.text)}${children.length ? renderList(children, item.numbered) : ''}</li>`;
+    }
+    return `<li>${formatInline(item)}</li>`;
+  }
+
+  function renderList(items, numbered) {
+    const tag = numbered ? 'ol' : 'ul';
+    return `<${tag}>${items.map(renderItem).join('')}</${tag}>`;
+  }
+
+  /** A block: a string is a paragraph; { "list": [...], "numbered": true|false } is a list. */
+  function renderBlock(block) {
+    if (block && typeof block === 'object') return renderList(asList(block.list), block.numbered);
+    return `<p>${formatInline(block)}</p>`;
+  }
+
+  function renderSection(section) {
+    if (!section || typeof section !== 'object') return '';
+    const blocks = asList(section.blocks);
+    if (!section.heading || !blocks.length) return '';
+    const kind = KINDS.has(section.kind) ? section.kind : '';
+    return `
+      <section${kind ? ` class="${kind}"` : ''}>
+        <h2>${formatInline(section.heading)}</h2>
+        ${blocks.map(renderBlock).join('')}
+      </section>`;
+  }
+
+  function render(data) {
+    const title = data.title || 'Plan';
+    const outcome = data.outcome || '';
+    document.title = outcome ? `${title}: ${outcome}` : `${title} — Plan Summary`;
+    root.innerHTML = `
+      <header>
+        <p class="kicker">
+          <span class="plan">${escapeHtml(title)}</span>
+          <span>Plan summary</span>
+          ${data.stamp ? `<span class="stamp">${escapeHtml(data.stamp)}</span>` : ''}
+        </p>
+        <h1>${formatInline(outcome || title)}</h1>
+        <div class="lead">${asList(data.lead).map((paragraph) => `<p>${formatInline(paragraph)}</p>`).join('')}</div>
+      </header>
+      ${asList(data.sections).map(renderSection).join('')}
+      <footer>
+        <span>${data.writtenAt ? `Written ${escapeHtml(data.writtenAt)}` : ''}</span>
+        <a href="../dashboard.html">Technical record: the feature dashboard →</a>
+      </footer>`;
+  }
+
+  function notice(heading, text) {
+    root.innerHTML = `<div class="notice"><h1>${escapeHtml(heading)}</h1><p>${text}</p></div>`;
+  }
+
+  const data = window.PLAN_SUMMARY;
+  if (!data || typeof data !== 'object') {
+    notice('No summary yet', 'This page reads <code>&lt;slug&gt;_summary.js</code> next to it. The summary is written when the plan is complete.');
+    return;
+  }
+  try {
+    render(data);
+  } catch (error) {
+    notice('The summary could not be shown', `A field in <code>&lt;slug&gt;_summary.js</code> has an unexpected shape: ${escapeHtml(error && error.message ? error.message : String(error))}.`);
+  }
+})();
+</script>
+</body>
+</html>

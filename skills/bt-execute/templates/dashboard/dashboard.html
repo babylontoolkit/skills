@@ -936,7 +936,7 @@
 
     const view = pageView();
     // Stat tiles and phase bars first; then one slot that follows the run: Current run activity while it runs,
-    // the Final plan summary (the After Action Report) once it is over.
+    // the After action report section once it is over.
     appRoot.innerHTML = [
       renderMasthead(feature, allTasks.length, doneCount),
       renderNav(allUpdates.length, view),
@@ -1119,7 +1119,7 @@
       body = `
         <article class="card after-action">
           <div class="after-action-head">
-            <span class="kicker">After Action Report${afterAction.writtenAt ? ` <span>· ${escapeHtml(afterAction.writtenAt)}</span>` : ''}</span>
+            <span class="kicker">Plan Execution Debrief${afterAction.writtenAt ? ` <span>· ${escapeHtml(afterAction.writtenAt)}</span>` : ''}</span>
             <span class="meta">${snapshotBadge([...(comparison && comparison.before && comparison.after ? [comparison] : []), ...(afterAction.snapshots || [])])}${isFinal ? '' :'<span class="status status-in-progress">Interim — plan not finished</span>'}${updatedBadge(afterAction.updates)}</span>
           </div>
           ${afterAction.headline ? `<h3 class="headline">${formatInline(afterAction.headline)}</h3>` : ''}
@@ -1140,7 +1140,7 @@
     }
     return `
       <section id="after-action">
-        <div class="section-head"><h2>Final plan summary</h2><span class="section-note">The whole plan's execution, start to finish</span></div>
+        <div class="section-head"><h2>After action report</h2><span class="section-note">The whole plan's execution, start to finish</span></div>
         ${body}
       </section>`;
   }

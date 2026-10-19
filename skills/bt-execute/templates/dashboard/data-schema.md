@@ -77,7 +77,7 @@ instead of a blank page if something still cannot render — it keeps checking a
 - A task added to the plan after it was complete is added here as `pending`, in plan order, with an `updates`
   note saying why — and `complete` becomes `paused`.
 - The status picks the page's top slot: `specified` shows *Plan this feature* (the `bt-plan` commands to copy, and a builder for its options and a brief); `planned` shows *Start this plan* (the `bt-execute` commands, and a builder for any task range and its options); `in-progress` shows *Current run activity* (the live file and the
-  milestones); `paused`, `complete` and `incomplete` show *Final plan summary* (the After Action Report, marked
+  milestones); `paused`, `complete` and `incomplete` show *After action report* (the After Action Report, in its *Plan Execution Debrief* card, marked
   *Interim* while paused), with *Continue this plan* — the commands that pick up where it stopped — above it.
 - **Cadence is per task.** A task's entry changes the moment it starts (`in-progress`), the moment it is built
   (`built` — summary, files, tests and snapshots filled in right then), while the verifier checks it
@@ -116,7 +116,7 @@ Top level:
 | `snapshots` | optional: the plan's key progression, or the end-to-end proof |
 | `testing` | how the plan was tested — every run, not only `--verbose` (below) |
 | `sections` | `--verbose` only: `[{ "title", "body": [paragraphs], "items": [bullets] }]`, in this order where they apply — Architecture · Phase by phase · Problems and resolutions · Deviations from the plan · Known limitations · Lessons learned · Estimate vs actual · Recommended next steps |
-| `planSummary` | `"summary.md"` once the plan is `complete` and its plain-language summary is written (bt-execute's `templates/plan-summary.md`); the report links to it while the plan is complete. Absent before that |
+| `planSummary` | `"documents/<slug>_summary.html"` once the plan is `complete` and its plain-language summary page is written (bt-execute's `templates/summary/summary-guide.md`); the report links to it while the plan is complete. Absent before that |
 | `updates` | see *Updated notifications* |
 
 `afterAction.testing` — the page shows it as *Testing and verification*, beside a task-by-task table and
@@ -148,7 +148,7 @@ Each task:
 | Field | Meaning |
 |---|---|
 | `id`, `title` | from the plan (`T1`, `T3.1` …) |
-| `kind` | `code` · `live` · `unity` — the plan's estimate kind |
+| `kind` | `code` · `live` · `game` · `unity` — the plan's estimate kind |
 | `verifyLevel` | `standard` · `live` |
 | `status` | see *Status* |
 | `summary` | what was actually done, and anything surprising |
