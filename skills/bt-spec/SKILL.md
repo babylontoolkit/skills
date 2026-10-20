@@ -30,7 +30,7 @@ Turn a short feature idea into a spec file that `bt-plan` can plan from. Follow 
 
 ## Step 1. Arguments, name, branch
 
-From the flag-stripped brief derive `feature_title` (Title Case), `feature_slug` (lowercase kebab-case, `a-z 0-9 -` only, max 40 chars) and `branch_name` = `project/feature/<feature_slug>`. If `.agents/specs/<feature_slug>/` already holds another feature, or a folder of that name exists anywhere under `.agents/archive/` (archived work), append `-02`, `-03` … to the slug. If you cannot infer a sensible title, ask. Make a first estimate of the feature's `size` (defined in Step 5) — it sizes the research in Step 2.
+From the flag-stripped brief derive `feature_title` (Title Case), `feature_slug` (lowercase kebab-case, `a-z 0-9 -` only, max 40 chars) and `branch_name` = `project/feature/<feature_slug>`. If a folder of that name already exists in `.agents/specs/`, `.agents/complete/` or anywhere under `.agents/archived/` (the user moves finished features from `specs/` to `complete/` for review, and later on to `archived/`), append `-02`, `-03` … to the slug, so any of them can be moved back. If you cannot infer a sensible title, ask. Make a first estimate of the feature's `size` (defined in Step 5) — it sizes the research in Step 2.
 
 Git is optional. **Where git is available:** stop now if the working tree has uncommitted or untracked files (ask the user to commit or stash); switch to a new branch `branch_name` (if taken, append `-01`, `-02` …) just before writing the spec in Step 5, so a conflict stop leaves no empty branch behind. **Where it is not** (no binary, sandboxed host such as the Babylon Toolkit App Builder): skip this silently — the branch name recorded in the spec header is the deliverable. Do not mention git as missing.
 
@@ -79,7 +79,7 @@ Interview the user until the design is decided, after Steps 2–3 so questions a
   recon/            copies of the recons the brief cites (`using @…_recon.md`), when it cites any
 ```
 
-Print `✍️ [bt-spec] Drafting .agents/specs/<feature_slug>/documents/<feature_slug>_spec.md …`, then make sure the default `.agents` folders exist — `.agents/archive/`, `.agents/profile/`, `.agents/recon/` and `.agents/specs/`, each with an empty `.gitkeep` (write only the ones missing; never touch what a folder holds), and write the spec to `.agents/specs/<feature_slug>/documents/<feature_slug>_spec.md` (creating the folders) using the project's `FEATURE.md` template if it exists (add any header field or section below that it lacks), otherwise this structure. No implementation detail or code examples. Then go straight to Step 6 for this feature.
+Print `✍️ [bt-spec] Drafting .agents/specs/<feature_slug>/documents/<feature_slug>_spec.md …`, then make sure the default `.agents` folders exist — `.agents/specs/`, `.agents/complete/`, `.agents/archived/`, `.agents/profile/` and `.agents/recon/`, each with an empty `.gitkeep` (write only the ones missing; never touch what a folder holds), and write the spec to `.agents/specs/<feature_slug>/documents/<feature_slug>_spec.md` (creating the folders) using the project's `FEATURE.md` template if it exists (add any header field or section below that it lacks), otherwise this structure. No implementation detail or code examples. Then go straight to Step 6 for this feature.
 
 ```markdown
 # Spec for <feature-name>
@@ -137,7 +137,7 @@ Print `🗂️ [bt-spec] Writing the feature dashboard …`. The feature's dashb
 - copy `dashboard.html` to `.agents/specs/<feature_slug>/dashboard.html`, replacing `{{slug}}` with the slug and changing nothing else;
 - write `.agents/specs/<feature_slug>/documents/<feature_slug>_dashboard.js` from the starter `dashboard.template.js`, written whole as strict JSON behind its `window.FEATURE_DASHBOARD =` prefix — double-quoted keys, no comments, no trailing commas (`data-schema.md` documents every field): `feature` (title, slug, branch, `origin: "spec"`, size, proof, a plain-language summary from the spec's Summary), `documents` (the Spec alone), **`status: "specified"`**, `updatedAt` (the current local time, `YYYY-MM-DD HH:MM`), `estimate` empty, **no phases**, an empty `afterAction`, the spec's Decisions as `decisions` when it has any (`D1` …), no follow ups, and one `activity` line: `Spec written — <size>, <proof> proof`;
 - write `.agents/specs/<feature_slug>/documents/<feature_slug>_live.js` from `live.template.js`, the same way: no task, `role: "orchestrator"`, `title: "Spec written — waiting for bt-plan"`, no steps;
-- in a git repository, make sure `.gitignore` (at the repository root) contains the line `.agents/specs/*/documents/*_live.js` — append it once if missing.
+- in a git repository, make sure `.gitignore` (at the repository root) contains the line `.agents/*/*/documents/*_live.js` — append it once if missing.
 
 If the template cannot be found, skip the dashboard and say so — bt-plan creates it with the plan.
 

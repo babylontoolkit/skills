@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.84)
+# Babylon Toolkit Desktop Agent (1.1.85)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -331,7 +331,7 @@ activity logs at the bottom. The After Action Report is the whole plan's executi
 was built, how it was proven, what surprised, the run's figures — around **one before/after for the
 plan as a whole**, taken from the same camera before the first task and after the last — and a
 **Testing and verification** section: each test suite's final result from one last full run, what is
-not covered, and every task's tests, test cases, live check and verifier result. Every project keeps four default `.agents` folders, created together the first time any of them is needed and kept with a `.gitkeep` even while empty: `archive/` (move finished or shelved feature folders here — a feature missing from `specs/` is never treated as an error, and a new slug never reuses an archived one), `profile/`, `recon/` and `specs/`. Recon docs
+not covered, and every task's tests, test cases, live check and verifier result. Every project keeps five default `.agents` folders, created together the first time any of them is needed and kept with a `.gitkeep` even while empty: `specs/` (the features being worked on), `complete/` (move a feature's whole folder here when its plan is done — the small set of finished work under active review), `archived/` (the long-running store of older completed work, moved on from `complete/` when you see fit), `profile/` and `recon/`. The agent never moves a feature folder; a feature missing from `specs/` is never treated as an error, a reopened plan runs from wherever its folder is, and a new slug never reuses one in any of the three. Recon docs
 stay in `.agents/recon/`; older flat specs and plans in `.agents/specs/` keep working where they are.
 
 Add `--verbose` to `bt-execute` for a fully written-up dashboard: every task card gains its approach

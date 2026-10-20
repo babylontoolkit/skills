@@ -2063,7 +2063,7 @@
   /**
    * Where a recorded file path opens from this page. A path inside this feature's folder
    * (`.agents/specs/<slug>/tests/…`, or `tests/…`) opens relative to the page, so the link survives the folder being
-   * moved to `.agents/archive/`. Any other project path opens from the project root: the part of this page's address
+   * moved to `.agents/complete/` or anywhere under `.agents/archived/`. Any other project path opens from the project root: the part of this page's address
    * before `/.agents/`.
    */
   function fileHref(file) {
@@ -2072,7 +2072,7 @@
     if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return cleanUrl(value);
     if (value.startsWith('/')) return `file://${value}`;
     const slug = report.feature && report.feature.slug;
-    const ownFolder = /^\.agents\/(?:archive\/)?specs\/([^/]+)\//.exec(value);
+    const ownFolder = /^\.agents\/(?:specs|complete|archived|archive)\/(?:[^/]+\/)*?([^/]+)\/(?=(?:tests|documents|snapshots|recon)\/)/.exec(value);
     if (ownFolder && (!slug || ownFolder[1] === slug)) return value.slice(ownFolder[0].length);
     if (/^(?:tests|documents|snapshots|recon)\//.test(value)) return value;
     const here = location.href.split(/[?#]/)[0];

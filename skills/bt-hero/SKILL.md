@@ -66,7 +66,7 @@ Then resolve every unfilled slot by exactly one of two paths:
 
 ## Step 2 — Write the hero brief (the save file)
 
-Write the resolved slots to `.agents/specs/<feature-name>/documents/<feature-name>_hero-brief.md` — the feature's folder (create it if needed, after you make sure the default `.agents` folders exist — `.agents/archive/`, `.agents/profile/`, `.agents/recon/` and `.agents/specs/`, each with an empty `.gitkeep` (write only the ones missing; never touch what a folder holds); inside a bt-spec run it is the spec's own folder). The brief is the **record**, not a gate: the user never has to touch it, but `/bt-hero @<brief-file>` later must rebuild the same hero with zero questions — that is what makes a hero repeatable, shareable, and tweakable (edit a line, re-run). Record **only Tier 3 answers and explicit Tier 2 overrides** — never Tier 1 mechanics; the brief describes the film, not the engine.
+Write the resolved slots to `.agents/specs/<feature-name>/documents/<feature-name>_hero-brief.md` — the feature's folder (create it if needed, after you make sure the default `.agents` folders exist — `.agents/specs/`, `.agents/complete/`, `.agents/archived/`, `.agents/profile/` and `.agents/recon/`, each with an empty `.gitkeep` (write only the ones missing; never touch what a folder holds); inside a bt-spec run it is the spec's own folder). The brief is the **record**, not a gate: the user never has to touch it, but `/bt-hero @<brief-file>` later must rebuild the same hero with zero questions — that is what makes a hero repeatable, shareable, and tweakable (edit a line, re-run). Record **only Tier 3 answers and explicit Tier 2 overrides** — never Tier 1 mechanics; the brief describes the film, not the engine.
 
 ```markdown
 ---
