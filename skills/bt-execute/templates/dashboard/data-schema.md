@@ -77,7 +77,7 @@ instead of a blank page if something still cannot render — it keeps checking a
 - A task added to the plan after it was complete is added here as `pending`, in plan order, with an `updates`
   note saying why — and `complete` becomes `paused`.
 - The status picks the page's top slot: `specified` shows *Plan this feature* (the `bt-plan` commands to copy, and a builder for its options and a brief); `planned` shows *Start this plan* (the `bt-execute` commands, and a builder for any task range and its options); `in-progress` shows *Current run activity* (the live file and the
-  milestones); `paused`, `complete` and `incomplete` show *After action report* (the After Action Report, in its *Plan Execution Debrief* card, marked
+  milestones); `paused`, `complete` and `incomplete` show *Execution debrief* (the After Action Report card, marked
   *Interim* while paused), with *Continue this plan* — the commands that pick up where it stopped — above it.
 - **Cadence is per task.** A task's entry changes the moment it starts (`in-progress`), the moment it is built
   (`built` — summary, files, tests and snapshots filled in right then), while the verifier checks it
@@ -153,7 +153,7 @@ Each task:
 | `status` | see *Status* |
 | `summary` | what was actually done, and anything surprising |
 | `files` | paths changed |
-| `tests` | `{ "passed", "failed", "files": [".agents/specs/<slug>/tests/…"], "note" }` or `null` |
+| `tests` | `{ "passed", "failed", "files": [".agents/specs/<slug>/tests/…"], "note" }` or `null`. `files` holds **paths only**, each from the project root (a test outside the feature folder: its real path, e.g. `BtMarioKartWeb/tests/RaceConfig.test.ts`), because the page links each one to the file. Counts, suite names and commands go in `note` |
 | `verifier` | `"PASS — independent subagent; live check in Chrome"` |
 | `checkedLive` | every run, not only `--verbose`: one line on what the verifier ran live and where — `"two-tab Shared race in headless Chrome, 150 ms lag"`; `""` when it was proven by tests alone. The page's *live check* badge and column read it (a task the plan marked `live` always counts) |
 | `attempts`, `commit`, `doneAt` | as recorded |

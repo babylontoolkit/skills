@@ -161,6 +161,9 @@
   .chip-warning { border-color: var(--failed); color: var(--failed); background: var(--failed-soft); }
   .chip-warning strong { color: var(--failed); }
   .doc-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  a.file-link { text-decoration: none; }
+  a.file-link code { color: var(--accent); }
+  a.file-link:hover code { text-decoration: underline; }
   .doc-links a {
     display: inline-flex;
     gap: 6px;
@@ -936,7 +939,7 @@
 
     const view = pageView();
     // Stat tiles and phase bars first; then one slot that follows the run: Current run activity while it runs,
-    // the After action report section once it is over.
+    // the Execution debrief section (the After Action Report) once it is over.
     appRoot.innerHTML = [
       renderMasthead(feature, allTasks.length, doneCount),
       renderNav(allUpdates.length, view),
@@ -1119,7 +1122,7 @@
       body = `
         <article class="card after-action">
           <div class="after-action-head">
-            <span class="kicker">Plan Execution Debrief${afterAction.writtenAt ? ` <span>· ${escapeHtml(afterAction.writtenAt)}</span>` : ''}</span>
+            <span class="kicker">After Action Report${afterAction.writtenAt ? ` <span>· ${escapeHtml(afterAction.writtenAt)}</span>` : ''}</span>
             <span class="meta">${snapshotBadge([...(comparison && comparison.before && comparison.after ? [comparison] : []), ...(afterAction.snapshots || [])])}${isFinal ? '' :'<span class="status status-in-progress">Interim — plan not finished</span>'}${updatedBadge(afterAction.updates)}</span>
           </div>
           ${afterAction.headline ? `<h3 class="headline">${formatInline(afterAction.headline)}</h3>` : ''}
@@ -1140,7 +1143,7 @@
     }
     return `
       <section id="after-action">
-        <div class="section-head"><h2>After action report</h2><span class="section-note">The whole plan's execution, start to finish</span></div>
+        <div class="section-head"><h2>Execution debrief</h2><span class="section-note">The whole plan's execution, start to finish</span></div>
         ${body}
       </section>`;
   }
@@ -1426,7 +1429,7 @@
           hasTests(task)
             ? `<span class="count count-pass">${escapeHtml(tests.passed ?? 0)} passed</span>${Number(tests.failed) ? `<div class="count count-fail">${escapeHtml(tests.failed)} failed</div>` : ''}`
             : `<span class="cell-note" title="${escapeAttribute(tests.note || '')}">${tests.note ? escapeHtml(tests.note) : '—'}</span>`,
-          (tests.files || []).length ? tests.files.map((file) => `<code>${escapeHtml(file)}</code>`).join('<br>') : '—',
+          (tests.files || []).length ? tests.files.map(fileLink).join('<br>') : '—',
           cases.length ? `${cases.length}${casesFailed ? `<div class="count count-fail">${casesFailed} failed</div>` : ''}` : '—',
           hasLiveCheck(task) ? `<span title="${escapeAttribute(liveCheckNote(task))}">Yes</span>` : '—',
         ];
@@ -1526,7 +1529,7 @@
       tests.passed != null ? `${escapeHtml(tests.passed)} passed` : '',
       tests.failed ? `${escapeHtml(tests.failed)} failed` : '',
     ].filter(Boolean).join(' · ');
-    const files = (tests.files || []).map((file) => `<code>${escapeHtml(file)}</code>`).join(' ');
+    const files = (tests.files || []).map(fileLink).join(' ');
     const note = tests.note ? formatInline(tests.note) : '';
     return [counts, files, note].filter(Boolean).join('<br>');
   }
@@ -2055,6 +2058,38 @@
   function cleanUrl(url) {
     const value = String(url || '').trim();
     return /^[a-z][a-z0-9+.-]*:/i.test(value) && !/^https?:/i.test(value) ? '#' : value;
+  }
+
+  /**
+   * Where a recorded file path opens from this page. A path inside this feature's folder
+   * (`.agents/specs/<slug>/tests/…`, or `tests/…`) opens relative to the page, so the link survives the folder being
+   * moved to `.agents/archive/`. Any other project path opens from the project root: the part of this page's address
+   * before `/.agents/`.
+   */
+  function fileHref(file) {
+    const value = String(file || '').trim().replace(/^\.\//, '');
+    if (!value) return '#';
+    if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return cleanUrl(value);
+    if (value.startsWith('/')) return `file://${value}`;
+    const slug = report.feature && report.feature.slug;
+    const ownFolder = /^\.agents\/(?:archive\/)?specs\/([^/]+)\//.exec(value);
+    if (ownFolder && (!slug || ownFolder[1] === slug)) return value.slice(ownFolder[0].length);
+    if (/^(?:tests|documents|snapshots|recon)\//.test(value)) return value;
+    const here = location.href.split(/[?#]/)[0];
+    const agents = here.indexOf('/.agents/');
+    return agents >= 0 ? here.slice(0, agents + 1) + value : `../../../${value}`;
+  }
+
+  /**
+   * A recorded test file as a link that opens it in a new tab (a browser shows .js, .mjs, .json, .py, .cs as text).
+   * A note after the path — `run-karting-tests.js (99)` — stays in the text but not in the link. An entry that is not
+   * a path at all (`BtMarioKartWeb npm test (178)`, `$WEB tests (vitest)`) stays plain text rather than a dead link.
+   */
+  function fileLink(file) {
+    const text = String(file || '');
+    const target = text.trim().replace(/\s+\([^()]*\)\s*$/, '');
+    if (!/^[^\s$]+\.[a-z0-9]+$/i.test(target)) return `<code>${escapeHtml(text)}</code>`;
+    return `<a class="file-link" href="${escapeAttribute(fileHref(target))}" target="_blank" rel="noopener" title="Open ${escapeAttribute(target)}"><code>${escapeHtml(text)}</code></a>`;
   }
 
   /** `cleanUrl`, escaped for use inside an HTML attribute. */

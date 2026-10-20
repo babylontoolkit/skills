@@ -701,7 +701,11 @@ function shotsFrom(dir, reportDir) {
 
 /** Lowercase kebab-case, `a-z 0-9 -` only, at most 40 characters — bt-recon's slug rule. */
 function kebab(text) {
-    return String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "");
+    const slug = String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    if (slug.length <= 40) return slug;
+    // Cut at the last whole word that fits, so a long title never ends mid-word.
+    const cut = slug.slice(0, 41);
+    return (cut.lastIndexOf("-") > 0 ? cut.slice(0, cut.lastIndexOf("-")) : slug.slice(0, 40)).replace(/-+$/g, "");
 }
 
 /** Reads a recon doc's depth from its header (`depth: quick`); a recon written before the field existed is deep. */
