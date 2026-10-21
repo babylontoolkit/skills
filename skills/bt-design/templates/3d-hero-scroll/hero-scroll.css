@@ -113,11 +113,13 @@ body[data-hs-state="ready"] #hs-loader { opacity: 0; visibility: hidden; }
   overflow: hidden;
 }
 
+/* The fill is full width and scaled, never resized: progress writes a transform (no layout). */
 #hs-loader-fill {
-  display: block; height: 100%; width: 0%;
+  display: block; height: 100%; width: 100%;
+  transform: scaleX(0); transform-origin: left;
   background: var(--hs-accent);
   box-shadow: 0 0 12px var(--hs-accent), 0 0 32px var(--hs-accent-soft);
-  transition: width 0.25s ease;
+  transition: transform 0.25s ease;
 }
 
 /* ── telemetry HUD (optional) ───────────────────────────────────── */

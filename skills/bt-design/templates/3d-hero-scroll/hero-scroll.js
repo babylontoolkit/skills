@@ -156,9 +156,14 @@ export function initHeroScroll(root = document, userConfig = {}) {
   let objectUrl = null;
   let alive = true;
 
+  let shownLoaderPct = -1;
+
+  /** Shows download progress; writes only when the whole percent shown changes (a stream fires many chunks). */
   function setLoader(p) {
     const pct = Math.round(clamp(p, 0, 1) * 100);
-    if (loaderFill) loaderFill.style.width = pct + "%";
+    if (pct === shownLoaderPct) return;
+    shownLoaderPct = pct;
+    if (loaderFill) loaderFill.style.transform = `scaleX(${pct / 100})`;
     if (loaderPct) loaderPct.textContent = String(pct).padStart(3, "0");
   }
 
@@ -189,6 +194,7 @@ export function initHeroScroll(root = document, userConfig = {}) {
       duration = video.duration;
       video.currentTime = 0;
       videoReady = true;
+      invalidateFrame(); // seek to wherever the viewer already scrolled while it loaded
     } catch (e) {
       document.body.classList.add(CFG.fallbackClass); // poster still shows
       setLoader(1);
@@ -306,6 +312,16 @@ export function initHeroScroll(root = document, userConfig = {}) {
     if (element && element.textContent !== text) element.textContent = text;
   }
   let frameRaf = null;
+  // The scrub position and scroll offset the chrome was last drawn at. While both are unchanged the frame
+  // loop writes nothing: a page at rest costs one scroll read per frame, not a full redraw of the chrome.
+  let drawnP = Number.NaN;
+  let drawnY = Number.NaN;
+
+  /** Forces the next frame to redraw everything (after a re-measure or when the video becomes seekable). */
+  function invalidateFrame() {
+    drawnP = Number.NaN;
+    drawnY = Number.NaN;
+  }
 
   function measure() {
     const sTop = isDocScroller ? 0 : scroller.getBoundingClientRect().top;
@@ -314,6 +330,7 @@ export function initHeroScroll(root = document, userConfig = {}) {
     viewportHeight = viewportH();
     journeyScroll = Math.max(1, journeyHeight - viewportHeight);
     frameEndY = endY();
+    invalidateFrame();
   }
 
   // where PLAY/END consider "the end": journey end (sweep:"hero") or
@@ -324,11 +341,20 @@ export function initHeroScroll(root = document, userConfig = {}) {
       : maxY();
 
   function frame() {
-    const y = clamp(getY() - journeyTop, 0, journeyScroll);
+    const scrollY = getY();
+    const y = clamp(scrollY - journeyTop, 0, journeyScroll);
     const p = y / journeyScroll;
 
     smoothP += (p - smoothP) * (reduced ? 1 : CFG.smoothing);
     if (Math.abs(p - smoothP) < 0.0004) smoothP = p;
+
+    // At rest — same scroll, scrub settled, nothing invalidated: every value below is already on screen.
+    if (smoothP === drawnP && scrollY === drawnY) {
+      if (alive) frameRaf = requestAnimationFrame(frame);
+      return;
+    }
+    drawnP = smoothP;
+    drawnY = scrollY;
 
     if (videoReady && duration) {
       const t = smoothP * Math.max(0, duration - 0.05);
@@ -338,6 +364,7 @@ export function initHeroScroll(root = document, userConfig = {}) {
     if (CFG.motionBlur && !reduced && videoReady) {
       const blur = Math.min(5, Math.abs(smoothP - lastP) * 620);
       video.style.filter = blur > 0.35 ? `blur(${blur.toFixed(2)}px)` : "none";
+      if (blur > 0.35) drawnP = Number.NaN; // still blurred: draw the next frame too, so the blur clears at rest
     }
     lastP = smoothP;
 
@@ -353,12 +380,12 @@ export function initHeroScroll(root = document, userConfig = {}) {
       }
       hud.classList.toggle(
         "hs-hud-off",
-        getY() > journeyTop + journeyHeight - viewportHeight * 0.55
+        scrollY > journeyTop + journeyHeight - viewportHeight * 0.55
       );
     }
 
-    if (gotoTop) gotoTop.classList.toggle("hs-nav-dim", getY() < 4);
-    if (gotoEnd) gotoEnd.classList.toggle("hs-nav-dim", getY() >= frameEndY - 4);
+    if (gotoTop) gotoTop.classList.toggle("hs-nav-dim", scrollY < 4);
+    if (gotoEnd) gotoEnd.classList.toggle("hs-nav-dim", scrollY >= frameEndY - 4);
 
     for (const o of overlays) styleOverlay(o, smoothP);
 

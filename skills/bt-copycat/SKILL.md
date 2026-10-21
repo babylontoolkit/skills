@@ -148,7 +148,7 @@ Instruct bt-design to:
 
 - Match the blueprint's mechanics and timing **exactly** — this is a fidelity job, not a fresh design. Where bt-design would normally improvise, here it executes the blueprint.
 - Generate the re-imagined video/image/3D assets (image & video generation) to fill the asset manifest under the new theme — as beautiful and cinematic as the original's.
-- Reproduce the load choreography, scroll behavior, and micro-interactions from the motion table.
+- Reproduce the load choreography, scroll behavior, and micro-interactions from the motion table — **with the Agent Reference's Game UI Performance — ENFORCED cadence, even where the original wastes frames.** Load reveals, staggers, hovers, pulses and enter / exit motion are CSS `@keyframes` / `transition` on `transform` and `opacity`, never a JavaScript frame loop. Only genuinely scroll- or time-driven motion (a scrub hero, a WebGL scene, scroll-linked parallax) runs per frame, and it writes nothing while the scroll is at rest, pauses off-screen (`IntersectionObserver`) and in a background tab, never animates `width` / `height` / `top` / `left`, and never reads layout in the loop. Copy the original's *feel*, not its per-frame cost (`ui-design-system.md` › **Per frame or not**).
 - **Reproduce the audio model from the blueprint** — if the original has sound, rebuild the equivalent behavior (ambient bed, interaction/scroll SFX, mute toggle, autoplay-gating on first user gesture per browser policy) and generate re-imagined audio assets that match the new theme. If the original is silent, do not add audio unless the brief asks for it.
 
 **Enforced build mandate (always apply):**
@@ -168,7 +168,7 @@ A copycat that "feels off" has failed. Before declaring done, verify the rebuild
 
 - Open the rebuilt site in the browser and capture the **same scroll-depth storyboard** you captured in Phase 1. Compare side by side against the blueprint — does each beat land at the same scroll position with the same motion?
 - Check the load sequence, easings, and stagger match the motion table.
-- Confirm nothing is janky: smooth scrubbing, no layout shift, motion holds 60fps where the original does.
+- Confirm nothing is janky: smooth scrubbing, no layout shift, motion holds 60fps where the original does. Record a short performance trace with the page at rest after load: with nothing scrolling and nothing hovered, the main thread is idle — no frame loop doing work, no style or layout recalculation each frame.
 - Confirm the audio behavior matches the blueprint: if the original had sound, ours has the equivalent ambient bed / SFX, a working mute toggle, and correct autoplay-gating; if the original was silent, ours is too (unless the brief asked otherwise).
 - Confirm the *skin* fully reads as the new brief, not a recolor of the original's content.
 

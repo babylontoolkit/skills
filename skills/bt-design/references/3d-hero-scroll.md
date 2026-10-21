@@ -294,3 +294,12 @@ overlays, and the fixed chrome. Apply the handoff rule (§3) at the seam.
   re-entry in either scroll direction.
 - The HUD hides itself when the journey hands off to normal-flow sections;
   jump-nav buttons dim at the end they're already at.
+- The frame loop writes nothing at rest: while the scroll offset and the
+  smoothed scrub are unchanged it skips every DOM write (overlays, HUD, video
+  seek, blur), so a page left open costs one scroll read per frame. Layout is
+  read only on load and resize, never in the loop. Keep both when you extend
+  the engine — a per-frame write that does not check for a change is a
+  violation of the Agent Reference's *Game UI Performance — ENFORCED*.
+- The loader bar is a full-width fill scaled with `scaleX`, written only when
+  its whole percent changes — never `width` (a download fires many chunks a
+  second).
