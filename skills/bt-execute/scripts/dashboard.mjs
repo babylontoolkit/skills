@@ -8,12 +8,19 @@
  *
  *   node dashboard.mjs live     <feature-folder> --task T19 --role implementer --activity "…" [--phase 7] [--step "…"]… [--reset] [--title "…"]
  *   node dashboard.mjs task     <feature-folder> <task-id> --set '{"status":"built","summary":"…"}' [--note "why an earlier result changed" --by T21]
+ *   node dashboard.mjs snapshot <feature-folder> <T7|P2|plan> --src snapshots/T7-01-stage.png --caption "…" [--title "…"] [--source unity]
+ *                              (comparison: --before snapshots/a.png --after snapshots/b.png [--before-caption …] [--after-caption …];
+ *                               progression: --frame "snapshots/x.png|stage|caption" repeated)
  *   node dashboard.mjs activity <feature-folder> "Phase 2 verified — T4–T6 PASS"
  *   node dashboard.mjs status   <feature-folder> in-progress|paused|complete|incomplete
  *   node dashboard.mjs check    <feature-folder>
  *   node dashboard.mjs watch    <feature-folder> [--watch <folder>]… [--interval-seconds 60] [--quiet-minutes 10] [--stall-minutes 30] [--max-hours 12]
  *
  * <feature-folder> is .agents/specs/<slug>. Timestamps come from this machine's local clock.
+ *
+ * Snapshots go in only through `snapshot`. `task --set` and `check` refuse any snapshot entry the page cannot show —
+ * an image under `path` (or `file`, `image`, …) instead of `src`, or a `src` that is not a file under the feature
+ * folder — because such an entry renders as "No snapshot".
  */
 import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
@@ -30,6 +37,17 @@ const TASK_LIST_FIELDS = ['files', 'decisions', 'snapshots', 'updates'];
 const TASK_OBJECT_FIELDS = ['tests', 'details'];
 /** Statuses that mean a task is being worked on right now. */
 const ACTIVE_TASK_STATUSES = new Set(['in-progress', 'built', 'verifying']);
+/** Where a snapshot's image may come from. */
+const SNAPSHOT_SOURCES = ['browser', 'unity', 'blender', 'reference'];
+/** Keys agents reach for instead of `src`; the page reads none of them, so the image never shows. */
+const WRONG_IMAGE_KEYS = ['path', 'file', 'image', 'url', 'href'];
+/** The three snapshot shapes, quoted in every refusal so the writer can fix the entry in one go. */
+const SNAPSHOT_SHAPES_HELP = [
+  'still      { "title", "caption", "source", "src": "snapshots/T3-01-stage.png", "updates": [] }',
+  'comparison { "title", "caption", "source", "before": { "src", "caption" }, "after": { "src", "caption" }, "updates": [] }',
+  'progression { "title", "caption", "source", "frames": [{ "src", "stage", "caption", "task", "at" }], "updates": [] }',
+  'Easier: node dashboard.mjs snapshot <feature-folder> <T3|P1|plan> --src snapshots/… --caption "…" builds the entry for you.',
+].join('\n  ');
 
 const [command, featureFolder, ...rest] = process.argv.slice(2);
 
@@ -163,6 +181,10 @@ function writeTask(folder, argumentList) {
   if (!task) throw new Error(`task ${taskId} is not in ${dashboardPath} — sync the dashboard with the plan first`);
   const changes = JSON.parse(options.set);
   checkTaskShape(changes);
+  if (Array.isArray(changes.snapshots)) {
+    const problems = changes.snapshots.flatMap((snapshot, index) => snapshotProblems(folder, snapshot, `${taskId}.snapshots[${index}]`));
+    if (problems.length) throw new Error(snapshotRefusal(problems));
+  }
   Object.assign(task, changes);
   const now = localTime();
   if (typeof options.note === 'string') {
@@ -186,6 +208,136 @@ function checkTaskShape(changes) {
     const value = changes[field];
     if (field in changes && value !== null && (typeof value !== 'object' || Array.isArray(value))) throw new Error(`"${field}" must be an object or null`);
   }
+}
+
+/**
+ * Lists what is wrong with one snapshot entry: an unknown shape, an image under a key the page never reads
+ * (`path` instead of `src` — the page then shows "No snapshot"), or an image file that is not on disk.
+ * @param {string} folder The feature folder; `src` paths are relative to it.
+ * @param {any} snapshot The entry.
+ * @param {string} where Where the entry sits, for the message, e.g. `T3.snapshots[0]`.
+ * @returns {string[]} One line per problem; empty when the entry renders.
+ */
+function snapshotProblems(folder, snapshot, where) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return [`${where} is not an object`];
+  const problems = [];
+  const checkImage = (image, imageWhere) => {
+    if (!image || typeof image !== 'object') {
+      problems.push(`${imageWhere} is missing`);
+      return;
+    }
+    const wrongKey = WRONG_IMAGE_KEYS.find((key) => key in image);
+    if (wrongKey) problems.push(`${imageWhere} has "${wrongKey}" — the page reads only "src"; rename it`);
+    if (typeof image.src !== 'string' || !image.src) {
+      if (!wrongKey) problems.push(`${imageWhere} has no "src"`);
+      return;
+    }
+    if (/^[a-z]+:/i.test(image.src)) return;
+    if (!existsSync(join(folder, image.src))) problems.push(`${imageWhere}.src "${image.src}" is not a file under ${folder}`);
+  };
+  if (Array.isArray(snapshot.frames)) {
+    if (!snapshot.frames.length) problems.push(`${where}.frames is empty`);
+    snapshot.frames.forEach((frame, index) => checkImage(frame, `${where}.frames[${index}]`));
+  } else if (snapshot.before !== undefined || snapshot.after !== undefined) {
+    checkImage(snapshot.before, `${where}.before`);
+    checkImage(snapshot.after, `${where}.after`);
+  } else {
+    checkImage(snapshot, where);
+  }
+  if (snapshot.source !== undefined && !SNAPSHOT_SOURCES.includes(snapshot.source)) {
+    problems.push(`${where}.source "${snapshot.source}" must be one of ${SNAPSHOT_SOURCES.join(', ')}`);
+  }
+  if (snapshot.updates !== undefined && !Array.isArray(snapshot.updates)) problems.push(`${where}.updates must be a list`);
+  return problems;
+}
+
+/**
+ * Builds the refusal message for bad snapshot entries, quoting the shapes the page renders.
+ * @param {string[]} problems What is wrong, one line each.
+ * @returns {string}
+ */
+function snapshotRefusal(problems) {
+  return `refused — these snapshots would show "No snapshot" on the page:\n  ${problems.join('\n  ')}\nThe shapes:\n  ${SNAPSHOT_SHAPES_HELP}`;
+}
+
+/**
+ * Finds the snapshot list a target names: a task (`T3`, `T12.2`), a phase (`P2`) or the plan-wide After Action
+ * Report (`plan`).
+ * @param {any} dashboard The dashboard data.
+ * @param {string} target The target.
+ * @returns {any[]} The live list inside `dashboard`, created when it was missing.
+ */
+function snapshotListFor(dashboard, target) {
+  if (target === 'plan') {
+    dashboard.afterAction = dashboard.afterAction && typeof dashboard.afterAction === 'object' ? dashboard.afterAction : {};
+    if (!Array.isArray(dashboard.afterAction.snapshots)) dashboard.afterAction.snapshots = [];
+    return dashboard.afterAction.snapshots;
+  }
+  const phaseMatch = /^P(\d+)$/i.exec(target);
+  const owner = phaseMatch
+    ? (dashboard.phases || []).find((phase) => phase.number === Number(phaseMatch[1]))
+    : findTask(dashboard, target);
+  if (!owner) throw new Error(`no ${phaseMatch ? 'phase' : 'task'} "${target}" in the dashboard — sync it with the plan first`);
+  if (!Array.isArray(owner.snapshots)) owner.snapshots = [];
+  return owner.snapshots;
+}
+
+/**
+ * Appends one snapshot — a still (`--src`), a comparison (`--before` and `--after`) or a progression (`--frame`,
+ * repeated, each `src|stage|caption`) — to a task, a phase or the plan, building the shape the page renders and
+ * refusing an image that is not on disk. This is the way to add snapshots: nobody writes snapshot JSON by hand.
+ * @param {string} folder The feature folder.
+ * @param {string[]} argumentList The target and options.
+ */
+function writeSnapshot(folder, argumentList) {
+  const { options, positional } = parseOptions(argumentList, ['frame']);
+  const [target] = positional;
+  const usage = 'usage: snapshot <feature-folder> <T3|P1|plan> (--src snapshots/x.png | --before snapshots/a.png --after snapshots/b.png | --frame "snapshots/x.png|stage|caption"…) --caption "…" [--title "…"] [--source browser|unity|blender|reference] [--before-caption "…"] [--after-caption "…"] [--task T3]';
+  if (!target) throw new Error(usage);
+  const caption = typeof options.caption === 'string' ? options.caption : '';
+  const snapshot = { title: typeof options.title === 'string' ? options.title : caption, caption, source: typeof options.source === 'string' ? options.source : 'browser' };
+  if (typeof options.src === 'string') {
+    snapshot.src = options.src;
+  } else if (typeof options.before === 'string' && typeof options.after === 'string') {
+    snapshot.before = { src: options.before, caption: typeof options['before-caption'] === 'string' ? options['before-caption'] : 'Before' };
+    snapshot.after = { src: options.after, caption: typeof options['after-caption'] === 'string' ? options['after-caption'] : 'After' };
+  } else if (options.frame.length) {
+    const now = localTime();
+    snapshot.frames = options.frame.map((frame) => {
+      const [src, stage = '', frameCaption = ''] = String(frame).split('|');
+      return { src, stage, caption: frameCaption, task: typeof options.task === 'string' ? options.task : target, at: now.clock };
+    });
+  } else {
+    throw new Error(usage);
+  }
+  snapshot.updates = [];
+  const problems = snapshotProblems(folder, snapshot, target);
+  if (problems.length) throw new Error(snapshotRefusal(problems));
+  const { dashboardPath } = dataPaths(folder);
+  const { prefix, data } = readData(dashboardPath);
+  snapshotListFor(data, target).push(snapshot);
+  data.updatedAt = localTime().stamp;
+  writeData(dashboardPath, prefix, data);
+}
+
+/**
+ * Every snapshot entry in the dashboard with where it sits: the After Action Report, each phase and each task.
+ * @param {any} dashboard The dashboard data.
+ * @returns {{ snapshot: any, where: string }[]}
+ */
+function allSnapshots(dashboard) {
+  const entries = [];
+  const collect = (list, owner) => (Array.isArray(list) ? list : []).forEach((snapshot, index) => entries.push({ snapshot, where: `${owner}.snapshots[${index}]` }));
+  if (dashboard.afterAction) {
+    collect(dashboard.afterAction.snapshots, 'afterAction');
+    const comparison = dashboard.afterAction.comparison;
+    if (comparison) entries.push({ snapshot: comparison, where: 'afterAction.comparison' });
+  }
+  for (const phase of dashboard.phases || []) {
+    collect(phase.snapshots, `P${phase.number}`);
+    for (const task of phase.tasks || []) collect(task.snapshots, task.id);
+  }
+  return entries;
 }
 
 /**
@@ -222,14 +374,19 @@ function writeStatus(folder, argumentList) {
 }
 
 /**
- * Confirms both data files parse.
+ * Confirms both data files parse and every snapshot entry will show its image; fails listing each one that would
+ * show "No snapshot".
  * @param {string} folder The feature folder.
+ * @throws {Error} When a file does not parse or a snapshot entry is broken.
  */
 function checkData(folder) {
   const { dashboardPath, livePath } = dataPaths(folder);
-  readData(dashboardPath);
+  const { data } = readData(dashboardPath);
   if (existsSync(livePath)) readData(livePath);
-  console.log(`ok: ${dashboardPath}${existsSync(livePath) ? ` and ${livePath}` : ''} parse`);
+  const snapshots = allSnapshots(data);
+  const problems = snapshots.flatMap(({ snapshot, where }) => snapshotProblems(folder, snapshot, where));
+  if (problems.length) throw new Error(snapshotRefusal(problems));
+  console.log(`ok: ${dashboardPath}${existsSync(livePath) ? ` and ${livePath}` : ''} parse; ${snapshots.length} snapshot entries all show an image`);
 }
 
 /**
@@ -383,10 +540,10 @@ function checkLive(dashboard, livePath, roots, projectRoot, quietMinutes, stallM
   console.log(`watchdog ${clock}: ${activity}`);
 }
 
-const commands = { live: writeLive, task: writeTask, activity: writeActivity, status: writeStatus, check: checkData, watch };
+const commands = { live: writeLive, task: writeTask, snapshot: writeSnapshot, activity: writeActivity, status: writeStatus, check: checkData, watch };
 
 if (!commands[command] || !featureFolder) {
-  console.error('usage: node dashboard.mjs <live|task|activity|status|check|watch> <feature-folder> [options] — see the header of this file');
+  console.error('usage: node dashboard.mjs <live|task|snapshot|activity|status|check|watch> <feature-folder> [options] — see the header of this file');
   process.exit(2);
 }
 try {

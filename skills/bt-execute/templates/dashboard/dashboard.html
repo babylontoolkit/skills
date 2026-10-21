@@ -1725,9 +1725,26 @@
       if (typeof value === 'string' && value) return [{ note: value }];
       return asList(value).map((update) => (typeof update === 'string' ? { note: update } : update)).filter((update) => update && typeof update === 'object');
     };
+    // An image written under `path` (or `file`, `image`, `url`) instead of `src` would show "No snapshot": read it
+    // from there and say so in the console, so the slip shows its picture and still gets fixed at the source.
+    const imageKeys = ['path', 'file', 'image', 'url'];
+    const repairImage = (image) => {
+      if (!image || typeof image !== 'object' || image.src) return image;
+      const wrongKey = imageKeys.find((key) => typeof image[key] === 'string' && image[key]);
+      if (wrongKey) {
+        console.warn(`Dashboard: a snapshot has its image under "${wrongKey}" instead of "src" (${image[wrongKey]}) — write snapshots with dashboard.mjs snapshot.`);
+        image.src = image[wrongKey];
+      }
+      return image;
+    };
     const repairSnapshots = (snapshots) => asList(snapshots)
       .filter((snapshot) => snapshot && typeof snapshot === 'object')
-      .map((snapshot) => Object.assign(snapshot, { updates: asUpdates(snapshot.updates) }, snapshot.frames !== undefined ? { frames: asList(snapshot.frames) } : {}));
+      .map((snapshot) => {
+        repairImage(snapshot);
+        repairImage(snapshot.before);
+        repairImage(snapshot.after);
+        return Object.assign(snapshot, { updates: asUpdates(snapshot.updates) }, snapshot.frames !== undefined ? { frames: asList(snapshot.frames).map(repairImage) } : {});
+      });
     data.phases = asList(data.phases);
     data.decisions = asList(data.decisions).map((decision) => Object.assign(decision, { updates: asUpdates(decision.updates) }));
     data.followUps = asList(data.followUps);

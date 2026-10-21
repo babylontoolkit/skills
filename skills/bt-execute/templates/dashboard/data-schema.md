@@ -178,6 +178,8 @@ Each task:
 
 ## Snapshot shapes
 
+**Add snapshots with `node <skills>/bt-execute/scripts/dashboard.mjs snapshot <feature-folder> <T3|P1|plan> --src snapshots/… --caption "…"`** (`--before`/`--after` for a comparison, `--frame "src|stage|caption"` repeated for a progression) — never by writing the JSON yourself. The image key is **`src`**, relative to the feature folder; an entry with `path` (or `file`, `image`) instead renders as "No snapshot", so `task --set` and `check` refuse it.
+
 Any list of snapshots may mix them. `source` names where the image came from: `"browser"`, `"unity"`,
 `"blender"`, `"reference"`.
 
