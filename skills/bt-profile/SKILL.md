@@ -100,7 +100,7 @@ The clock of the CPU profile is tied to the page's clock by a named busy-wait ma
 
 # Pipeline
 
-Read the Babylon Toolkit Agent Reference router and the sub-documents the project's code touches (`node-esm.md` or `classic.md`, `scene-components.md`, `react-framework.md` for a React host, `fusion-networking.md` for networked play) before the first run in a session — unless your prompt already carries those excerpts.
+Read the Babylon Toolkit Agent Reference router and the sub-documents the project's code touches (`node-esm.md` or `classic.md`, `scene-components.md`, `react-framework.md` for a React host, `networking.md` for networked play) before the first run in a session — unless your prompt already carries those excerpts.
 
 The names below are shorthand for absolute paths used throughout this skill — write them out in every command (or set them at the top of the same command): most agent shells keep no variables between commands.
 

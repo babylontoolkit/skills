@@ -97,7 +97,7 @@ Rate each task by the **kind of work it does** (classify tasks, not the plan —
 - **Live or Game?** Loading a scene and reading values from it is Live. Playing it until something happens is Game. Game work ran 1.2–2.8× its estimate when it was rated Live, because every scenario is a real-time play session and a bug that only shows on lap three costs three laps each time it is checked.
 - **Do not budget fix rounds.** They are inside the rates: about one task in four needed a second attempt in both calibrations, and every one of those is already in the numbers. Defensively budgeting rounds per phase was the single largest source of over-estimation in the first calibration.
 - **Do not add a further margin.** The range is the margin. Do not discount for parallel phases either — the rates are wall-clock with bt-execute's usual parallelism.
-- **Outsized work is 2× the task's own kind rate**, never a flat figure. A task that ports a whole engine subsystem rated as Code is 12 min, not the Unity rate doubled (fusion-networking rated its nine engine-scale code tasks at a flat 72 min each, estimated 15.7 h and ran 6.4 h). A task that builds a compiler or transpiler, or must prove coverage across many Unity sample projects, is 2× Unity (shadergraph-transpiler-complete-coverage: 72 min/task). Multiply by ~2 for `proof: parity` only if the plan really carries numeric gates, and by ~2–3 for `bt-execute --strict` (neither measured yet).
+- **Outsized work is 2× the task's own kind rate**, never a flat figure. A task that ports a whole engine subsystem rated as Code is 12 min, not the Unity rate doubled (babylon-toolkit-networking rated its nine engine-scale code tasks at a flat 72 min each, estimated 15.7 h and ran 6.4 h). A task that builds a compiler or transpiler, or must prove coverage across many Unity sample projects, is 2× Unity (shadergraph-transpiler-complete-coverage: 72 min/task). Multiply by ~2 for `proof: parity` only if the plan really carries numeric gates, and by ~2–3 for `bt-execute --strict` (neither measured yet).
 - **Unity frame-matching runs long.** A task proven by matching Unity frame by frame (animation feel, foot IK, landing poses) is where Unity tasks overran most (starter-assets-third-person: 2.4×). Name it as the biggest uncertainty.
 - **The estimate covers the plan as written.** Tasks added mid-run cost far more than planned ones — unity-terrain-system-parity's 17 planned tasks took about 6 h, the 9 added during the run about 21 h; mario-kart-port grew from 22 to 42 tasks. Say so in the biggest-uncertainty line when the scope is still moving. Tasks added after a plan is complete get their own estimate at these rates.
 
@@ -115,7 +115,7 @@ Rate each task by the **kind of work it does** (classify tasks, not the plan —
 | unity-timeline-playback | code 5 · Unity 6 | 186 min | 0.78 |
 | babylon-game-server | code 8 · live 8 | 157 min | 0.89 |
 | mario-kart-leftover-particles | game 5 | 189 min | 0.94 |
-| fusion-networking | code 20 · Unity 8 | 385 min | 0.96 |
+| babylon-toolkit-networking | code 20 · Unity 8 | 385 min | 0.96 |
 | mario-kart-drift-vfx-parity | Unity 2 · game 1 | 107 min | 0.97 |
 | cinemachine-port | code 10 · Unity 14 | 560 min | 1.02 |
 | vfx-graph-port | code 10 · Unity 7 | 310 min | 1.02 |
