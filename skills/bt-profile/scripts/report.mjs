@@ -108,6 +108,7 @@ function pageData(analysis, reportDir, captureDir) {
         timeline,
         marks: analysis.marks,
         worstFrames: analysis.worstFrames,
+        lateStutter: analysis.lateStutter || null,
         hotLines: analysis.hotLines,
         excerpts: analysis.excerpts,
         heap: analysis.heap,
@@ -565,6 +566,46 @@ function renderWorst() {
   $("#worst").innerHTML = "<div class='scroll'><table><thead><tr><th class='num'>at</th><th>Phase</th><th>Kind</th><th class='num'>CPU ms</th><th class='num'>gap ms</th><th class='num'>script ms</th><th class='num'>new pipelines</th><th>Filled by</th><th>Your code in it</th></tr></thead><tbody>" + run.worstFrames.map((f) => "<tr><td class='num'>" + fmt(f.t) + "s</td><td class='nw'>" + esc(f.phase || "") + "</td><td class='nw'>" + esc(kindLabel[f.kind] || "–") + "</td><td class='num'>" + fmt(f.cpuMs) + "</td><td class='num'>" + fmt(f.intervalMs) + "</td><td class='num'>" + fmt(f.scriptMs) + "</td><td class='num'>" + fmt(f.pipelinesNear) + "</td><td class='where'>" + esc(f.top.map((e) => e.name + " " + e.ms).join(" · ")) + "</td><td class='where'>" + (f.yours.map((e) => link(e.file, e.line, e.name + " " + e.ms + " ms")).join(" · ") || "–") + "</td></tr>").join("") + "</tbody></table></div>";
 }
 
+/**
+ * Late stutter: what happened for the first time after the reveal, and the hitches it lined up with. Late compiles are
+ * grouped by cause, each with the fix that usually removes it (the Babylon Toolkit's pre-warm rules).
+ */
+function renderLate() {
+  const late = run.lateStutter;
+  const wrap = $("#late-wrap");
+  if (!late || (!late.hitchCount && !late.lateCompileCount && !late.pipelinesAfterReveal)) { wrap.style.display = "none"; return; }
+  const kindFix = {
+    particles: "Particles: pre-warm the system with TOOLKIT.SceneShaderWarmup.WarmParticleSystem(system), or register the prefab that spawns it with WarmPrefab.",
+    postprocess: "Post processes: create them at load and toggle them; never create one during play.",
+    renderpass: "Render passes: create render targets, mirrors, probes and cameras at load; stop their refresh instead of creating them later.",
+    mesh: "Meshes: spawned during play → register the prefab with WarmPrefab before the reveal. Already in the scene → a variant change during play (a light added, fog or clip planes toggled, a first instance, a texture transform moved, a look-alike material) — or a pass the pre-warm never drew (see the passes above).",
+    unknown: "Unknown cause: re-run on a development build so the toolkit's detector names it.",
+  };
+  const isMainPass = (name) => /^main$/i.test(name);
+  const summary = '<p class="meta">Revealed at ' + (late.revealT != null ? fmt(late.revealT) + " s (" + esc(late.revealSource) + ")" : "— no reveal found") +
+    " · " + fmt(late.hitchCount, 0) + " hitch(es) over " + fmt(late.hitchThresholdMs, 0) + " ms (" + fmt(late.hitchMs, 0) + " ms in all) · " + fmt(late.lateCompileCount, 0) + " late compile(s) · " +
+    fmt(late.pipelinesAfterReveal, 0) + " pipelines · " + fmt(late.texturesAfterReveal, 0) + " textures · " + fmt(late.audioDecodesAfterReveal, 0) + " audio decodes · " + fmt((late.downloadsAfterReveal || []).length, 0) + " downloads after the reveal" +
+    (late.toolkit && late.toolkit.safetyNet ? ". The WebGPU safety net is on: a late pipeline skips its draw for a frame or two, so it shows as pop-in rather than a freeze." : ".") + "</p>";
+  const suspects = (h) => [
+    h.lateCompileCount ? h.lateCompileCount + " late compile(s): " + h.lateCompiles.slice(0, 2).join("; ") : "",
+    h.pipelines ? h.pipelines + " pipelines" : "", h.gcMs ? "GC " + fmt(h.gcMs) + " ms" : "", h.textures ? h.textures + " textures" : "",
+    h.downloads.length ? "downloads " + h.downloads.map((d) => d.name).join(", ") : "", h.audioDecodes ? h.audioDecodes + " audio decode(s)" : "",
+    Object.keys(h.growth).length ? "new " + Object.keys(h.growth).map((k) => h.growth[k] + " " + k).join(", ") : "",
+  ].filter(Boolean).join(" · ");
+  const hitches = late.hitches.length ? "<div class='scroll'><table><thead><tr><th class='num'>at</th><th class='num'>after reveal</th><th>Phase</th><th class='num'>frame ms</th><th>Likely cause</th><th class='num'>script ms</th><th>Suspects</th><th>Your code in it</th></tr></thead><tbody>" +
+    late.hitches.map((h) => "<tr><td class='num'>" + fmt(h.t) + "s</td><td class='num'>" + (h.msAfterReveal != null ? fmt(h.msAfterReveal / 1000) + "s" : "–") + "</td><td class='nw'>" + esc(h.phase || "") + "</td><td class='num'>" + fmt(h.intervalMs) + "</td><td>" + esc(h.likely) + "</td><td class='num'>" + fmt(h.scriptMs) + "</td><td class='where'>" + esc(suspects(h) || "–") + "</td><td class='where'>" + (h.yours.map((e) => link(e.file, e.line, e.name + " " + e.ms + " ms")).join(" · ") || "–") + "</td></tr>").join("") + "</tbody></table></div>" : "<p class='meta'>No hitches after the reveal.</p>";
+  const passes = (late.lateCompilePasses || []).length ? "<h3>Late compiles by render pass</h3><div class='scroll'><table><thead><tr><th class='num'>count</th><th>Render pass</th><th class='num'>causes</th><th class='num'>first after reveal</th><th>What it means</th></tr></thead><tbody>" +
+    late.lateCompilePasses.map((p) => "<tr><td class='num'>" + fmt(p.count, 0) + "</td><td class='where'>" + esc(p.pass) + "</td><td class='num'>" + fmt(p.causes, 0) + "</td><td class='num'>" + fmt(p.firstMsAfterReveal / 1000) + "s</td><td>" +
+      esc(isMainPass(p.pass) ? "The main pass: see the causes below." : "A camera or render target the pre-warm never drew: one created after the reveal (create it at load), or WarmAllCamerasOnReveal turned off. Toolkit 1.1.88+ warms every screen camera in the scene at the reveal; an older toolkit warms only the camera active while it runs.") + "</td></tr>").join("") + "</tbody></table></div>" : "";
+  const kinds = [...new Set(late.lateCompiles.map((g) => g.causeKind || "unknown"))];
+  const compiles = late.lateCompiles.length ? "<h3>Late compiles by cause</h3><div class='scroll'><table><thead><tr><th class='num'>count</th><th>Cause</th><th>Shader</th><th class='num'>first after reveal</th></tr></thead><tbody>" +
+    late.lateCompiles.map((g) => "<tr><td class='num'>" + fmt(g.count, 0) + "</td><td class='where'>" + esc(g.cause) + "</td><td class='nw'>" + esc(g.effects.join(", ") || "–") + "</td><td class='num'>" + fmt(g.firstMsAfterReveal / 1000) + "s</td></tr>").join("") + "</tbody></table></div>" +
+    "<p class='meta'><strong>What usually fixes them.</strong></p><ul class='meta'>" + kinds.map((k) => "<li>" + esc(kindFix[k] || kindFix.unknown) + "</li>").join("") + "</ul>" : "";
+  const downloads = (late.downloadsAfterReveal || []).length ? "<h3>Downloads that finished after the reveal</h3><div class='scroll'><table><thead><tr><th class='num'>at</th><th>File</th><th>Type</th><th class='num'>KB</th><th class='num'>ms</th></tr></thead><tbody>" +
+    late.downloadsAfterReveal.map((d) => "<tr><td class='num'>" + fmt(d.t) + "s</td><td class='where'>" + esc(d.name) + "</td><td class='nw'>" + esc(d.type) + "</td><td class='num'>" + fmt(d.kb, 0) + "</td><td class='num'>" + fmt(d.ms, 0) + "</td></tr>").join("") + "</tbody></table></div>" : "";
+  $("#late").innerHTML = summary + hitches + passes + compiles + downloads;
+}
+
 function renderShots() {
   if (!run.shots.length) { $("#shots-wrap").style.display = "none"; return; }
   $("#shots").innerHTML = run.shots.map((s) => {
@@ -606,7 +647,7 @@ $("#theme").addEventListener("click", () => {
   const dark = root.dataset.theme ? root.dataset.theme === "dark" : !matchMedia("(prefers-color-scheme: light)").matches;
   root.dataset.theme = dark ? "light" : "dark";
 });
-renderTiles(); renderFindings(); renderFixes(); renderTimeline(); renderPhases(); renderOwners(); renderFunctions(); renderHeap(); renderWorst(); renderShots(); renderWarm(); renderMeta();
+renderTiles(); renderFindings(); renderFixes(); renderTimeline(); renderPhases(); renderOwners(); renderFunctions(); renderHeap(); renderWorst(); renderLate(); renderShots(); renderWarm(); renderMeta();
 let resizeTimer; addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderTimeline, 150); });
 `;
 
@@ -648,6 +689,10 @@ function buildPage({ title, verdict, data, pdfName }) {
   <h2>Who uses the main thread, second by second</h2>
   <section class="panel"><div class="legend" id="owner-legend"></div><div id="chart-owners"></div>
     <div id="film-wrap"><div class="film" id="film"></div></div></section>
+
+  <div id="late-wrap"><h2>Late stutter — after the reveal</h2>
+  <p class="meta">What happened for the first time after the loading screen lifted, and the hitches it lined up with. A finished game drives the late compiles to zero: everything it draws is compiled behind the splash.</p>
+  <section class="panel" id="late"></section></div>
 
   <h2>Phases</h2>
   <section class="phases" id="phases"></section>

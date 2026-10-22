@@ -10,7 +10,9 @@
  *   programs / pipelines), JS heap;
  * - long animation frames (LoAF) with their script attribution, when the browser supports them;
  * - every shader module / pipeline (WebGPU) and program (WebGL) the page creates, with its time (`gpuCompiles`);
- * - phase marks set by the scenario (`__btProfile.mark("countdown")`).
+ * - phase marks set by the scenario (`__btProfile.mark("countdown")`);
+ * - the late-stutter sources: the Babylon Toolkit's reveal and every late compile it names with its cause (`reveals`,
+ *   `lateCompiles`), downloads (`resources`), GPU textures created (`textures`) and audio decodes (`audioDecodes`).
  *
  * Every time is an epoch time in milliseconds (`performance.timeOrigin + performance.now()`), so frames, marks and
  * the CPU profile line up across page navigations.
@@ -183,6 +185,104 @@ export function installProbe() {
         if (typeof window[name] !== "undefined") wrapCompile(window[name].prototype, "linkProgram", "program");
     }
 
+    // First-use work that lands after the game is revealed — the late-stutter sources. The Babylon Toolkit announces its
+    // reveal (SceneManager.OnSceneRevealedObservable) and names every shader / pipeline built after it with its cause
+    // (SceneShaderWarmup.OnLateCompileObservable). The probe turns that detector on even in a production build, so a
+    // profiled deployed game reports its late compiles too.
+    state.reveals = [];
+    state.lateCompiles = [];
+    state.toolkit = null;
+    const MAX_LATE_RECORDS = 5000;
+    const hookToolkit = () => {
+        const toolkit = window.TOOLKIT;
+        if (state.toolkit || !toolkit || !toolkit.SceneShaderWarmup || !toolkit.SceneManager) return;
+        const warmup = toolkit.SceneShaderWarmup;
+        state.toolkit = { warmup: true, lateCompileDetector: !!warmup.OnLateCompileObservable, forcedReporting: false };
+        try {
+            if (warmup.OnLateCompileObservable && typeof warmup.IsLateCompileReportingEnabled === "function" && !warmup.IsLateCompileReportingEnabled()) {
+                warmup.LateCompileReporting = true;
+                state.toolkit.forcedReporting = true;
+            }
+        } catch { /* an older toolkit without the switch */ }
+        try {
+            if (toolkit.SceneManager.OnSceneRevealedObservable) {
+                toolkit.SceneManager.OnSceneRevealedObservable.add((scene) => {
+                    state.reveals.push({ at: epochNow(), sceneUniqueId: scene ? scene.uniqueId : null });
+                    try { state.toolkit.safetyNet = typeof warmup.IsSafetyNetEnabled === "function" && scene ? warmup.IsSafetyNetEnabled(scene.getEngine()) : null; } catch { /* not on WebGL */ }
+                });
+            }
+        } catch { /* an older toolkit without the reveal observable */ }
+        try {
+            if (warmup.OnLateCompileObservable) {
+                warmup.OnLateCompileObservable.add((record) => {
+                    if (state.lateCompiles.length >= MAX_LATE_RECORDS) return;
+                    state.lateCompiles.push({
+                        at: epochNow(), kind: record.kind, causeKind: record.causeKind, cause: record.cause, meshName: record.meshName,
+                        materialName: record.materialName, particleSystemName: record.particleSystemName, postProcessName: record.postProcessName,
+                        renderPassName: record.renderPassName, effectName: record.effectName, effectKey: String(record.effectKey || "").slice(0, 400),
+                        msSinceReveal: record.msSinceReveal, sceneUniqueId: record.sceneUniqueId,
+                    });
+                });
+            }
+        } catch { /* an older toolkit without the detector */ }
+    };
+    setInterval(hookToolkit, ATTACH_POLL_MS);
+
+    // Downloads: what the page fetched and when it finished — a texture, model or sound fetched during play is decoded and
+    // uploaded right after it arrives, often in one long frame.
+    state.resources = [];
+    try {
+        const resourceObserver = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+                if (state.resources.length >= MAX_LATE_RECORDS) return;
+                state.resources.push({
+                    startAt: performance.timeOrigin + entry.startTime, at: performance.timeOrigin + entry.responseEnd,
+                    name: String(entry.name || "").slice(0, 300), type: entry.initiatorType,
+                    kb: +(((entry.encodedBodySize || entry.transferSize || 0)) / 1024).toFixed(1), ms: +entry.duration.toFixed(1),
+                });
+            }
+        });
+        resourceObserver.observe({ type: "resource", buffered: true });
+    } catch { /* resource timing unavailable */ }
+
+    // GPU textures created (WebGPU createTexture, WebGL texture storage / compressed uploads): a first-time texture during
+    // play costs its decode and upload on that frame.
+    state.textures = [];
+    const recordTexture = (width, height) => { if (state.textures.length < MAX_GPU_COMPILES) state.textures.push({ at: epochNow(), width: width || null, height: height || null }); };
+    const wrapTexture = (prototype, method, size) => {
+        if (!prototype || typeof prototype[method] !== "function") return;
+        const original = prototype[method];
+        prototype[method] = function (...args) { try { const [width, height] = size(args); recordTexture(width, height); } catch { recordTexture(null, null); } return original.apply(this, args); };
+    };
+    if (typeof GPUDevice !== "undefined") {
+        wrapTexture(GPUDevice.prototype, "createTexture", (args) => {
+            const size = args[0] && args[0].size;
+            return Array.isArray(size) ? [size[0], size[1]] : size ? [size.width, size.height] : [null, null];
+        });
+    }
+    if (typeof WebGL2RenderingContext !== "undefined") {
+        wrapTexture(WebGL2RenderingContext.prototype, "texStorage2D", (args) => [args[3], args[4]]);
+        wrapTexture(WebGL2RenderingContext.prototype, "compressedTexImage2D", (args) => (args[1] === 0 ? [args[3], args[4]] : [null, null]));
+    }
+
+    // Audio decoding: a sound decoded the first time it plays stalls that moment (decodeAudioData runs off the main thread,
+    // but its arrival and the buffer it creates land on a frame).
+    state.audioDecodes = [];
+    try {
+        const audioPrototype = typeof BaseAudioContext !== "undefined" ? BaseAudioContext.prototype : null;
+        if (audioPrototype && typeof audioPrototype.decodeAudioData === "function") {
+            const decode = audioPrototype.decodeAudioData;
+            audioPrototype.decodeAudioData = function (data, ...rest) {
+                const startAt = epochNow();
+                const kb = data && data.byteLength ? +(data.byteLength / 1024).toFixed(1) : null;
+                const result = decode.call(this, data, ...rest);
+                const done = () => { if (state.audioDecodes.length < MAX_LATE_RECORDS) state.audioDecodes.push({ startAt, at: epochNow(), kb }); };
+                if (result && typeof result.then === "function") result.then(done, done);
+                return result;
+            };
+        }
+    } catch { /* no Web Audio */ }
+
     // Long Animation Frames name the script, function and invoker behind every frame over 50 ms.
     try {
         const observer = new PerformanceObserver((list) => {
@@ -249,7 +349,24 @@ export function installProbe() {
     };
 
     /** Everything the probe recorded, for the capture script to save. */
-    state.dump = () => ({
+    state.dump = () => {
+        // A toolkit found only after its reveal: take the late compiles it kept (their own reveal-relative times).
+        try {
+            const toolkit = window.TOOLKIT;
+            const scene = currentScene();
+            if (toolkit && toolkit.SceneShaderWarmup && scene && state.lateCompiles.length === 0 && typeof toolkit.SceneShaderWarmup.GetLateCompiles === "function") {
+                for (const record of toolkit.SceneShaderWarmup.GetLateCompiles(scene) || []) state.lateCompiles.push({ ...record, at: null });
+            }
+        } catch { /* nothing to recover */ }
+        return state.snapshot();
+    };
+    state.snapshot = () => ({
+        reveals: state.reveals,
+        lateCompiles: state.lateCompiles,
+        toolkit: state.toolkit,
+        resources: state.resources,
+        textures: state.textures,
+        audioDecodes: state.audioDecodes,
         engine: state.engine || null,
         engineAttachedAt: state.engineAttachedAt,
         scenesSeen: state.scenesSeen,

@@ -51,7 +51,9 @@ idiom bt-prototype uses with bt-hero — **pre-resolve everything at spec time s
   job genuinely reports DONE (or a loop-card boundary fires and the user accepts the parked result — record
   which). The gauntlet's own critic evidence IS the acceptance evidence; the bt-execute verifier reads
   `progress.md` + the last round journal rather than re-judging the art. bt-execute copies the gauntlet's best
-  evidence frames, round by round, into the feature's `snapshots/` as a progression for the feature dashboard.
+  evidence frames, round by round, into the feature's `snapshots/` and adds them to the feature dashboard as a
+  progression only through `node <skills>/bt-execute/scripts/dashboard.mjs snapshot <feature-folder> T<n> --frame "snapshots/…|<stage>|<caption>"`
+  (repeated per frame), then runs `dashboard.mjs check <feature-folder>` — never by writing snapshot JSON.
 
 bt-gauntlet never orchestrates bt-spec itself — composition is always initiated from the spec side.
 

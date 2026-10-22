@@ -1746,7 +1746,16 @@
         return Object.assign(snapshot, { updates: asUpdates(snapshot.updates) }, snapshot.frames !== undefined ? { frames: asList(snapshot.frames).map(repairImage) } : {});
       });
     data.phases = asList(data.phases);
-    data.decisions = asList(data.decisions).map((decision) => Object.assign(decision, { updates: asUpdates(decision.updates) }));
+    // A decision written as plain text ("D3 — …") would render as an empty row: split off its id and show the text.
+    const asDecision = (decision) => {
+      if (typeof decision !== 'string') return decision;
+      const match = decision.match(/^([A-Z]+\d+[a-z]?)(\s*\([^)]*\))?\s+[—–-]\s+([\s\S]*)$/);
+      if (!match) return { id: '', text: decision };
+      return { id: match[1], text: `${match[2] ? `${match[2].trim()} ` : ''}${match[3]}` };
+    };
+    data.decisions = asList(data.decisions).map(asDecision)
+      .filter((decision) => decision && typeof decision === 'object')
+      .map((decision) => Object.assign(decision, { updates: asUpdates(decision.updates) }));
     data.followUps = asList(data.followUps);
     data.activity = asList(data.activity);
     if (data.afterAction && typeof data.afterAction === 'object') {

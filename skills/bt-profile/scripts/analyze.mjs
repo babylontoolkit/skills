@@ -467,6 +467,129 @@ function summarizeLoafs(loafs, top) {
     return { longFrames: (loafs || []).length, scripts: [...groups.values()].sort((a, b) => b.ms - a.ms).slice(0, top).map((group) => ({ ...group, ms: round(group.ms) })) };
 }
 
+/** Frames slower than this many times the run's median frame interval, and at least HITCH_MIN_MS, count as hitches. */
+const HITCH_FACTOR = 3;
+/** The shortest frame interval (ms) that counts as a hitch the player can see. */
+const HITCH_MIN_MS = 50;
+
+/**
+ * The late-stutter view: everything that happened for the first time after the game was revealed, and the hitches it
+ * lined up with. The reveal is the Babylon Toolkit's own (OnSceneRevealedObservable), else the scenario's `reveal` mark.
+ * Every hitch after it gets its suspects — late compiles with their cause, GPU pipelines, textures created, downloads
+ * that finished, audio decodes, garbage collection, scene growth and the script that ran — and a likely cause.
+ * @returns {object|null} null when the run has no frames
+ */
+function lateStutter(probe, frames, counters, prepared, info, phases, startMs, endMs) {
+    if (!frames.length) return null;
+    const toolkitReveal = (probe.reveals || []).find((reveal) => reveal.at != null && reveal.at >= startMs);
+    const revealMark = (probe.marks || []).find((mark) => /reveal/i.test(mark.name));
+    const revealAt = toolkitReveal ? toolkitReveal.at : revealMark ? revealMark.at : null;
+    const after = (at) => at != null && (revealAt == null || at >= revealAt) && at <= endMs;
+    const t = (at) => (at == null ? null : round((at - startMs) / 1000, 2));
+
+    // Late compiles the toolkit named, grouped by what caused them.
+    const groups = new Map();
+    for (const record of probe.lateCompiles || []) {
+        const key = record.cause || `${record.causeKind} (no cause)`;
+        if (!groups.has(key)) {
+            groups.set(key, {
+                cause: key, causeKind: record.causeKind, meshName: record.meshName || "", materialName: record.materialName || "",
+                particleSystemName: record.particleSystemName || "", postProcessName: record.postProcessName || "", renderPassName: record.renderPassName || "",
+                effects: new Set(), kinds: {}, count: 0, firstT: null, firstMsAfterReveal: null,
+            });
+        }
+        const group = groups.get(key);
+        group.count++;
+        group.kinds[record.kind] = (group.kinds[record.kind] || 0) + 1;
+        if (record.effectName) group.effects.add(record.effectName);
+        const recordT = record.at != null ? t(record.at) : null;
+        if (group.firstT == null || (recordT != null && recordT < group.firstT)) group.firstT = recordT;
+        if (group.firstMsAfterReveal == null || record.msSinceReveal < group.firstMsAfterReveal) group.firstMsAfterReveal = round(record.msSinceReveal, 0);
+    }
+    const lateCompiles = [...groups.values()].map((group) => ({ ...group, effects: [...group.effects] })).sort((a, b) => b.count - a.count);
+    // The same late compiles by render pass: many compiles in one pass other than the main one mean a camera, rig or render
+    // target first drawn after the reveal — the pre-warm builds pipelines only for the passes it draws.
+    const passes = new Map();
+    for (const record of probe.lateCompiles || []) {
+        const name = record.renderPassName || "(unknown pass)";
+        const pass = passes.get(name) || { pass: name, count: 0, causes: new Set(), firstMsAfterReveal: null };
+        pass.count++;
+        pass.causes.add(record.cause || record.causeKind);
+        if (pass.firstMsAfterReveal == null || record.msSinceReveal < pass.firstMsAfterReveal) pass.firstMsAfterReveal = round(record.msSinceReveal, 0);
+        passes.set(name, pass);
+    }
+    const lateCompilePasses = [...passes.values()].map((pass) => ({ ...pass, causes: pass.causes.size })).sort((a, b) => b.count - a.count);
+
+    // Frame intervals: a hitch is a frame far slower than the run's typical one.
+    const intervals = [];
+    for (let index = 1; index < frames.length; index++) intervals.push(frames[index].at - frames[index - 1].at);
+    const sorted = [...intervals].sort((a, b) => a - b);
+    const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 16.7;
+    const threshold = Math.max(HITCH_MIN_MS, median * HITCH_FACTOR);
+    const hitchFrames = [];
+    for (let index = 1; index < frames.length; index++) {
+        const interval = frames[index].at - frames[index - 1].at;
+        if (interval >= threshold && after(frames[index].at)) hitchFrames.push({ from: frames[index - 1].at, to: frames[index].at, intervalMs: interval });
+    }
+    const counterAt = (at) => {
+        let found = null;
+        for (const counter of counters || []) { if (counter.at <= at) found = counter; else break; }
+        return found;
+    };
+    const inWindow = (list, from, to) => (list || []).filter((entry) => entry.at != null && entry.at >= from && entry.at <= to);
+    const hitches = hitchFrames.sort((a, b) => b.intervalMs - a.intervalMs).slice(0, 25).map((hitch) => {
+        const aggregate = aggregateWindow(prepared, info, hitch.from, hitch.to);
+        const gcMs = aggregate.owners.get("gc") || 0;
+        const compiles = inWindow(probe.lateCompiles, hitch.from - 1000, hitch.to);
+        const pipelines = inWindow(probe.gpuCompiles, hitch.from - 2000, hitch.to).filter((entry) => entry.kind !== "shaderModule").length;
+        const textures = inWindow(probe.textures, hitch.from - 500, hitch.to);
+        const downloads = inWindow(probe.resources, hitch.from - 1000, hitch.to);
+        const decodes = (probe.audioDecodes || []).filter((entry) => entry.at >= hitch.from - 1000 && entry.startAt <= hitch.to);
+        const before = counterAt(hitch.from - 500);
+        const afterCounter = counterAt(hitch.to + 600);
+        const growth = {};
+        if (before && afterCounter) {
+            for (const name of ["meshes", "materials", "particleSystems", "textures"]) {
+                const delta = (afterCounter[name] ?? 0) - (before[name] ?? 0);
+                if (delta > 0) growth[name] = delta;
+            }
+        }
+        const scriptMs = aggregate.busyMs - gcMs;
+        // The likely cause, strongest evidence first; the agent confirms it.
+        let likely = "GPU or browser work (little script, nothing new)";
+        if (compiles.length || (pipelines && scriptMs < hitch.intervalMs * 0.4)) likely = "shader / pipeline compile";
+        else if (gcMs >= hitch.intervalMs * 0.3) likely = "garbage collection";
+        else if (downloads.length || decodes.length || textures.length) likely = "first-use asset: download, decode or texture upload";
+        else if (Object.keys(growth).length) likely = "content created during play";
+        else if (scriptMs >= hitch.intervalMs * 0.5) likely = "script";
+        const phase = phases.find((candidate) => hitch.to >= candidate.from && hitch.to < candidate.to);
+        return {
+            t: t(hitch.to), msAfterReveal: revealAt != null ? round(hitch.to - revealAt, 0) : null, phase: phase ? phase.name : null,
+            intervalMs: round(hitch.intervalMs), scriptMs: round(scriptMs), gcMs: round(gcMs), likely,
+            lateCompiles: [...new Set(compiles.map((record) => record.cause || record.causeKind))].slice(0, 6), lateCompileCount: compiles.length,
+            pipelines, textures: textures.length, downloads: downloads.slice(0, 5).map((entry) => ({ name: entry.name.split(/[?#]/)[0].split("/").slice(-1)[0] || entry.name, type: entry.type, kb: entry.kb })),
+            audioDecodes: decodes.length, growth,
+            top: [...aggregate.self].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([key, ms]) => ({ name: aggregate.symbols.get(key).name, owner: aggregate.symbols.get(key).owner, ms: round(ms) })),
+            yours: [...aggregate.responsible.values()].sort((a, b) => b.totalMs - a.totalMs).slice(0, 3).map((blame) => ({ name: blame.symbol.name, file: blame.symbol.file, line: blame.symbol.line, ms: round(blame.totalMs) })),
+        };
+    }).sort((a, b) => a.t - b.t);
+
+    const laterDownloads = (probe.resources || []).filter((entry) => after(entry.at)).sort((a, b) => b.kb - a.kb).slice(0, 15)
+        .map((entry) => ({ t: t(entry.at), name: entry.name, type: entry.type, kb: entry.kb, ms: entry.ms }));
+    return {
+        revealT: t(revealAt), revealSource: toolkitReveal ? "toolkit" : revealMark ? `mark "${revealMark.name}"` : null,
+        toolkit: probe.toolkit || null,
+        medianFrameMs: round(median), hitchThresholdMs: round(threshold),
+        hitchCount: hitchFrames.length, hitchMs: round(hitchFrames.reduce((sum, hitch) => sum + hitch.intervalMs, 0)),
+        hitches,
+        lateCompileCount: (probe.lateCompiles || []).length, lateCompiles, lateCompilePasses,
+        pipelinesAfterReveal: (probe.gpuCompiles || []).filter((entry) => entry.kind !== "shaderModule" && after(entry.at)).length,
+        texturesAfterReveal: (probe.textures || []).filter((entry) => after(entry.at)).length,
+        audioDecodesAfterReveal: (probe.audioDecodes || []).filter((entry) => after(entry.at)).length,
+        downloadsAfterReveal: laterDownloads,
+    };
+}
+
 /** Plain-language signals the agent should look at first. They point; the agent diagnoses. */
 function signals(analysis) {
     const notes = [];
@@ -488,6 +611,18 @@ function signals(analysis) {
         notes.push(`${waits.length} frame(s) of ${waits.map((frame) => `${frame.intervalMs} ms at ${frame.t}s`).slice(0, 4).join(", ")} were spent waiting, not running script (main thread ${waits.map((frame) => frame.scriptMs).slice(0, 4).join(" / ")} ms)` +
             (withCompiles.length ? ` — ${withCompiles.length} of them right after new GPU pipelines / programs were created: the GPU process compiling shaders.${analysis.gpuCold ? " This capture was GPU-cold (--gpu-cold), as on a first visit." : " A later visit may hide it (shader caches): confirm with --gpu-cold true."}` : ` — GPU-bound frames or browser work; check draws and the GPU timers.`));
     }
+    const late = analysis.lateStutter;
+    if (late && late.lateCompileCount) {
+        notes.push(`${late.lateCompileCount} shader / pipeline compile(s) after the reveal${late.revealT != null ? ` (${late.revealT}s)` : ""}, from ${late.lateCompiles.length} cause(s): ${late.lateCompiles.slice(0, 4).map((group) => `${group.cause} ×${group.count}`).join("; ")}. Each is a first-use stutter the pre-warm missed (see LATE STUTTER).`);
+    } else if (late && late.pipelinesAfterReveal) {
+        notes.push(`${late.pipelinesAfterReveal} GPU pipelines / programs were created after the reveal${late.toolkit ? "" : " (no Babylon Toolkit late-compile detector on this page, so no causes)"} — first-use shader work during play.`);
+    }
+    if (late && late.hitchCount) {
+        const byCause = {};
+        for (const hitch of late.hitches) byCause[hitch.likely] = (byCause[hitch.likely] || 0) + 1;
+        notes.push(`${late.hitchCount} hitch(es) after the reveal (frames over ${late.hitchThresholdMs} ms; ${late.hitchMs} ms in all). Likely causes of the worst: ${Object.entries(byCause).map(([cause, count]) => `${cause} ×${count}`).join(" · ")}.`);
+    }
+    if (late && late.downloadsAfterReveal.length) notes.push(`${late.downloadsAfterReveal.length} download(s) finished after the reveal, largest ${late.downloadsAfterReveal[0].name.split(/[?#]/)[0].split("/").slice(-1)[0]} (${late.downloadsAfterReveal[0].kb} KB) — fetched, decoded and uploaded during play instead of behind the loading screen.`);
     const shaderBuckets = analysis.timeline.filter((bucket) => bucket.newShaders > 0);
     if (shaderBuckets.length) {
         const late = shaderBuckets.filter((bucket) => bucket.t > 0.6 * analysis.timeline.length);
@@ -585,6 +720,30 @@ function printSummary(analysis) {
         line(`  ${String(frame.t + "s").padStart(8)}  ${cost.padEnd(16)} ${String(frame.phase || "-").padEnd(14)} script ${frame.scriptMs} ms · ${frame.pipelinesNear} pipelines near · ${frame.top.slice(0, 2).map((entry) => `${entry.name} ${entry.ms}`).join(", ") || "-"}`);
     }
     if (analysis.gpuCold) line(`  (--gpu-cold: ${analysis.gpuCold.tagged} fragment shaders made unique, so every pipeline compiled as on a first visit)`);
+    const late = analysis.lateStutter;
+    if (late) {
+        line();
+        line(`LATE STUTTER — after the reveal (${late.revealT != null ? `${late.revealT}s, from the ${late.revealSource}` : "no reveal found: mark one in the scenario"}) · median frame ${late.medianFrameMs} ms · hitch = over ${late.hitchThresholdMs} ms`);
+        if (late.toolkit) line(`  toolkit: late-compile detector ${late.toolkit.lateCompileDetector ? (late.toolkit.forcedReporting ? "on (turned on by the probe)" : "on") : "not in this toolkit version"} · safety net ${late.toolkit.safetyNet == null ? "n/a" : late.toolkit.safetyNet ? "on (a late pipeline skips its draw: pop-in, not a freeze)" : "off"}`);
+        line(`  ${late.hitchCount} hitch(es), ${late.hitchMs} ms · ${late.lateCompileCount} late compile(s) · ${late.pipelinesAfterReveal} pipelines · ${late.texturesAfterReveal} textures · ${late.audioDecodesAfterReveal} audio decodes · ${late.downloadsAfterReveal.length} downloads after the reveal`);
+        for (const hitch of late.hitches.slice(0, 12)) {
+            const suspects = [
+                hitch.lateCompileCount ? `${hitch.lateCompileCount} late compile(s): ${hitch.lateCompiles.slice(0, 2).join("; ")}` : "",
+                hitch.pipelines ? `${hitch.pipelines} pipelines` : "", hitch.gcMs ? `gc ${hitch.gcMs} ms` : "", hitch.textures ? `${hitch.textures} textures` : "",
+                hitch.downloads.length ? `downloads ${hitch.downloads.map((entry) => entry.name).join(", ")}` : "", hitch.audioDecodes ? `${hitch.audioDecodes} audio decode(s)` : "",
+                Object.keys(hitch.growth).length ? `new ${Object.entries(hitch.growth).map(([name, count]) => `${count} ${name}`).join(", ")}` : "",
+            ].filter(Boolean).join(" · ");
+            line(`  ${String(hitch.t + "s").padStart(8)}  ${String(hitch.intervalMs + " ms").padEnd(10)} ${String(hitch.phase || "-").padEnd(12)} ${hitch.likely} — script ${hitch.scriptMs} ms${suspects ? " · " + suspects : ""}`);
+        }
+        if (late.lateCompilePasses.length) {
+            line("  late compiles by render pass (a pass other than \"main\" with many: a camera or render target the pre-warm never drew — created after the reveal, WarmAllCamerasOnReveal off, or a toolkit before 1.1.88):");
+            for (const pass of late.lateCompilePasses.slice(0, 6)) line(`    ×${String(pass.count).padEnd(4)} pass "${pass.pass}" — ${pass.causes} cause(s), first ${pass.firstMsAfterReveal} ms after the reveal`);
+        }
+        if (late.lateCompiles.length) {
+            line("  late compiles by cause:");
+            for (const group of late.lateCompiles.slice(0, 12)) line(`    ×${String(group.count).padEnd(4)} ${group.cause}  [${group.effects.join(", ") || "?"}] first ${group.firstMsAfterReveal} ms after the reveal`);
+        }
+    }
     line();
     line("YOUR CODE — time spent, including the library work it triggers (whole run)");
     for (const entry of analysis.overall.lists.yoursTop.slice(0, 15)) {
@@ -699,6 +858,7 @@ function main() {
         shots: fs.existsSync(path.join(captureDir, "shots")) ? fs.readdirSync(path.join(captureDir, "shots")).filter((name) => name.endsWith(".png")) : [],
         filmstrip: fs.existsSync(path.join(captureDir, "filmstrip.json")) ? JSON.parse(fs.readFileSync(path.join(captureDir, "filmstrip.json"), "utf8")).map((frame) => ({ ...frame, t: round((frame.at - startMs) / 1000, 2) })) : [],
     };
+    analysis.lateStutter = lateStutter(probe, frames, probe.counters, prepared, info, phases, startMs, endMs);
     analysis.signals = signals(analysis);
     if (flags.drill) {
         analysis.drill = flags.drill.split(",").map((name) => ({

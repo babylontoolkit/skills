@@ -85,6 +85,10 @@ function readData(path) {
  * @param {any} data The value to write.
  */
 function writeData(path, prefix, data) {
+  // Every dashboard write repairs snapshot entries first, so an image filed under `path` (or any key the page never
+  // reads) can never reach the page as "No snapshot", whoever wrote it.
+  if (data && Array.isArray(data.phases)) repairSnapshots(data);
+  if (data && Array.isArray(data.decisions)) repairDecisions(data);
   const temporaryPath = `${path}.${process.pid}.tmp`;
   writeFileSync(temporaryPath, `${prefix} = ${JSON.stringify(data, null, 2)};\n`, 'utf8');
   renameSync(temporaryPath, path);
@@ -182,6 +186,8 @@ function writeTask(folder, argumentList) {
   const changes = JSON.parse(options.set);
   checkTaskShape(changes);
   if (Array.isArray(changes.snapshots)) {
+    const repairs = repairSnapshotList(changes.snapshots, `${taskId}.snapshots`);
+    repairs.forEach((repair) => console.log(`repaired ${repair}`));
     const problems = changes.snapshots.flatMap((snapshot, index) => snapshotProblems(folder, snapshot, `${taskId}.snapshots[${index}]`));
     if (problems.length) throw new Error(snapshotRefusal(problems));
   }
@@ -321,6 +327,108 @@ function writeSnapshot(folder, argumentList) {
 }
 
 /**
+ * Moves an image filed under a key the page never reads (`path`, `file`, `image`, `url`, `href`) to `src`.
+ * @param {any} image A still, or a comparison's `before` / `after`, or a progression frame.
+ * @param {string} where Where the image sits, for the repair report.
+ * @returns {string[]} One line per repair made.
+ */
+function repairImage(image, where) {
+  if (!image || typeof image !== 'object' || Array.isArray(image)) return [];
+  const wrongKey = WRONG_IMAGE_KEYS.find((key) => typeof image[key] === 'string' && image[key]);
+  if (!wrongKey) return [];
+  if (typeof image.src !== 'string' || !image.src) image.src = image[wrongKey];
+  WRONG_IMAGE_KEYS.forEach((key) => delete image[key]);
+  return [`${where}: "${wrongKey}" → "src"`];
+}
+
+/**
+ * Repairs every entry of one snapshot list in place, so each renders an image: a bare path string becomes a still,
+ * an image under a wrong key moves to `src`, and an unknown `source` becomes `browser`.
+ * @param {any[]} list The snapshot list.
+ * @param {string} owner Where the list sits, e.g. `T3.snapshots`.
+ * @returns {string[]} One line per repair made.
+ */
+function repairSnapshotList(list, owner) {
+  const repairs = [];
+  list.forEach((snapshot, index) => {
+    const where = `${owner}[${index}]`;
+    if (typeof snapshot === 'string' && snapshot) {
+      list[index] = { title: '', caption: '', source: 'browser', src: snapshot, updates: [] };
+      repairs.push(`${where}: a bare path → a still`);
+      return;
+    }
+    repairs.push(...repairSnapshot(snapshot, where));
+  });
+  return repairs;
+}
+
+/**
+ * Repairs one snapshot entry in place (see `repairSnapshotList`).
+ * @param {any} snapshot A still, comparison or progression.
+ * @param {string} where Where it sits.
+ * @returns {string[]} One line per repair made.
+ */
+function repairSnapshot(snapshot, where) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return [];
+  const repairs = [];
+  if (Array.isArray(snapshot.frames)) {
+    snapshot.frames.forEach((frame, index) => repairs.push(...repairImage(frame, `${where}.frames[${index}]`)));
+  } else if (snapshot.before !== undefined || snapshot.after !== undefined) {
+    repairs.push(...repairImage(snapshot.before, `${where}.before`), ...repairImage(snapshot.after, `${where}.after`));
+  } else {
+    repairs.push(...repairImage(snapshot, where));
+  }
+  if (snapshot.source !== undefined && !SNAPSHOT_SOURCES.includes(snapshot.source)) {
+    repairs.push(`${where}.source "${snapshot.source}" → "browser"`);
+    snapshot.source = 'browser';
+  }
+  return repairs;
+}
+
+/**
+ * Repairs every snapshot in the dashboard in place: the After Action Report's list and comparison, each phase's and
+ * each task's list.
+ * @param {any} dashboard The dashboard data.
+ * @returns {string[]} One line per repair made.
+ */
+function repairSnapshots(dashboard) {
+  const repairs = [];
+  const repairList = (list, owner) => {
+    if (Array.isArray(list)) repairs.push(...repairSnapshotList(list, owner));
+  };
+  if (dashboard.afterAction && typeof dashboard.afterAction === 'object') {
+    repairList(dashboard.afterAction.snapshots, 'afterAction.snapshots');
+    repairs.push(...repairSnapshot(dashboard.afterAction.comparison, 'afterAction.comparison'));
+  }
+  for (const phase of dashboard.phases || []) {
+    repairList(phase.snapshots, `P${phase.number}.snapshots`);
+    for (const task of phase.tasks || []) repairList(task.snapshots, `${task.id}.snapshots`);
+  }
+  return repairs;
+}
+
+/**
+ * Repairs the plan-level decisions in place: a decision written as plain text (`"D3 — The filter is …"`) renders as
+ * an empty row, so it becomes `{ "id": "D3", "text": "The filter is …", "updates": [] }`. A leading parenthesis after
+ * the id (`"D9 (confirmed by the user) — …"`) stays in the text; text with no leading id keeps an empty id.
+ * @param {any} dashboard The dashboard data.
+ * @returns {string[]} One line per repair made.
+ */
+function repairDecisions(dashboard) {
+  const repairs = [];
+  if (!Array.isArray(dashboard.decisions)) return repairs;
+  dashboard.decisions = dashboard.decisions.map((decision, index) => {
+    if (typeof decision !== 'string') return decision;
+    const match = decision.match(/^([A-Z]+\d+[a-z]?)(\s*\([^)]*\))?\s+[—–-]\s+([\s\S]*)$/);
+    const id = match ? match[1] : '';
+    const text = match ? `${match[2] ? `${match[2].trim()} ` : ''}${match[3]}` : decision;
+    repairs.push(`decisions[${index}]: plain text → { "id": "${id}", "text" }`);
+    return { id, text, updates: [] };
+  });
+  return repairs;
+}
+
+/**
  * Every snapshot entry in the dashboard with where it sits: the After Action Report, each phase and each task.
  * @param {any} dashboard The dashboard data.
  * @returns {{ snapshot: any, where: string }[]}
@@ -381,8 +489,17 @@ function writeStatus(folder, argumentList) {
  */
 function checkData(folder) {
   const { dashboardPath, livePath } = dataPaths(folder);
-  const { data } = readData(dashboardPath);
+  const { prefix, data } = readData(dashboardPath);
   if (existsSync(livePath)) readData(livePath);
+  const repairs = repairSnapshots(data);
+  const decisionRepairs = repairDecisions(data);
+  if (repairs.length || decisionRepairs.length) writeData(dashboardPath, prefix, data);
+  if (repairs.length) {
+    console.log(`repaired ${repairs.length} snapshot entr${repairs.length === 1 ? 'y' : 'ies'} the page could not show:\n  ${repairs.join('\n  ')}`);
+  }
+  if (decisionRepairs.length) {
+    console.log(`repaired ${decisionRepairs.length} decision${decisionRepairs.length === 1 ? '' : 's'} written as plain text:\n  ${decisionRepairs.join('\n  ')}`);
+  }
   const snapshots = allSnapshots(data);
   const problems = snapshots.flatMap(({ snapshot, where }) => snapshotProblems(folder, snapshot, where));
   if (problems.length) throw new Error(snapshotRefusal(problems));
@@ -473,6 +590,7 @@ async function watch(folder, argumentList) {
       console.log(`watchdog: dashboard status is "${dashboard.status}" — the run is over, exiting`);
       return;
     }
+    if (dashboard) repairWrittenSnapshots(dashboardPath);
     if (dashboard && existsSync(livePath)) {
       try {
         checkLive(dashboard, livePath, roots, projectRoot, quietMinutes, stallMinutes);
@@ -481,6 +599,23 @@ async function watch(folder, argumentList) {
       }
     }
     await new Promise((resolve) => setTimeout(resolve, intervalSeconds * 1000));
+  }
+}
+
+/**
+ * Watchdog repair: a snapshot or decision an agent wrote around the helper (a hand edit, its own script) is repaired
+ * within a minute, re-read just before the write so nothing the agent wrote meanwhile is lost.
+ * @param {string} dashboardPath The dashboard data file.
+ */
+function repairWrittenSnapshots(dashboardPath) {
+  try {
+    const { prefix, data } = readData(dashboardPath);
+    const repairs = [...repairSnapshots(data), ...repairDecisions(data)];
+    if (!repairs.length) return;
+    writeData(dashboardPath, prefix, data);
+    console.log(`watchdog: repaired ${repairs.length} entr${repairs.length === 1 ? 'y' : 'ies'} — ${repairs.join('; ')}`);
+  } catch (error) {
+    console.log(`watchdog: snapshot repair skipped a round — ${error.message}`);
   }
 }
 

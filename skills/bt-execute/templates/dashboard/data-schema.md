@@ -100,7 +100,7 @@ Top level:
 | `runs` | number of bt-execute runs so far |
 | `afterAction` | the After Action Report (below) |
 | `phases` | the plan's phases, each with its tasks (below) |
-| `decisions` | `[{ "id": "D1" \| "T7", "text", "source", "updates" }]` |
+| `decisions` | `[{ "id": "D1" \| "T7", "text", "source", "updates" }]` — objects, never plain `"D1 — …"` strings (the page and `check` repair one, but it is a slip) |
 | `followUps` | plain strings — what a human should look at next |
 | `activity` | `[{ "at", "text" }]`, oldest first — the milestones (the page shows newest first) |
 
@@ -178,7 +178,7 @@ Each task:
 
 ## Snapshot shapes
 
-**Add snapshots with `node <skills>/bt-execute/scripts/dashboard.mjs snapshot <feature-folder> <T3|P1|plan> --src snapshots/… --caption "…"`** (`--before`/`--after` for a comparison, `--frame "src|stage|caption"` repeated for a progression) — never by writing the JSON yourself. The image key is **`src`**, relative to the feature folder; an entry with `path` (or `file`, `image`) instead renders as "No snapshot", so `task --set` and `check` refuse it.
+**Add snapshots with `node <skills>/bt-execute/scripts/dashboard.mjs snapshot <feature-folder> <T3|P1|plan> --src snapshots/… --caption "…"`** (`--before`/`--after` for a comparison, `--frame "src|stage|caption"` repeated for a progression) — never by writing the JSON yourself. The image key is **`src`**, relative to the feature folder; an entry with `path` (or `file`, `image`, `url`, `href`) instead would render as "No snapshot", so every helper write repairs it to `src` (and an unknown `source` to `"browser"`), `check` repairs any already in the file, the watchdog repairs one written around the helper within a minute, and the page reads those keys too. An image that is not on disk is refused — `check` fails on it. **The snapshots are the chronicle of the build: `check` passing is part of every phase commit and of run end.**
 
 Any list of snapshots may mix them. `source` names where the image came from: `"browser"`, `"unity"`,
 `"blender"`, `"reference"`.

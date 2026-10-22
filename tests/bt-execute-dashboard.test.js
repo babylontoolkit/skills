@@ -49,13 +49,27 @@ function readDashboard(folder) {
   return JSON.parse(text.slice(text.indexOf('=') + 1).trim().replace(/;\s*$/, ''));
 }
 
-test('task --set refuses a snapshot written with "path" instead of "src", and writes nothing', () => {
+test('task --set repairs a snapshot written with "path" instead of "src", so it still shows', () => {
   const folder = makeFeatureFolder();
-  const result = runHelper(['task', folder, 'T1', '--set', JSON.stringify({ snapshots: [{ path: 'snapshots/T1-01-before.png', caption: 'Before' }] })]);
-  assert.equal(result.status, 1);
-  assert.match(result.output, /has "path" — the page reads only "src"/);
-  assert.match(result.output, /dashboard\.mjs snapshot/);
-  assert.deepEqual(readDashboard(folder).phases[0].tasks[0].snapshots, []);
+  const result = runHelper(['task', folder, 'T1', '--set', JSON.stringify({ snapshots: [{ path: 'snapshots/T1-01-before.png', caption: 'Before', source: 'headless Chrome' }, 'snapshots/T1-02-after.png'] })]);
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /repaired T1\.snapshots\[0\]: "path" → "src"/);
+  const [still, barePath] = readDashboard(folder).phases[0].tasks[0].snapshots;
+  assert.deepEqual([still.src, 'path' in still, still.source], ['snapshots/T1-01-before.png', false, 'browser']);
+  assert.equal(barePath.src, 'snapshots/T1-02-after.png');
+});
+
+test('every dashboard write repairs snapshots already in the file, whichever command writes', () => {
+  const folder = makeFeatureFolder();
+  const dashboardPath = path.join(folder, 'documents', `${SLUG}_dashboard.js`);
+  const dashboard = readDashboard(folder);
+  dashboard.afterAction.comparison = { title: 'Pair', before: { file: 'snapshots/T1-01-before.png' }, after: { url: 'snapshots/T1-02-after.png' } };
+  dashboard.phases[0].snapshots = [{ frames: [{ image: 'snapshots/T1-01-before.png', stage: 'One' }] }];
+  fs.writeFileSync(dashboardPath, `window.FEATURE_DASHBOARD = ${JSON.stringify(dashboard)};\n`);
+  assert.equal(runHelper(['activity', folder, 'Phase 1 verified']).status, 0);
+  const written = readDashboard(folder);
+  assert.deepEqual([written.afterAction.comparison.before.src, written.afterAction.comparison.after.src], ['snapshots/T1-01-before.png', 'snapshots/T1-02-after.png']);
+  assert.equal(written.phases[0].snapshots[0].frames[0].src, 'snapshots/T1-01-before.png');
 });
 
 test('task --set refuses a snapshot whose image is not on disk', () => {
@@ -96,20 +110,49 @@ test('snapshot refuses a missing image and an unknown target', () => {
   assert.match(runHelper(['snapshot', folder, 'T9', '--src', 'snapshots/T1-01-before.png']).output, /no task "T9"/);
 });
 
-test('check fails on a broken snapshot entry already in the file and passes once it is fixed', () => {
+test('check repairs a wrong image key in the file, and fails only on an image that is not on disk', () => {
   const folder = makeFeatureFolder();
   const dashboardPath = path.join(folder, 'documents', `${SLUG}_dashboard.js`);
   const dashboard = readDashboard(folder);
   dashboard.phases[0].tasks[0].snapshots = [{ path: 'snapshots/T1-01-before.png', caption: 'Before' }];
   fs.writeFileSync(dashboardPath, `window.FEATURE_DASHBOARD = ${JSON.stringify(dashboard)};\n`);
-  const broken = runHelper(['check', folder]);
-  assert.equal(broken.status, 1);
-  assert.match(broken.output, /T1\.snapshots\[0\] has "path"/);
-  dashboard.phases[0].tasks[0].snapshots = [{ title: 'Before', src: 'snapshots/T1-01-before.png', updates: [] }];
+  const repaired = runHelper(['check', folder]);
+  assert.equal(repaired.status, 0, repaired.output);
+  assert.match(repaired.output, /repaired 1 snapshot entry/);
+  assert.match(repaired.output, /1 snapshot entries all show an image/);
+  assert.equal(readDashboard(folder).phases[0].tasks[0].snapshots[0].src, 'snapshots/T1-01-before.png');
+  dashboard.phases[0].tasks[0].snapshots = [{ title: 'Gone', src: 'snapshots/missing.png', updates: [] }];
   fs.writeFileSync(dashboardPath, `window.FEATURE_DASHBOARD = ${JSON.stringify(dashboard)};\n`);
-  const fixed = runHelper(['check', folder]);
-  assert.equal(fixed.status, 0, fixed.output);
-  assert.match(fixed.output, /1 snapshot entries all show an image/);
+  const missing = runHelper(['check', folder]);
+  assert.equal(missing.status, 1);
+  assert.match(missing.output, /is not a file under/);
+});
+
+test('check and every write turn a decision written as plain text into the object the page renders', () => {
+  const folder = makeFeatureFolder();
+  const dashboardPath = path.join(folder, 'documents', `${SLUG}_dashboard.js`);
+  const dashboard = readDashboard(folder);
+  const kept = { id: 'T1', text: 'Deferred after 3 attempts', source: 'auto-pilot', updates: [] };
+  dashboard.decisions = ['D1 — Pad slots are first-free.', 'D9 (confirmed by the user, 2026-10-21) — Every racer deploys it.', 'No id here', kept];
+  fs.writeFileSync(dashboardPath, `window.FEATURE_DASHBOARD = ${JSON.stringify(dashboard)};\n`);
+  const result = runHelper(['check', folder]);
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /repaired 3 decisions written as plain text/);
+  assert.deepEqual(readDashboard(folder).decisions, [
+    { id: 'D1', text: 'Pad slots are first-free.', updates: [] },
+    { id: 'D9', text: '(confirmed by the user, 2026-10-21) Every racer deploys it.', updates: [] },
+    { id: '', text: 'No id here', updates: [] },
+    kept,
+  ]);
+  dashboard.decisions = ['D2 — Written around the helper.'];
+  fs.writeFileSync(dashboardPath, `window.FEATURE_DASHBOARD = ${JSON.stringify(dashboard)};\n`);
+  assert.equal(runHelper(['activity', folder, 'Phase 1 verified']).status, 0);
+  assert.deepEqual(readDashboard(folder).decisions, [{ id: 'D2', text: 'Written around the helper.', updates: [] }]);
+});
+
+test('the dashboard page shows a decision written as plain text instead of an empty row', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'skills', 'bt-execute', 'templates', 'dashboard', 'dashboard.html'), 'utf8');
+  assert.match(page, /data\.decisions = asList\(data\.decisions\)\.map\(asDecision\)/);
 });
 
 test('the dashboard page repairs an image written under "path" so it still shows', () => {
