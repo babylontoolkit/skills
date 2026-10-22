@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.1.88)
+# Babylon Toolkit Desktop Agent (1.1.99)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -268,7 +268,7 @@ pair or schedule the bridge.
 
 | Skill | Command | What it does |
 |-------|---------|--------------|
-| [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file on a new git branch, plus the feature's dashboard with the `bt-plan` commands to copy. Add `--grill-me` to be interviewed first, `--parity` to allow numeric parity bars in the acceptance criteria. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
+| [`bt-spec`](skills/bt-spec/SKILL.md) | `/bt-spec` | Turn a short idea into a feature spec file (on whatever branch you have checked out — no skill creates branches or commits), plus the feature's dashboard with the `bt-plan` commands to copy. Add `--grill-me` to be interviewed first, `--parity` to allow numeric parity bars in the acceptance criteria. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
 | [`bt-plan`](skills/bt-plan/SKILL.md) | `/bt-plan` | Produce a detailed, task-checklist technical plan from a spec. Add `--heavy` for a decision-complete plan that keeps a long, fresh-context-per-task run cohesive, and `--parity` for numeric parity gates instead of the default functional proof. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
 | [`bt-execute`](skills/bt-execute/SKILL.md) | `/bt-execute` | Implement one task, a range (`T3-T7`, `T12-`, `NEXT:3`) or all remaining tasks from a plan/spec; with no task id it runs the next unchecked task. Add `--auto-pilot` for an unattended overnight run that never stops for human input, `--strict` for an adversarial verifier on every task, and `--verbose` for an in-depth write-up of every task and the After Action Report on the dashboard. Runs in `TIME MATTERS` mode by default; `--no-time-limit` turns it off. |
 | [`bt-recon`](skills/bt-recon/SKILL.md) | `/bt-recon` | Deep-dive existing code — a subsystem named in a brief, or the whole codebase — and write an evidence-cited technical grounding spec (`.agents/recon/<slug>_recon.md`) plus, when it has UI, a plain-language user guide (`.agents/recon/<slug>_guide.md`). Built for taking over undocumented code; `bt-spec` and `bt-plan` read the recon as grounding. Includes an observe-only live pass when the brief gives a URL; `--refresh` updates a recon after code changes. |
@@ -317,7 +317,7 @@ the After Action Report is revised when the new work is done). A watchdog runs a
 when an agent has written nothing for 10 minutes it writes a heartbeat naming the latest file the work
 changed (or warns that the run may be stalled), and it corrects a status that still names a finished
 task — so the dashboard never sits silent or wrong while a long task is running. Phase by phase and task by task it shows what was actually done, files, tests,
-verifier verdicts, attempts, commits, decisions, deferrals and follow-ups. The snapshots tell the
+verifier verdicts, attempts, decisions, deferrals and follow-ups. The snapshots tell the
 story of the build: **progressions** captured from the same camera each time a meaningful layer
 lands (a terrain: heightmap → textures → roads → trees → foliage → lighting), played back as a
 storyboard, plus before/after sliders and stills where those prove the point. When later work
@@ -407,9 +407,8 @@ bad range, a stop point named in the brief, or you telling it to stop. Nothing i
 and goes through an independent verifier, and a box only flips on a genuine PASS.
 What changes is that a failure never halts the run: a failing task gets a bounded fix loop (3
 attempts, 5 under `--strict`), is then marked `⏭️ DEFERRED (auto-pilot): <reason>` in the plan, and the run moves
-on; deferred tasks get one more pass at the end. Each verified task is committed as a checkpoint
-on the current branch (an `autopilot/<plan>` branch is created if you are on `main`; nothing is
-ever pushed), and a `<slug>_autopilot.md` run log next to the plan records every task outcome,
+on; deferred tasks get one more pass at the end. Nothing is ever committed, staged, branched or
+pushed: every change stays in your working tree, and you commit when you choose. A `<slug>_autopilot.md` run log next to the plan records every task outcome,
 decision and deferral for you to read in the morning, plus clock times per phase and per task
 (interactive runs log the clock times too) so bt-plan's time estimates can be recalibrated from
 real runs. Re-running the same command resumes and re-attempts anything deferred.

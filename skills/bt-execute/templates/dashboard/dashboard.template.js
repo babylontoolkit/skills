@@ -3,7 +3,7 @@ window.FEATURE_DASHBOARD = {
   "feature": {
     "title": "Feature Title",
     "slug": "feature-slug",
-    "branch": "project/feature/feature-slug",
+    "branch": "",
     "origin": "spec",
     "size": "medium",
     "proof": "functional",
@@ -64,7 +64,6 @@ window.FEATURE_DASHBOARD = {
           "tests": null,
           "verifier": "",
           "attempts": 0,
-          "commit": "",
           "doneAt": "",
           "deferredReason": "",
           "decisions": [],

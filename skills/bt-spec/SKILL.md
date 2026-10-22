@@ -1,6 +1,6 @@
 ---
 name: bt-spec
-description: "The Babylon Toolkit Spec Skill creates a feature spec file and branch from a short idea, plus the feature's dashboard (`.agents/specs/<slug>/dashboard.html`), which shows the bt-plan commands to copy until the feature is planned. Use when asked to spec, spec out, plan, or scaffold a new feature (\"spec out a mute toggle\", \"let's spec this\")."
+description: "The Babylon Toolkit Spec Skill creates a feature spec file from a short idea, plus the feature's dashboard (`.agents/specs/<slug>/dashboard.html`), which shows the bt-plan commands to copy until the feature is planned. Use when asked to spec, spec out, plan, or scaffold a new feature (\"spec out a mute toggle\", \"let's spec this\")."
 allowed-tools: Read, Grep, Glob, Write, WebFetch(domain:raw.githubusercontent.com), Bash(git switch:*), AskUserQuestion, Agent, Task
 ---
 
@@ -28,11 +28,11 @@ Turn a short feature idea into a spec file that `bt-plan` can plan from. Follow 
 - **Say what you are doing.** Before any step that takes more than a few seconds (a fetch, a big read, subagents) print one short line — `🔎 [bt-spec] <what> …` — and one line when it returns. A silent run looks like a hang and gets cancelled.
 - **Subagents:** running this skill is the user's request to use them where this skill says so. Use whatever subagent tool your host provides (its name varies by host — e.g. `Agent` or `Task`); if there is none, do the work inline and say so. Tell research subagents they need not read the Agent Reference.
 
-## Step 1. Arguments, name, branch
+## Step 1. Arguments and name
 
-From the flag-stripped brief derive `feature_title` (Title Case), `feature_slug` (lowercase kebab-case, `a-z 0-9 -` only, max 40 chars) and `branch_name` = `project/feature/<feature_slug>`. If a folder of that name already exists in `.agents/specs/`, `.agents/complete/` or anywhere under `.agents/archived/` (the user moves finished features from `specs/` to `complete/` for review, and later on to `archived/`), append `-02`, `-03` … to the slug, so any of them can be moved back. If you cannot infer a sensible title, ask. Make a first estimate of the feature's `size` (defined in Step 5) — it sizes the research in Step 2.
+From the flag-stripped brief derive `feature_title` (Title Case), `feature_slug` (lowercase kebab-case, `a-z 0-9 -` only, max 40 chars) and `branch_name` = the branch currently checked out (`git rev-parse --abbrev-ref HEAD`; empty without git), recorded for reference only. If a folder of that name already exists in `.agents/specs/`, `.agents/complete/` or anywhere under `.agents/archived/` (the user moves finished features from `specs/` to `complete/` for review, and later on to `archived/`), append `-02`, `-03` … to the slug, so any of them can be moved back. If you cannot infer a sensible title, ask. Make a first estimate of the feature's `size` (defined in Step 5) — it sizes the research in Step 2.
 
-Git is optional. **Where git is available:** stop now if the working tree has uncommitted or untracked files (ask the user to commit or stash); switch to a new branch `branch_name` (if taken, append `-01`, `-02` …) just before writing the spec in Step 5, so a conflict stop leaves no empty branch behind. **Where it is not** (no binary, sandboxed host such as the Babylon Toolkit App Builder): skip this silently — the branch name recorded in the spec header is the deliverable. Do not mention git as missing.
+**Never touch git.** Do not create, switch or delete a branch, and never commit, stage, stash or discard anything: the spec is written on whatever branch is checked out, and uncommitted or untracked files are the user's, left exactly as they are. The user creates branches and commits when they choose. Without git (no binary, a sandboxed host such as the Babylon Toolkit App Builder), leave `branch_name` empty and do not mention git.
 
 ## Step 2. Read the project
 
@@ -84,7 +84,7 @@ Print `✍️ [bt-spec] Drafting .agents/specs/<feature_slug>/documents/<feature
 ```markdown
 # Spec for <feature-name>
 
-branch: project/feature/<feature-name>
+branch: <the branch checked out when the spec was written, or none>
 design_system: DESIGN.md
 spec_impact: <yes|no>
 size: <small|medium|large>
@@ -144,7 +144,7 @@ If the template cannot be found, skip the dashboard and say so — bt-plan creat
 ## Step 7. Report
 
 ```
-Branch: <branch_name>
+Branch: <branch_name> (unchanged — the spec was written on the branch you had checked out)
 Spec file: .agents/specs/<feature_slug>/documents/<feature_slug>_spec.md
 Dashboard: .agents/specs/<feature_slug>/dashboard.html   (open it in a browser to copy a bt-plan command)
 Title: <feature_title>

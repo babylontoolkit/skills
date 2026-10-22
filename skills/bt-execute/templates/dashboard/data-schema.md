@@ -81,7 +81,7 @@ instead of a blank page if something still cannot render — it keeps checking a
   *Interim* while paused), with *Continue this plan* — the commands that pick up where it stopped — above it.
 - **Cadence is per task.** A task's entry changes the moment it starts (`in-progress`), the moment it is built
   (`built` — summary, files, tests and snapshots filled in right then), while the verifier checks it
-  (`verifying`) and when it passes (`done` — verifier, commit, done time).
+  (`verifying`) and when it passes (`done` — verifier, done time).
 
 ## `<slug>_dashboard.js` fields
 
@@ -90,7 +90,7 @@ Top level:
 | Field | Meaning |
 |---|---|
 | `schema` | `1` |
-| `feature` | `{ "title", "slug", "branch", "origin": "spec" \| "quick-plan", "size", "proof", "summary" }` — `summary` is one plain-language paragraph |
+| `feature` | `{ "title", "slug", "branch", "origin": "spec" \| "quick-plan", "size", "proof", "summary" }` — `branch` is the branch that was checked out when the feature was specced (skills never create one); `summary` is one plain-language paragraph |
 | `documents` | `[{ "label", "path" }]` — Spec (omitted for a Quick Plan), Plan, and Run log once bt-execute has run |
 | `status` | see *Status* |
 | `detail` | `"normal"`, or `"verbose"` once any run used `bt-execute --verbose` (never set back) |
@@ -156,7 +156,7 @@ Each task:
 | `tests` | `{ "passed", "failed", "files": [".agents/specs/<slug>/tests/…"], "note" }` or `null`. `files` holds **paths only**, each from the project root (a test outside the feature folder: its real path, e.g. `BtMarioKartWeb/tests/RaceConfig.test.ts`), because the page links each one to the file. Counts, suite names and commands go in `note` |
 | `verifier` | `"PASS — independent subagent; live check in Chrome"` |
 | `checkedLive` | every run, not only `--verbose`: one line on what the verifier ran live and where — `"two-tab Shared race in headless Chrome, 150 ms lag"`; `""` when it was proven by tests alone. The page's *live check* badge and column read it (a task the plan marked `live` always counts) |
-| `attempts`, `commit`, `doneAt` | as recorded |
+| `attempts`, `doneAt` | as recorded (bt-execute never commits, so there is no commit to record) |
 | `deferredReason` | why it was deferred, if it was |
 | `decisions` | `"DECISION T1: … — source"` lines |
 | `snapshots` | this task's progression, comparisons and stills |
@@ -178,7 +178,7 @@ Each task:
 
 ## Snapshot shapes
 
-**Add snapshots with `node <skills>/bt-execute/scripts/dashboard.mjs snapshot <feature-folder> <T3|P1|plan> --src snapshots/… --caption "…"`** (`--before`/`--after` for a comparison, `--frame "src|stage|caption"` repeated for a progression) — never by writing the JSON yourself. The image key is **`src`**, relative to the feature folder; an entry with `path` (or `file`, `image`, `url`, `href`) instead would render as "No snapshot", so every helper write repairs it to `src` (and an unknown `source` to `"browser"`), `check` repairs any already in the file, the watchdog repairs one written around the helper within a minute, and the page reads those keys too. An image that is not on disk is refused — `check` fails on it. **The snapshots are the chronicle of the build: `check` passing is part of every phase commit and of run end.**
+**Add snapshots with `node <skills>/bt-execute/scripts/dashboard.mjs snapshot <feature-folder> <T3|P1|plan> --src snapshots/… --caption "…"`** (`--before`/`--after` for a comparison, `--frame "src|stage|caption"` repeated for a progression) — never by writing the JSON yourself. The image key is **`src`**, relative to the feature folder; an entry with `path` (or `file`, `image`, `url`, `href`) instead would render as "No snapshot", so every helper write repairs it to `src` (and an unknown `source` to `"browser"`), `check` repairs any already in the file, the watchdog repairs one written around the helper within a minute, and the page reads those keys too. An image that is not on disk is refused — `check` fails on it. **The snapshots are the chronicle of the build: `check` passing is part of every phase boundary and of run end.**
 
 Any list of snapshots may mix them. `source` names where the image came from: `"browser"`, `"unity"`,
 `"blender"`, `"reference"`.
@@ -194,7 +194,7 @@ Any list of snapshots may mix them. `source` names where the image came from: `"
 "What are you doing right now?" — answered on the page without asking. Whoever is doing the work rewrites
 this file whole: the implementer while it builds, the verifier while it checks, the orchestrator between them —
 at every meaningful step (starting a task, each milestone inside it, before a build / export / bake / capture /
-test run, a fix attempt, the hand-over to the verifier, the commit). A 20-minute silence shows as a warning.
+test run, a fix attempt, the hand-over to the verifier, the phase closing). A 20-minute silence shows as a warning.
 The page shows it only while `status` is `in-progress`.
 
 | Field | Meaning |
@@ -202,7 +202,7 @@ The page shows it only while `status` is `in-progress`.
 | `updatedAt` | `"YYYY-MM-DD HH:MM"` from the shell clock |
 | `phase` | the current phase number |
 | `task` | the task being worked on; `""` between tasks |
-| `title` | only when there is no task: `"Verifying phase 1"`, `"Committing phase 1"` |
+| `title` | only when there is no task: `"Verifying phase 1"`, `"Closing phase 1"` |
 | `role` | `implementer` · `verifier` · `orchestrator` |
 | `activity` | one plain-language sentence on what is happening this minute |
 | `source` | `agent` (an agent wrote it) or `watchdog` (a heartbeat written because the agent was quiet — the page tags it) |

@@ -1932,7 +1932,7 @@
 
     const presets = starting
       ? [
-        ['Every task, unattended', 'Auto-pilot builds, verifies and commits each task in turn without stopping to ask', runCommand(['--auto-pilot'], 'ALL')],
+        ['Every task, unattended', 'Auto-pilot builds and verifies each task in turn without stopping to ask, and commits nothing', runCommand(['--auto-pilot'], 'ALL')],
         ['Every task, with you on hand', 'Runs them all, and stops when it needs your decision', runCommand([], 'ALL')],
         nextPhase ? [`${phaseLabel(nextPhase)} only`, `Tasks ${phaseRange(nextPhase)}`, runCommand([], phaseRange(nextPhase))] : null,
         firstTask ? [`The first task only — ${firstTask.id}`, firstTask.title || '', runCommand([], firstTask.id)] : null,
