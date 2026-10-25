@@ -52,9 +52,9 @@ Use the user's message after the skill name as the `arguments`.
 |---|---|
 | `references/workspace.md` | the `.agents/gauntlet/<name>/` layout, `progress.md` and round-journal formats, the resume protocol |
 | `references/critic-rubrics.md` | the critic contract, the scoring rubrics, the gap-list rules, the hard gates, the stall ladder |
-| `references/target-images.md` | generating, prompting, reachability-checking, locking the target; locked cameras; **generation backends** (kie default, Higgsfield mapping) |
+| `references/target-images.md` | generating, prompting, reachability-checking, locking the target; locked cameras; **generation backends** (kie default, Higgsfield API and CLI mapping) |
 | `references/loop-templates.md` | Template A and Template B loop cards |
-| `references/unity-pipeline.md` | the Unity build + verify pipeline, with Blender as the modelling tool |
+| `references/unity-pipeline.md` | the Unity build + verify pipeline, with Blender as the modelling tool and image → 3D blockouts (Hi3D first, then Higgsfield) |
 | `references/spec-composition.md` | composition with bt-spec / bt-plan / bt-execute, and cross-host notes |
 
 ---
@@ -167,7 +167,7 @@ and export it for my BabylonJS game — wet asphalt with puddle reflections, lay
 volumetric haze under the lights, at the fidelity of the attached screenshots.
 ```
 
-**If the user attaches nothing**, the interview generates the target instead — a real in-engine screenshot, never concept art (`references/target-images.md` § 2). The calls below use the kie shape (the default backend); on the Higgsfield CLI, map them per `target-images.md` §1a: `node scripts/hf-generate.mjs <model> --prompt … --image-references <file> --out <same out_path>`:
+**If the user attaches nothing**, the interview generates the target instead — a real in-engine screenshot, never concept art (`references/target-images.md` § 2). The calls below use the kie shape (the default backend); on Higgsfield, map them per `target-images.md` §1a: on the API (`HIGGSFIELD_API_KEY`), `node "$HF_API" xai/grok-imagine-image-2.0 --set prompt="…" --file image_urls[]=<file> --out <dir>`, then move the saved file to the same out_path; on the CLI, `node scripts/hf-generate.mjs <model> --prompt … --image-references <file> --out <same out_path>`:
 
 ```
 generate_image(
@@ -269,7 +269,7 @@ Nothing model-specific is needed — `selection == null` exports the level, the 
 
 The checkpoint is also where the critic gets both the Unity snapshot and the browser frame of the same angle and must say which side a gap is on — *Unity right, browser wrong* means material translation, not the sculpt, so don't re-model.
 
-**Textures are generated, never procedural stand-ins** — `generate_image` (kie by default, Higgsfield per `target-images.md` §1a) for albedo, normal and roughness detail. With the Higgsfield CLI set up, a part that starts from nothing may take an image-to-3D GLB as its blockout (`unity-pipeline.md`). "Substituted procedural noise for the missing map" is a gate failure, and it is the single most common reason a model reads as plastic.
+**Textures are generated, never procedural stand-ins** — `generate_image` (kie by default, Higgsfield per `target-images.md` §1a) for albedo, normal and roughness detail. A part that starts from nothing may take an image-to-3D GLB as its blockout: Hi3D when `HI3D_ACCESS_KEY` + `HI3D_SECRET_KEY` are set, else Higgsfield (API or CLI) (`unity-pipeline.md`). "Substituted procedural noise for the missing map" is a gate failure, and it is the single most common reason a model reads as plastic.
 
 Scored on the **model rubric** (Silhouette & Proportion · Surface & Material · Detail Density · Topology & Efficiency · Integration Readiness), with gates on tri budget, ≤4 influences/vertex, weights normalised, transform hygiene and GUID survival.
 

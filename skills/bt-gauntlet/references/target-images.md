@@ -20,15 +20,19 @@ gap to it.
    reimagines the scene sends the loop chasing a layout it was never asked to build.
 3. **Starting fresh.** Generate the target directly from the brief.
 
-### 1a. Generation backends — kie by default, Higgsfield supported
+### 1a. Generation backends — kie by default, Higgsfield (API or CLI) supported
 
 Every `generate_image(...)` call in this skill is written in the **kie** shape. Pick the backend once, at
 the interview, and record it in `pipeline.md` so a resumed session uses the same one:
 
 1. **The user named a backend or model** → use it.
 2. **kie** (`kie-image` MCP) is configured → **default**.
-3. The **Higgsfield CLI** is installed and signed in (`node_modules/.bin/higgsfield account status --json` works) → use it.
-4. Otherwise → the host's built-in image tool.
+3. The project's `.env` has **`HIGGSFIELD_API_KEY`** → the **Higgsfield API**, through the Reference's installed
+   `hf-api.mjs`. It bills the API balance the user paid into, so it comes before the CLI.
+4. The **Higgsfield CLI** is installed and signed in (`node_modules/.bin/higgsfield account status --json` works) → use it.
+5. Otherwise → the host's built-in image tool.
+
+Check the keys by their shape only (set or not, their length), never by printing them.
 
 **kie (default)** — see
 [Image, Video And Sound Generation](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-kie-servers.md):
@@ -41,7 +45,27 @@ generate_image(prompt, out_path, reference_paths?, model?, aspect_ratio?, resolu
 - `reference_paths` → the current-state screenshot for the refinement path (up to 14 files)
 - `aspect_ratio` → match the locked camera's aspect; `resolution: "2K"` or `"4K"`; `output_format: "png"`
 
-**Higgsfield CLI** — see
+**Higgsfield API** (`HIGGSFIELD_API_KEY`) — see
+[Higgsfield CLI and API](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-higgsfield-cli.md),
+which has the full kie → API table. Run the installed wrapper in place, never a copy:
+
+```
+HF_API="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/higgsfield/hf-api.mjs"
+node "$HF_API" xai/grok-imagine-image-2.0 --estimate --set prompt="…" --file image_urls[]=<current-state.png> \
+     --set resolution=2k --set aspect_ratio=16:9
+node "$HF_API" xai/grok-imagine-image-2.0 --out <round-dir>/gen --set prompt="…" \
+     --file image_urls[]=<current-state.png> --set resolution=2k --set aspect_ratio=16:9
+```
+
+- `reference_paths` → one `--file image_urls[]=<file>` per reference, in order (up to 10). For a strict edit of
+  1–3 references, use `alibaba/qwen-image-3/edit`. For a text-only draft, use `z-image/turbo`.
+- `out_path` → the wrapper saves `<request_id>_<field>.png` under `--out <dir>`. Move the file stdout lists under
+  `files` to the `out_path` the step names (`reference/target-<camera>.png`).
+- `resolution: "4K"` → the API image models stop at `2k`. Lock the target at 2K.
+- **Estimate first** and log the cost per image in `pipeline.md`, exactly as for the CLI below. There is no sign-in
+  and no workspace step.
+
+**Higgsfield CLI** (no API key) — see
 [Higgsfield CLI](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-higgsfield-cli.md).
 Install it locally (`npm i -D @higgsfield/cli`) and generate through the reference's download wrapper
 `scripts/hf-generate.mjs`, which saves the result to `--out` the way kie saves to `out_path`. The CLI itself only

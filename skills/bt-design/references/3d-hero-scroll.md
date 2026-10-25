@@ -40,8 +40,9 @@ memory in any framework; copy it and configure it.
    - **(a) Provided video** — skip to §3 (still needs the scrub re-encode).
    - **(b) Generate the footage** with whatever image/video generation is
      configured — KIE MCP servers (`kie-image-mcp` / `kie-video-mcp`, the
-     **default**), the Higgsfield CLI, the model's own built-in image/video
-     generation, or any other configured image/video tool — §2.
+     **default**), the Higgsfield API (`HIGGSFIELD_API_KEY` in `.env`), the
+     Higgsfield CLI, the model's own built-in image/video generation, or any
+     other configured image/video tool — §2.
    - **(c) No footage possible** — this pattern is wrong; use a static hero.
 2. **Brand tokens** — map `--hs-bg / --hs-ink / --hs-dim / --hs-accent /
    --hs-display / --hs-mono` to the host site's design system (DESIGN.md or
@@ -76,16 +77,40 @@ memory in any framework; copy it and configure it.
 The generation backend is pluggable — the pipeline below is the same whatever
 produces the frames. Choose the backend in this order: the one the user named →
 **KIE MCP servers** (`kie-image-mcp` / `kie-video-mcp`, the default) → the **Higgsfield
-CLI** → the model's own built-in image/video generation → any other configured
+API** when the project's `.env` has `HIGGSFIELD_API_KEY` → the **Higgsfield CLI** →
+the model's own built-in image/video generation → any other configured
 image/video tool. The parameter names below (`reference_paths`, `image_paths`,
-`out_path`) are KIE/Kling's; map them to your backend (Higgsfield mapping below).
+`out_path`) are KIE/Kling's; map them to your backend (Higgsfield mappings below).
 
 > **If using the KIE MCP servers** (Babylon Toolkit projects): read the
 > Babylon Toolkit Agent Reference and its `web-kie-servers.md` sub-document
 > first (per CLAUDE.md). Those servers read the key from `.env` — a file named
 > `env` is ignored.
 
-> **If using the Higgsfield CLI** (`@higgsfield/cli`): read the Agent
+> **If using the Higgsfield API** (`HIGGSFIELD_API_KEY` in `.env`, checked by
+> shape only): read the Agent Reference's `web-higgsfield-cli.md` sub-document
+> first. Run the Reference's installed wrapper in place, never a copy:
+> `HF_API="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/higgsfield/hf-api.mjs"`.
+> It uploads local files, waits, and saves every result as
+> `<request_id>_<field>.<ext>` under `--out <dir>`, listing them under `files`
+> on stdout. Move each one to the path the step names. KIE-shaped calls map like this:
+>
+> | KIE shape | Higgsfield API |
+> |---|---|
+> | `generate_image({ prompt, out_path })` | `node "$HF_API" xai/grok-imagine-image-2.0 --out media/gen --set prompt="…" --set aspect_ratio=16:9 --set resolution=2k`, then move the PNG to `media/hero.png` |
+> | `reference_paths: [hero.png]` | `--file image_urls[]=media/hero.png` (repeat for several, up to 10) |
+> | `image_paths[0]` = first frame | `--file image_url=media/clip1-last.jpg` |
+> | `image_paths[1]` = last frame | `--file last_image_url=media/hero.png` (Kling) · `--file end_image_url=media/hero.png` (Seedance) |
+> | Kling 3 `std`/`pro` | `node "$HF_API" kling-video/v3.0/pro/image-to-video --set prompt="…" --set duration=<3–15> --set sound=off …` (`v3.0/standard/…`, `v3.0/4k/…`) |
+> | general video | `node "$HF_API" bytedance/seedance-2.5/image-to-video --set duration=<4–30> --set resolution=1080p --set generate_audio=false …` |
+> | `out_path: "clipN.mp4"` | `--out media/gen`, then move the saved `.mp4` to `media/clipN.mp4` (`--timeout` is in minutes, default 30) |
+>
+> Turn sound **off** (the scrub encode strips audio) and run every clip once
+> with `--estimate` in place of `--out <dir>`. Tell the user the film's total
+> before submitting it. There is no sign-in step. The API image models stop at
+> 2K, so the anchor is 2K.
+
+> **If using the Higgsfield CLI** (`@higgsfield/cli`, no API key): read the Agent
 > Reference's `web-higgsfield-cli.md` sub-document first. Install the CLI
 > locally (`npm i -D @higgsfield/cli`) and the reference's download wrapper as
 > `scripts/hf-generate.mjs`. The CLI only returns CDN URLs; the wrapper saves

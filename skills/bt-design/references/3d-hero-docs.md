@@ -64,10 +64,17 @@ all beats                                 ffmpeg concat → journey.mp4
 **Which tool backs `generate_image` / `generate_video`?** These are generic
 calls, not a specific vendor. The skill routes them to whatever image/video
 generation is configured in your environment — KIE MCP servers (e.g.
-`kie-image-mcp` and `kie-video-mcp`, the default), the Higgsfield CLI, the
-model's own built-in image/video generation, or any other configured image/video
-tool. The prompt just says "generate the footage"; the wiring picks the backend.
+`kie-image-mcp` and `kie-video-mcp`, the default), the Higgsfield API (when `.env`
+has `HIGGSFIELD_API_KEY`), the Higgsfield CLI, the model's own built-in
+image/video generation, or any other configured image/video tool. The prompt
+just says "generate the footage"; the wiring picks the backend.
 `image_paths` / `reference_paths` / `out_path` are the KIE/Kling parameter names.
+On the **Higgsfield API** every call goes through the Reference's installed
+`hf-api.mjs`: `image_paths[0]` / `[1]` become `--file image_url=…` and
+`--file last_image_url=…` on `kling-video/v3.0/pro/image-to-video` (or
+`end_image_url` on `bytedance/seedance-2.5/image-to-video`), reference images
+become `--file image_urls[]=<file>`, and each result is moved from the `--out`
+folder to its `out_path`.
 On the **Higgsfield CLI** every call goes through the reference's
 `scripts/hf-generate.mjs` wrapper: `image_paths[0]` / `[1]` become
 `--start-image` / `--end-image` on `kling3_0` or `seedance_2_5`, reference images

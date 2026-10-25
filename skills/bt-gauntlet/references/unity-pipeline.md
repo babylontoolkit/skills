@@ -216,17 +216,39 @@ return UnityEditor.AssetDatabase.AssetPathToGUID(p) + " rig=" + i.animationType 
 matching the Unity Avatar/Animator rig, and `add_leaf_bones=False` on FBX export.
 
 **Textures are generated, not procedural.** Use `generate_image` for albedo, normals, roughness masks and
-detail maps. It goes to the backend recorded in `pipeline.md`: the toolkit's `kie-image` MCP by default, or
-the Higgsfield CLI (`node scripts/hf-generate.mjs <model> … --out Assets/Textures/<map>.png`, per `target-images.md` §1a). Substituting
+detail maps. It goes to the backend recorded in `pipeline.md`: the toolkit's `kie-image` MCP by default, the
+Higgsfield API (`node "$HF_API" <model-path> … --out <dir>`, then move the saved file to
+`Assets/Textures/<map>.png`), or the Higgsfield CLI (`node scripts/hf-generate.mjs <model> … --out Assets/Textures/<map>.png`),
+per `target-images.md` §1a. Substituting
 procedural noise or flat colours for maps the target needs is a gate failure, and the commonest reason an
 asset reads as plastic.
 
-**Image → starting mesh (Higgsfield only).** When a model part starts from nothing and the Higgsfield CLI is
-set up, an image-to-3D model can turn the locked target's subject into a GLB blockout:
-`node scripts/hf-generate.mjs tripo_h3_1_image_to_3d --image-references <subject.png> --out <round-dir>/blockout.glb`
-(9 credits; `tripo_h3_1_multiview_to_3d` for 2–4 views). Run `--cost` first and log it. Confirm the result with
-`file blockout.glb` (`glTF binary`), then import it into Blender and refine it like any other source mesh: retopo, UVs, LODs, weights under the gates
-above. It is a head start on the silhouette, never a finished asset. Its topology and UVs will not pass the
+**Image → starting mesh.** When a model part starts from nothing, an image-to-3D model can turn the locked
+target's subject into a GLB blockout. Pick the generator in this order and record it in `pipeline.md`:
+
+1. **Hi3D**, when the project's `.env` has `HI3D_ACCESS_KEY` + `HI3D_SECRET_KEY`. It is the preferred mesh generator
+   ([Hi3D API](https://raw.githubusercontent.com/babylontoolkit/agent/main/references/web-hi3d-api.md)):
+   ```
+   HI3D_API="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/hi3d/hi3d-api.mjs"
+   node "$HI3D_API" image-to-3d --estimate --file images=<subject.png> --set face=100000
+   node "$HI3D_API" image-to-3d --out <round-dir> --name blockout --file images=<subject.png> --set face=100000
+   ```
+   45 credits ($0.90) at the default `hi3dv3.0` / `2048quality`. For 2–4 views, use
+   `--view front=… --view back=… --view left=… --view right=…` in place of `--file images=…`. Hi3D's order differs
+   from Tripo's, and `--view` gets it right. For a cheap shape iteration, use
+   `--set model=hitem3dv2.1 --set resolution=1536fast` (25 credits). Never resubmit a task that timed out; resume it
+   with `--task <task_id>`.
+2. **Higgsfield API**, when `.env` has `HIGGSFIELD_API_KEY` (`HF_API` is the installed wrapper, `target-images.md` §1a):
+   `node "$HF_API" tripo3d/h3.1/image-to-3d --out <round-dir> --file image_url=<subject.png>`, then move the saved
+   `.glb` to `<round-dir>/blockout.glb` (`tripo3d/h3.1/multiview-to-3d` with `--file image_urls[]=…` for 2–4 views,
+   in Tripo's order: front, left, back, right). Run `--estimate` first.
+3. **Higgsfield CLI**, when it is signed in:
+   `node scripts/hf-generate.mjs tripo_h3_1_image_to_3d --image-references <subject.png> --out <round-dir>/blockout.glb`
+   (9 credits; `tripo_h3_1_multiview_to_3d` for 2–4 views). Run `--cost` first.
+
+Log the cost of each one. Confirm the result with `file blockout.glb` (`glTF binary`). Then run `bt-unwrap` on it
+with the same reference views, or import it into Blender, and refine it like any other source mesh: retopo, UVs,
+LODs, weights under the gates above. It is a head start on the silhouette, never a finished asset. Its topology and UVs will not pass the
 model rubric untouched.
 
 ---

@@ -64,8 +64,9 @@ user exactly which input failed and why, and ask for a corrected path/URL.
 - **Image generation**: pick the backend in this order:
   1. the tool or model the user named (e.g. "use nano-banana-2", "use Flux", "use Higgsfield");
   2. the **kie** image MCP (`kie-image-mcp`), the **default** where configured;
-  3. the **Higgsfield CLI** (`@higgsfield/cli`) where installed and signed in;
-  4. the host's built-in image generation, or any other configured image tool.
+  3. the **Higgsfield API**, when the project's `.env` has `HIGGSFIELD_API_KEY` (checked by shape only, never printed);
+  4. the **Higgsfield CLI** (`@higgsfield/cli`) where installed and signed in;
+  5. the host's built-in image generation, or any other configured image tool.
 
   Whichever tool is used, pass BOTH the base texture and the UV layout as reference
   images to it. Match `aspect_ratio` to the texture (usually `1:1`), request a
@@ -75,7 +76,23 @@ user exactly which input failed and why, and ask for a corrected path/URL.
 
   - **kie**: `generate_image` with `reference_paths: [<base.png>, <uv_layout.png>]`
     (in that order), `out_path: <scratch>/raw/skin_var_NN.png`, `output_format: "png"`.
-  - **Higgsfield CLI**: see the Babylon Toolkit reference `web-higgsfield-cli.md`. Install it locally
+  - **Higgsfield API** (`HIGGSFIELD_API_KEY`): see the Babylon Toolkit reference `web-higgsfield-cli.md`. Run the
+    installed wrapper in place, never a copy:
+    `HF_API="https://raw.githubusercontent.com/babylontoolkit/agent/main/references/higgsfield/hf-api.mjs"`.
+    1. **Use an edit model that takes both references in order**: `alibaba/qwen-image-3/edit` (1–3 ordered
+       references, the closest match to "keep this layout") or `xai/grok-imagine-image-2.0` (up to 10). Base first:
+       ```
+       node "$HF_API" alibaba/qwen-image-3/edit --out <scratch>/raw/gen_NN --set prompt="<prompt>" \
+            --file image_urls[]=<base.png> --file image_urls[]=<uv_layout.png> \
+            --set resolution=2k --set aspect_ratio=1:1
+       ```
+    2. **Estimate first**: the same command with `--estimate` in place of `--out <dir>`. Tell the user the
+       per-variant cost before a large batch.
+    3. The wrapper saves `<request_id>_<field>.png` in the `--out` folder and lists it under `files` on stdout.
+       Move it to `<scratch>/raw/skin_var_NN.png`. `composite_skin.py` resizes it to the base texture's size, so
+       a 2K output for a 4K texture needs no extra step (the API image models stop at 2K).
+    4. Run several variants as parallel calls from the shell, each with its own `--out` folder.
+  - **Higgsfield CLI** (no API key): see the Babylon Toolkit reference `web-higgsfield-cli.md`. Install it locally
     (`npm i -D @higgsfield/cli`) and add the reference's download wrapper as `scripts/hf-generate.mjs` in
     the project. The CLI only returns URLs; the wrapper saves the file.
     1. **Upload both references once** and reuse the IDs for every variant, because every call that names
@@ -191,8 +208,8 @@ for just those indices.
 
 ## Notes & gotchas
 - Always pass BOTH base + UV layout as references to the generator; never rely on
-  the prompt alone to hold the layout. On Higgsfield that means two
-  `--image-references` flags, base first.
+  the prompt alone to hold the layout. On the Higgsfield API that means two
+  `--file image_urls[]=` inputs, base first; on the CLI, two `--image-references` flags, base first.
 - Generated outputs (kie or Higgsfield) must end up as local files in `<scratch>/raw/`;
   never reference a remote result URL from the finals or the engine project.
 - The mask is the safety net. If a variant's island content is shifted inside its

@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.2.0)
+# Babylon Toolkit Desktop Agent (1.2.1)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -280,6 +280,7 @@ pair or schedule the bridge.
 | [`bt-design`](skills/bt-design/SKILL.md) | `/bt-design` | Implement high quality frontend and in-game designs. |
 | [`bt-hero`](skills/bt-hero/SKILL.md) | `/bt-hero` | Create smooth cinematic 3D scrolling hero sections. |
 | [`bt-atlas`](skills/bt-atlas/SKILL.md) | `/bt-atlas` | Generate texture atlas skin variations. |
+| [`bt-unwrap`](skills/bt-unwrap/SKILL.md) | `/bt-unwrap` | Turn a rough AI-generated (or any) 3D model into a clean, web-ready game asset in one headless Blender run: repair the geometry, decimate to a face budget (lost shape re-baked as a normal map), orient it to glTF / BabylonJS forward at real-world scale, give it a new UV layout of large islands (less space for surfaces nobody sees), bake the source textures onto it, and paint the sharp reference images back on — straight and three-quarter views, each camera solved from the silhouette, one view per face, seams kept off logos, and the model's own texture kept where images and geometry disagree (engines, cockpits) — so a melted, fragmented texture comes out crisp instead of smeared. GLB / glTF / FBX / OBJ / USD / PLY / STL / Alembic / .blend in; GLB / glTF / FBX / OBJ / USD / .blend out with 2048 WebP textures (4096 on request), a single-sided PBR material, optional Draco and LODs, before/after renders, coverage and clutter maps, the UV island map for `bt-atlas`, and a JSON report with acceptance checks for plans. `--refs`, `--faces`, `--length`, `--texture-size`, `--unwrap views\|smart\|keep`, `--analyze`. |
 | [`bt-optimize`](skills/bt-optimize/SKILL.md) | `/bt-optimize` | Make an exported Unity scene run fast in the browser: profile the BabylonJS frame (draw calls per pass, lights, shadows, post-processing, resolution, materials, textures), fix the causes on a copy of the scene — runtime lights, shadows, post, exporter settings, static / lightmap / mirrored unlocks — and merge static meshes and LOD groups (packed lightmap UVs, LOD clusters); then re-bake, export and verify frame rate and look against the original. `--no-combine`, `--combine-only`. |
 | [`bt-profile`](skills/bt-profile/SKILL.md) | `/bt-profile` | Find what makes a web app slow and list the fixes (spec them with `/bt-spec`, or apply them with `--auto-fix`) — built for BabylonJS / Babylon Toolkit games, usable on any front end (give it a URL and the project folder): drive the running game in Chrome through a repeatable scenario (a cold load, a level start, a countdown), record the CPU profile, allocations, every frame and every GPU pipeline compile (with `--gpu-cold`, as on a first visit), map each millisecond to its source line and owner (your code, the toolkit runtime, BabylonJS, Havok, React), then list the fixes, or with `--auto-fix` apply them one at a time and re-measure each. Writes `.agents/profile/<slug>/dashboard.html` (live progress, Print / Download PDF) and a spec-ready `findings.md`. `--auto-fix`, `--snapshots`, `--watch`, `--gpu-cold`, `--stop`, `--resume`, `--restart`, `--project`, `--slug`. |
 
@@ -445,7 +446,7 @@ Where each tool looks for PROJECT-LOCAL skills (only when the user explicitly re
 > for everything else (Codex, Copilot, Gemini CLI, Antigravity). By default use the
 > GLOBAL (per-user home) locations; use the project-local locations only when the user
 > explicitly asks for a project install. Copy **whole folders** into each — the
-> `bt-atlas/scripts/`, `bt-optimize/scripts/` and `bt-profile/scripts/` + `bt-profile/templates/` assets must be present in every location.
+> `bt-atlas/scripts/`, `bt-unwrap/scripts/`, `bt-optimize/scripts/` and `bt-profile/scripts/` + `bt-profile/templates/` assets must be present in every location.
 
 
 # Babylon Toolkit Loop Engineering (Gauntlet Loop)
