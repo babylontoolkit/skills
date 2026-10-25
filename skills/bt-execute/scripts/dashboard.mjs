@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Feature dashboard helper for bt-execute: the one way agents write a feature's dashboard data, plus the
- * watchdog that keeps the live status honest while an agent is busy with a long task.
+ * Feature dashboard helper for bt-execute: the one way agents write a feature's dashboard data, the writer of the
+ * live status, the gate that catches a skipped deliverable, and a watchdog for manual use.
  *
  * Every write reads the data file, parses its strict JSON, changes it and writes it back atomically (a temp file
  * renamed over the original), so the page can never load a half-written file and no hand edit can break it.
@@ -18,15 +18,36 @@
  *
  * <feature-folder> is .agents/specs/<slug>. Timestamps come from this machine's local clock.
  *
+ * The live file (`documents/<slug>_live.js`) is written by this helper, not by agents: every `task --set` that
+ * changes a task's `status` rewrites it from that change (the task, its phase, the role its status implies, one
+ * sentence on its new state plus the summary's first sentence, and a step in its log), and every `status` write
+ * records the run starting or ending. A `--set` without `status` leaves it untouched. `live` remains for a hand
+ * write; `watch` is a manual tool — no skill launches it.
+ *
  * Snapshots go in only through `snapshot`. `task --set` and `check` refuse any snapshot entry the page cannot show —
  * an image under `path` (or `file`, `image`, …) instead of `src`, or a `src` that is not a file under the feature
  * folder — because such an entry renders as "No snapshot".
+ *
+ * `check` is the gate at every phase boundary and at run end. Beyond the snapshots it fails, listing every problem in
+ * one message, when a deliverable was skipped: a `documents/<slug>_plan.md` without `dashboard.html`, the dashboard
+ * data or the live file; dashboard tasks that differ from the plan's checklist (ids or order); a `complete` status
+ * while the plan has an unticked box or without `documents/<slug>_summary.html`; a visual task (kind live, game or
+ * unity) that is `done` with no snapshot of its own or progression frame tagged with its id; a task ticked in the plan
+ * whose dashboard entry has no verifier result. With no plan in the folder, the plan checks are skipped.
  */
 import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 
 /** How many entries a task's live step log keeps. */
 const MAXIMUM_LIVE_STEPS = 12;
+/** The prefix a live file starts with when the helper creates it. */
+const LIVE_PREFIX = 'window.FEATURE_LIVE';
+/** Who is working on a task in each status — the live file's `role` after a `task` write; anything else is the orchestrator. */
+const ROLE_FOR_TASK_STATUS = { 'in-progress': 'implementer', built: 'implementer', verifying: 'verifier' };
+/** Task kinds whose result is seen on screen, so a `done` task of this kind must have a snapshot. */
+const VISUAL_TASK_KINDS = new Set(['live', 'game', 'unity']);
+/** A plan checklist line: `- [ ] **T3.1** — …` or `- [x] T4 …`; captures the tick mark and the task id. */
+const PLAN_CHECKLIST_LINE = /^\s*[-*]\s+\[([ xX])\]\s+(?:\*\*)?(T\d+(?:\.\d+)*)\b/;
 /** Folders the watchdog never descends into when looking for signs of work. */
 const IGNORED_FOLDERS = new Set(['node_modules', '.git', 'Library', 'Temp', 'Logs', 'obj', 'dist', 'build', '.cache', 'profile']);
 /** How deep the watchdog looks inside each watched folder. */
@@ -130,6 +151,15 @@ function parseOptions(argumentList, repeatable = []) {
 }
 
 /**
+ * Reads the live file, or an empty one when it does not exist yet (the next write creates it).
+ * @param {string} livePath The live file.
+ * @returns {{ prefix: string, data: any }}
+ */
+function readLive(livePath) {
+  return existsSync(livePath) ? readData(livePath) : { prefix: LIVE_PREFIX, data: {} };
+}
+
+/**
  * Rewrites the live status: what is happening this minute.
  * @param {string} folder The feature folder.
  * @param {string[]} argumentList Command options.
@@ -137,7 +167,7 @@ function parseOptions(argumentList, repeatable = []) {
 function writeLive(folder, argumentList) {
   const { options } = parseOptions(argumentList, ['step']);
   const { livePath } = dataPaths(folder);
-  const existing = existsSync(livePath) ? readData(livePath) : { prefix: 'window.FEATURE_LIVE', data: {} };
+  const existing = readLive(livePath);
   const live = existing.data;
   const now = localTime();
   const taskChanged = options.task !== undefined && options.task !== live.task;
@@ -157,21 +187,126 @@ function writeLive(folder, argumentList) {
 }
 
 /**
+ * The first sentence of a text — up to the first `.`, `!` or `?` followed by a space or the end.
+ * @param {string} [text] The text, e.g. a task summary.
+ * @returns {string} The sentence, trimmed; the whole text when it has no sentence end; `""` for no text.
+ */
+function firstSentence(text) {
+  const trimmed = String(text || '').trim();
+  const match = /^[\s\S]*?[.!?](?=\s|$)/.exec(trimmed);
+  return match ? match[0] : trimmed;
+}
+
+/**
+ * One plain-language sentence on a task's state, for the live file.
+ * @param {any} task The task, after the change (its `status`, `title`, `attempts`, `deferredReason`).
+ * @returns {string}
+ */
+function taskStatusSentence(task) {
+  const name = task.title ? `${task.id} — ${task.title}` : task.id;
+  const attempt = Number(task.attempts) || 1;
+  const reason = String(task.deferredReason || '').trim().replace(/[.!?]+$/, '');
+  switch (task.status) {
+    case 'in-progress':
+      return attempt > 1 ? `Fixing ${name} after a failed check (attempt ${attempt}).` : `Building ${name}.`;
+    case 'built':
+      return `${task.id} is built and its tests pass — waiting for the verifier.`;
+    case 'verifying':
+      return `The verifier is checking ${name}.`;
+    case 'done':
+      return `${task.id} passed verification and is done.`;
+    case 'deferred':
+      return reason ? `${task.id} was deferred: ${reason}.` : `${task.id} was deferred.`;
+    case 'failed':
+      return `${task.id} failed verification.`;
+    case 'pending':
+      return `${name} is waiting to start.`;
+    default:
+      return `${task.id} is now ${task.status}.`;
+  }
+}
+
+/**
+ * Rewrites the live file from a task's status change: its phase, the task, the role its status implies, one sentence
+ * on its new state (plus the first sentence of the summary written with it), and that sentence appended to the task's
+ * step log — a fresh log when the live file named another task. Creates the live file when it is missing.
+ * @param {string} folder The feature folder.
+ * @param {number} phaseNumber The number of the phase holding the task.
+ * @param {any} task The task, after the change.
+ * @param {string} [summary] The summary written in the same change, if any.
+ */
+function writeLiveForTask(folder, phaseNumber, task, summary) {
+  const { livePath } = dataPaths(folder);
+  const { prefix, data: live } = readLive(livePath);
+  const now = localTime();
+  const summarySentence = firstSentence(summary);
+  const activity = summarySentence ? `${taskStatusSentence(task)} ${summarySentence}` : taskStatusSentence(task);
+  const steps = live.task === task.id && Array.isArray(live.steps) ? live.steps : [];
+  steps.push({ at: now.clock, text: activity });
+  writeData(livePath, prefix, {
+    updatedAt: now.stamp,
+    phase: phaseNumber,
+    task: task.id,
+    title: '',
+    role: ROLE_FOR_TASK_STATUS[task.status] || 'orchestrator',
+    activity,
+    steps: steps.slice(-MAXIMUM_LIVE_STEPS),
+    source: 'agent',
+  });
+}
+
+/**
+ * Rewrites the live file when the run's status changes: a run starting clears the last run's task and steps; a run
+ * ending says so (the page hides the live file once the status is no longer in-progress).
+ * @param {string} folder The feature folder.
+ * @param {string} status The dashboard's new status.
+ */
+function writeLiveForRun(folder, status) {
+  const { livePath } = dataPaths(folder);
+  const { prefix, data: live } = readLive(livePath);
+  const now = localTime();
+  const starting = status === 'in-progress';
+  const title = starting ? 'Run started — preparing the first task' : `Run ended — the plan is ${status}`;
+  writeData(livePath, prefix, {
+    updatedAt: now.stamp,
+    phase: live.phase,
+    task: '',
+    title,
+    role: 'orchestrator',
+    activity: `${title}.`,
+    steps: [{ at: now.clock, text: `${title}.` }],
+    source: 'agent',
+  });
+}
+
+/**
+ * Finds a task anywhere in the dashboard data, with the phase that holds it.
+ * @param {any} dashboard The dashboard data.
+ * @param {string} taskId The task id, e.g. `T12.2`.
+ * @returns {{ phase: any, task: any } | undefined}
+ */
+function findTaskWithPhase(dashboard, taskId) {
+  for (const phase of dashboard.phases || []) {
+    const task = (phase.tasks || []).find((candidate) => candidate.id === taskId);
+    if (task) return { phase, task };
+  }
+  return undefined;
+}
+
+/**
  * Finds a task anywhere in the dashboard data.
  * @param {any} dashboard The dashboard data.
  * @param {string} taskId The task id, e.g. `T12.2`.
  * @returns {any | undefined}
  */
 function findTask(dashboard, taskId) {
-  for (const phase of dashboard.phases || []) {
-    const task = (phase.tasks || []).find((candidate) => candidate.id === taskId);
-    if (task) return task;
-  }
-  return undefined;
+  const found = findTaskWithPhase(dashboard, taskId);
+  return found ? found.task : undefined;
 }
 
 /**
- * Merges fields into one task, optionally recording why an earlier result changed.
+ * Merges fields into one task, optionally recording why an earlier result changed. A change that sets `status` also
+ * rewrites the live file (see `writeLiveForTask`); any other change leaves it as it was.
  * @param {string} folder The feature folder.
  * @param {string[]} argumentList The task id and options.
  */
@@ -181,8 +316,9 @@ function writeTask(folder, argumentList) {
   if (!taskId || typeof options.set !== 'string') throw new Error('usage: task <feature-folder> <task-id> --set \'{"status":"built"}\'');
   const { dashboardPath } = dataPaths(folder);
   const { prefix, data } = readData(dashboardPath);
-  const task = findTask(data, taskId);
-  if (!task) throw new Error(`task ${taskId} is not in ${dashboardPath} — sync the dashboard with the plan first`);
+  const found = findTaskWithPhase(data, taskId);
+  if (!found) throw new Error(`task ${taskId} is not in ${dashboardPath} — sync the dashboard with the plan first`);
+  const { phase, task } = found;
   const changes = JSON.parse(options.set);
   checkTaskShape(changes);
   if (Array.isArray(changes.snapshots)) {
@@ -199,6 +335,7 @@ function writeTask(folder, argumentList) {
   }
   data.updatedAt = now.stamp;
   writeData(dashboardPath, prefix, data);
+  if (typeof changes.status === 'string') writeLiveForTask(folder, phase.number, task, changes.summary);
 }
 
 /**
@@ -466,7 +603,7 @@ function writeActivity(folder, argumentList) {
 }
 
 /**
- * Sets the dashboard's run status.
+ * Sets the dashboard's run status, and records the run starting or ending in the live file.
  * @param {string} folder The feature folder.
  * @param {string[]} argumentList The new status.
  */
@@ -479,16 +616,135 @@ function writeStatus(folder, argumentList) {
   data.status = status;
   data.updatedAt = localTime().stamp;
   writeData(dashboardPath, prefix, data);
+  if (status !== 'planned') writeLiveForRun(folder, status);
 }
 
 /**
- * Confirms both data files parse and every snapshot entry will show its image; fails listing each one that would
- * show "No snapshot".
+ * Reads a plan's checklist: every `- [ ]` / `- [x]` line that starts with a task id, in file order, skipping fenced
+ * code blocks (a plan may quote a checklist as an example).
+ * @param {string} planPath The plan file.
+ * @returns {{ id: string, ticked: boolean }[]}
+ */
+function readPlanChecklist(planPath) {
+  const tasks = [];
+  let insideFence = false;
+  for (const line of readFileSync(planPath, 'utf8').split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      insideFence = !insideFence;
+      continue;
+    }
+    const match = insideFence ? null : PLAN_CHECKLIST_LINE.exec(line);
+    if (match) tasks.push({ id: match[2], ticked: match[1] !== ' ' });
+  }
+  return tasks;
+}
+
+/**
+ * The feature-folder files a written plan must have beside it.
  * @param {string} folder The feature folder.
- * @throws {Error} When a file does not parse or a snapshot entry is broken.
+ * @returns {string[]} One problem per missing file.
+ */
+function missingDeliverables(folder) {
+  const { slug } = dataPaths(folder);
+  const required = [
+    ['dashboard.html', `copy it from bt-execute's templates/dashboard/ with {{slug}} replaced`],
+    [join('documents', `${slug}_dashboard.js`), 'create it from templates/dashboard/dashboard.template.js and the plan'],
+    [join('documents', `${slug}_live.js`), 'create it from templates/dashboard/live.template.js'],
+  ];
+  return required
+    .filter(([file]) => !existsSync(join(folder, file)))
+    .map(([file, remedy]) => `the plan has no ${file} — ${remedy}`);
+}
+
+/**
+ * Compares the dashboard's tasks with the plan's checklist: tasks missing on either side, or the same tasks in a
+ * different order.
+ * @param {string[]} planIds The plan's task ids, in plan order.
+ * @param {string[]} dashboardIds The dashboard's task ids, in page order.
+ * @returns {string[]} One problem per kind of mismatch.
+ */
+function taskListProblems(planIds, dashboardIds) {
+  const missing = planIds.filter((id) => !dashboardIds.includes(id));
+  const extra = dashboardIds.filter((id) => !planIds.includes(id));
+  const problems = [];
+  if (missing.length) problems.push(`plan tasks missing from the dashboard: ${missing.join(', ')} — sync the dashboard with the plan`);
+  if (extra.length) problems.push(`dashboard tasks the plan does not have: ${extra.join(', ')} — sync the dashboard with the plan`);
+  if (problems.length) return problems;
+  const position = planIds.findIndex((id, index) => dashboardIds[index] !== id);
+  if (position >= 0) {
+    problems.push(`the dashboard lists the tasks in a different order from the plan (position ${position + 1}: plan ${planIds[position]}, dashboard ${dashboardIds[position]}) — sync the dashboard with the plan`);
+  }
+  return problems;
+}
+
+/**
+ * The plan checks: the dashboard's tasks match the checklist, a `complete` status is true and has its plan summary,
+ * and every ticked task has a verifier result.
+ * @param {string} folder The feature folder.
+ * @param {any} dashboard The dashboard data.
+ * @param {{ id: string, ticked: boolean }[]} planTasks The plan's checklist.
+ * @returns {string[]} One line per problem.
+ */
+function planProblems(folder, dashboard, planTasks) {
+  const { slug } = dataPaths(folder);
+  const dashboardTasks = (dashboard.phases || []).flatMap((phase) => phase.tasks || []);
+  const problems = taskListProblems(planTasks.map((task) => task.id), dashboardTasks.map((task) => task.id));
+  if (dashboard.status === 'complete') {
+    const unticked = planTasks.filter((task) => !task.ticked).map((task) => task.id);
+    if (unticked.length) problems.push(`status is complete but the plan still has unticked tasks: ${unticked.join(', ')} — set paused or incomplete`);
+    const summaryFile = join('documents', `${slug}_summary.html`);
+    if (!existsSync(join(folder, summaryFile))) problems.push(`status is complete but ${summaryFile} is missing — write the plan summary`);
+  }
+  for (const planTask of planTasks.filter((task) => task.ticked)) {
+    const dashboardTask = dashboardTasks.find((task) => task.id === planTask.id);
+    if (dashboardTask && !dashboardTask.verifier) problems.push(`${planTask.id} is ticked in the plan but has no verifier result on the dashboard`);
+  }
+  return problems;
+}
+
+/**
+ * Visual tasks marked `done` with nothing to show for it: no snapshot of their own and no phase or After Action
+ * Report progression frame tagged with their id.
+ * @param {any} dashboard The dashboard data.
+ * @returns {string[]} One line per task.
+ */
+function visualTaskProblems(dashboard) {
+  const sharedLists = [dashboard.afterAction && dashboard.afterAction.snapshots, ...(dashboard.phases || []).map((phase) => phase.snapshots)];
+  const taggedTaskIds = new Set(
+    sharedLists
+      .flatMap((list) => (Array.isArray(list) ? list : []))
+      .flatMap((snapshot) => (snapshot && Array.isArray(snapshot.frames) ? snapshot.frames : []))
+      .map((frame) => frame && frame.task),
+  );
+  return (dashboard.phases || [])
+    .flatMap((phase) => phase.tasks || [])
+    .filter((task) => task.status === 'done' && VISUAL_TASK_KINDS.has(task.kind))
+    .filter((task) => !(Array.isArray(task.snapshots) && task.snapshots.length) && !taggedTaskIds.has(task.id))
+    .map((task) => `${task.id} (kind ${task.kind}) is done with no snapshot — add the builder's built frame and the verifier's comparison with \`dashboard.mjs snapshot\``);
+}
+
+/**
+ * Builds the refusal message for skipped deliverables.
+ * @param {string[]} problems What is missing or false, one line each.
+ * @returns {string}
+ */
+function deliverableRefusal(problems) {
+  return `refused — ${problems.length} deliverable problem${problems.length === 1 ? '' : 's'}:\n  ${problems.join('\n  ')}`;
+}
+
+/**
+ * The gate at every phase boundary and at run end. Confirms both data files parse and every snapshot entry will show
+ * its image, and — when the folder holds the plan — that no deliverable was skipped (see the header). Fails listing
+ * every problem in one message.
+ * @param {string} folder The feature folder.
+ * @throws {Error} When a file does not parse, a snapshot entry is broken or a deliverable is missing or false.
  */
 function checkData(folder) {
-  const { dashboardPath, livePath } = dataPaths(folder);
+  const { slug, dashboardPath, livePath } = dataPaths(folder);
+  const planPath = join(folder, 'documents', `${slug}_plan.md`);
+  const planTasks = existsSync(planPath) ? readPlanChecklist(planPath) : null;
+  const missing = planTasks ? missingDeliverables(folder) : [];
+  if (missing.length && !existsSync(dashboardPath)) throw new Error(deliverableRefusal(missing));
   const { prefix, data } = readData(dashboardPath);
   if (existsSync(livePath)) readData(livePath);
   const repairs = repairSnapshots(data);
@@ -502,8 +758,11 @@ function checkData(folder) {
   }
   const snapshots = allSnapshots(data);
   const problems = snapshots.flatMap(({ snapshot, where }) => snapshotProblems(folder, snapshot, where));
-  if (problems.length) throw new Error(snapshotRefusal(problems));
-  console.log(`ok: ${dashboardPath}${existsSync(livePath) ? ` and ${livePath}` : ''} parse; ${snapshots.length} snapshot entries all show an image`);
+  const deliverables = [...missing, ...visualTaskProblems(data), ...(planTasks ? planProblems(folder, data, planTasks) : [])];
+  const refusals = [problems.length ? snapshotRefusal(problems) : '', deliverables.length ? deliverableRefusal(deliverables) : ''].filter(Boolean);
+  if (refusals.length) throw new Error(refusals.join('\n'));
+  const planNote = planTasks ? `; the dashboard matches the plan's ${planTasks.length} tasks` : '';
+  console.log(`ok: ${dashboardPath}${existsSync(livePath) ? ` and ${livePath}` : ''} parse; ${snapshots.length} snapshot entries all show an image${planNote}`);
 }
 
 /**
@@ -526,7 +785,7 @@ function latestChange(roots) {
         if (depth < MAXIMUM_SCAN_DEPTH && !IGNORED_FOLDERS.has(entry.name)) visit(path, depth + 1);
         continue;
       }
-      // The dashboard's own data files are written by agents and the watchdog itself — not a sign of work.
+      // The dashboard's own data files are written by this helper and the watchdog itself — not a sign of work.
       if (!entry.isFile() || entry.name.endsWith('.tmp') || /_(dashboard|live)\.js$/.test(entry.name)) continue;
       try {
         const modified = statSync(path).mtimeMs;
@@ -553,7 +812,8 @@ function parseStamp(stamp) {
 }
 
 /**
- * The watchdog. While the dashboard says a run is in progress it checks the live status every interval:
+ * The watchdog — a manual tool (no skill launches it; `task` and `status` keep the live file current). While the
+ * dashboard says a run is in progress it checks the live status every interval:
  *  - the live status names a task that is already finished while another task is active → it points the live
  *    status at the active task (the agent working on it has not written yet);
  *  - nothing has been written for `quiet-minutes` → it writes a heartbeat naming the latest file that changed in

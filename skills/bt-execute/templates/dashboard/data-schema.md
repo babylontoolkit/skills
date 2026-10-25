@@ -5,7 +5,7 @@
 | File | Holds | Written |
 |---|---|---|
 | `<slug>_dashboard.js` | the feature's record — status, phases, tasks and their results, decisions, snapshots, the After Action Report | bt-spec creates it from `dashboard.template.js` (`specified`), bt-plan fills in the plan (`planned`), bt-execute writes it at every task boundary; a Quick Plan creates it at bt-plan |
-| `<slug>_live.js` | what is happening this minute — the current task, one sentence, its step log | at every meaningful step of a run (from `live.template.js`) |
+| `<slug>_live.js` | what is happening this minute — the current task, one sentence, its step log | by bt-execute's helper, never by an agent: every `dashboard.mjs task` write that changes a task's status, and every `status` write (bt-plan creates it from `live.template.js`) |
 
 They are **data, not code.** Each file is exactly one line of prefix and one strict-JSON value:
 
@@ -21,9 +21,11 @@ The status of the plan itself lives in the plan file's checkboxes; the dashboard
 
 ## Updating a data file
 
-Use bt-execute's helper — `node <skills>/bt-execute/scripts/dashboard.mjs live|task|activity|status|check|watch <feature-folder> …`
-(every option is in its header). It parses, checks field shapes and writes atomically. Its `watch` command is the
-watchdog that writes a heartbeat into the live file when an agent has been quiet for 10 minutes.
+Use bt-execute's helper — `node <skills>/bt-execute/scripts/dashboard.mjs task|snapshot|activity|status|check <feature-folder> …`
+(every option is in its header). It parses, checks field shapes and writes atomically. Its `task` and `status`
+commands also rewrite the live file, so agents never write it. `live` remains for a hand write, and `watch` is an
+optional watchdog for manual use (a heartbeat into the live file when nothing has been written for 10 minutes) —
+no skill launches it.
 
 ### Fallback — parse, change, write back
 
@@ -79,9 +81,10 @@ instead of a blank page if something still cannot render — it keeps checking a
 - The status picks the page's top slot: `specified` shows *Plan this feature* (the `bt-plan` commands to copy, and a builder for its options and a brief); `planned` shows *Start this plan* (the `bt-execute` commands, and a builder for any task range and its options); `in-progress` shows *Current run activity* (the live file and the
   milestones); `paused`, `complete` and `incomplete` show *Execution debrief* (the After Action Report card, marked
   *Interim* while paused), with *Continue this plan* — the commands that pick up where it stopped — above it.
-- **Cadence is per task.** A task's entry changes the moment it starts (`in-progress`), the moment it is built
-  (`built` — summary, files, tests and snapshots filled in right then), while the verifier checks it
-  (`verifying`) and when it passes (`done` — verifier, done time).
+- **Cadence is per task — three writes**, each with `dashboard.mjs task`: when it starts (`in-progress`), the moment
+  it is built (`built` — summary, files and tests filled in right then) and when it passes (`done` — verifier,
+  attempts, done time, `checkedLive`). The verifier adds `verifying` while it checks; a FAIL sends the task back to
+  `in-progress` with `attempts` + 1. Each status write also updates the live file.
 
 ## `<slug>_dashboard.js` fields
 
@@ -178,7 +181,7 @@ Each task:
 
 ## Snapshot shapes
 
-**Add snapshots with `node <skills>/bt-execute/scripts/dashboard.mjs snapshot <feature-folder> <T3|P1|plan> --src snapshots/… --caption "…"`** (`--before`/`--after` for a comparison, `--frame "src|stage|caption"` repeated for a progression) — never by writing the JSON yourself. The image key is **`src`**, relative to the feature folder; an entry with `path` (or `file`, `image`, `url`, `href`) instead would render as "No snapshot", so every helper write repairs it to `src` (and an unknown `source` to `"browser"`), `check` repairs any already in the file, the watchdog repairs one written around the helper within a minute, and the page reads those keys too. An image that is not on disk is refused — `check` fails on it. **The snapshots are the chronicle of the build: `check` passing is part of every phase boundary and of run end.**
+**Add snapshots with `node <skills>/bt-execute/scripts/dashboard.mjs snapshot <feature-folder> <T3|P1|plan> --src snapshots/… --caption "…"`** (`--before`/`--after` for a comparison, `--frame "src|stage|caption"` repeated for a progression) — never by writing the JSON yourself. The image key is **`src`**, relative to the feature folder; an entry with `path` (or `file`, `image`, `url`, `href`) instead would render as "No snapshot", so every helper write repairs it to `src` (and an unknown `source` to `"browser"`), `check` repairs any already in the file, and the page reads those keys too. An image that is not on disk is refused — `check` fails on it. **The snapshots are the chronicle of the build: `check` passing is part of every phase boundary and of run end.** Frames come only from captures the work already takes, never an extra page session, export or capture just for a picture. Every visual task (`kind` `live`, `game` or `unity`) keeps at least the builder's quick-look frame (its built state) and the verifier's running-vs-reference comparison, plus any milestone frames the builder captured anyway, as a progression; a task with nothing to see needs none.
 
 Any list of snapshots may mix them. `source` names where the image came from: `"browser"`, `"unity"`,
 `"blender"`, `"reference"`.
@@ -191,11 +194,13 @@ Any list of snapshots may mix them. `source` names where the image came from: `"
 
 ## `<slug>_live.js` fields
 
-"What are you doing right now?" — answered on the page without asking. Whoever is doing the work rewrites
-this file whole: the implementer while it builds, the verifier while it checks, the orchestrator between them —
-at every meaningful step (starting a task, each milestone inside it, before a build / export / bake / capture /
-test run, a fix attempt, the hand-over to the verifier, the phase closing). A 20-minute silence shows as a warning.
-The page shows it only while `status` is `in-progress`.
+"What are you doing right now?" — answered on the page without asking. bt-execute's helper rewrites this file
+whole from each change it makes: a `task` write that sets a status names the task, its phase, the role the status
+implies (`in-progress` / `built` → implementer, `verifying` → verifier, otherwise orchestrator), one sentence on the
+new state plus the first sentence of the summary written with it, and appends that sentence to the task's step log;
+a `status` write records the run starting or ending. A `task` write without a status leaves it untouched, and
+agents never write it. A 20-minute silence shows as a warning. The page shows it only while `status` is
+`in-progress`.
 
 | Field | Meaning |
 |---|---|
@@ -205,5 +210,21 @@ The page shows it only while `status` is `in-progress`.
 | `title` | only when there is no task: `"Verifying phase 1"`, `"Closing phase 1"` |
 | `role` | `implementer` · `verifier` · `orchestrator` |
 | `activity` | one plain-language sentence on what is happening this minute |
-| `source` | `agent` (an agent wrote it) or `watchdog` (a heartbeat written because the agent was quiet — the page tags it) |
-| `steps` | `[{ "at": "HH:MM", "text" }]` — the current task's log, oldest first; start fresh for each task, keep the last 12. Plain language a non-developer follows: "Painting the road mask from the spline", not "edit RoadNetwork.ts L120" |
+| `source` | `agent` (the helper, from an agent's write) or `watchdog` (a heartbeat from the manual watchdog — the page tags it) |
+| `steps` | `[{ "at": "HH:MM", "text" }]` — the current task's log, oldest first; fresh for each task, the last 12 kept. Plain language a non-developer follows, which is why a task's `summary` leads with a plain first sentence |
+
+## `check` — the gate
+
+`node <skills>/bt-execute/scripts/dashboard.mjs check <feature-folder>` runs at every phase boundary, at run end and
+as bt-plan's last step. It repairs the slips it can (snapshot image keys, plain-text decisions), then fails — listing
+every problem in one message — when a snapshot cannot show its image or a deliverable was skipped:
+
+- `documents/<slug>_plan.md` exists without `dashboard.html`, `documents/<slug>_dashboard.js` or `documents/<slug>_live.js`;
+- the dashboard's task ids differ from the plan's checklist (`- [ ]` / `- [x]` lines that start with a task id) in
+  membership or order;
+- `status` is `complete` while the plan has an unticked box, or without `documents/<slug>_summary.html`;
+- a visual task (`kind` `live`, `game` or `unity`) is `done` with no snapshot of its own and no phase or After Action
+  Report progression frame whose `task` is its id;
+- a task ticked in the plan has no `verifier` result.
+
+With no plan in the folder (a legacy flat plan) the plan checks are skipped.

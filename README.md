@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.2.1)
+# Babylon Toolkit Desktop Agent (1.2.2)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -72,7 +72,9 @@ copy at all, the skills and persona keep the GitHub addresses and agents read th
 The persona names the local folder and keeps GitHub as the fallback for any file that is missing.
 Claude Code asks before reading outside the project, so a global install adds one read-only rule —
 `Read(~/.claude/toolkit/reference/**)` — to `~/.claude/settings.json` (uninstall removes it, and only if
-the installer added it). `bt-agent doctor` checks that every local link resolves and says when GitHub has a
+the installer added it). It also adds a Claude Code `PreToolUse` hook on `Bash` that blocks a `sleep N` of 3 seconds
+or more — inside `until` / `while` loops too — and points the agent at the Agent Reference's `wait.mjs`, which waits
+for a port, URL, file, log line or command output instead; uninstall removes only that hook. `bt-agent doctor` checks that every local link resolves and says when GitHub has a
 newer Reference.
 
 ### Disk usage report
@@ -301,7 +303,7 @@ start without a spec:
   documents/<slug>_plan.md         the plan (bt-plan)
   documents/<slug>_autopilot.md    the run log (bt-execute)
   documents/<slug>_dashboard.js    the dashboard's data, updated task by task
-  documents/<slug>_live.js         what is happening this minute, updated step by step (git-ignored)
+  documents/<slug>_live.js         what is happening this minute, written by the helper (git-ignored)
   snapshots/                       meaningful snapshots of the build
   tests/                           every test the plan's tasks write
 ```
@@ -309,18 +311,19 @@ start without a spec:
 `dashboard.html` is a live dashboard for the whole feature. `bt-plan` writes it as a roadmap (every
 phase and task pending, with the time estimate); `bt-execute` updates it **task by task**, not phase
 by phase: a *Now* banner says which task is being worked on and what is happening this minute (the
-agents rewrite a small live-status file at every step, and the page warns if it goes quiet for 20
-minutes), and each task's result appears the moment it is built. An open tab keeps itself current: it
+dashboard helper rewrites a small live-status file each time a task starts, is built, is being verified
+or is done — no agent spends time on it), and each task's result appears the moment it is built. An open tab keeps itself current: it
 re-reads its data in the background (every 10 s during a run, every 30 s otherwise) and refreshes
 only when something changed — a task result, a finished run, the next run starting, or a plan
 reopened because you added a task after it was complete (the dashboard drops back to *paused* and
-the After Action Report is revised when the new work is done). A watchdog runs alongside every run:
-when an agent has written nothing for 10 minutes it writes a heartbeat naming the latest file the work
-changed (or warns that the run may be stalled), and it corrects a status that still names a finished
-task — so the dashboard never sits silent or wrong while a long task is running. Phase by phase and task by task it shows what was actually done, files, tests,
-verifier verdicts, attempts, decisions, deferrals and follow-ups. The snapshots tell the
-story of the build: **progressions** captured from the same camera each time a meaningful layer
-lands (a terrain: heightmap → textures → roads → trees → foliage → lighting), played back as a
+the After Action Report is revised when the new work is done). A `check` at every phase boundary and
+at run end fails if anything was skipped — a plan without its dashboard, tasks that differ from the plan,
+a *complete* that is not, a visual task with no snapshot, a ticked task with no verifier result. Phase by
+phase and task by task it shows what was actually done, files, tests, verifier verdicts, attempts,
+decisions, deferrals and follow-ups. The snapshots tell the story of the build, taken from the captures
+the work already makes (never an extra session just for a picture): for every visual task the builder's
+first look and the verifier's verified comparison, **progressions** from the same camera as meaningful
+layers land (a terrain: heightmap → textures → roads → trees → foliage → lighting), played back as a
 storyboard, plus before/after sliders and stills where those prove the point. When later work
 revises an earlier result, the earlier entry is marked **Updated** with who changed it and why —
 nothing is rewritten silently.
@@ -361,13 +364,19 @@ same way.
 Execution time is dominated by verification, not by the code edits, so the loop is sized to the
 feature. `bt-spec` records a `size` (small / medium / large); `bt-plan` uses it to set the task
 budget (a small feature is 1–3 tasks in one phase), groups tasks into phases, marks each task's
-`Verify level` (`standard` or `live`), and never pins absolute test counts. By default
-`bt-execute` has the implementer write and run each task's named tests (in the feature folder's `tests/`), then runs **one
-independent verifier per phase** with a scoped charter (Acceptance, the Verify commands, the
-tests re-run and judged for coverage, a diff review for real defects), always does live
-Unity/browser QA on any task whose correctness shows only at runtime (rendering, visuals,
-interaction, Unity↔Babylon parity) plus one end-to-end check at the end, and re-checks only
-what failed.
+`Verify level` (`standard` or `live`), and never pins absolute test counts. By default every task
+is checked once: the builder writes and runs the task's named tests (in the feature folder's `tests/`)
+and takes one quick look — one capture or one scripted probe, never the full live proof — then **one
+independent verifier per phase** checks it with a scoped charter (Acceptance, the Verify commands, the
+tests re-run and judged for coverage, a diff review for real defects). The verifier is the only live
+checker: it does Unity/browser QA on any task whose correctness shows only at runtime (rendering,
+visuals, interaction, Unity↔Babylon parity) plus one end-to-end check at the end. A failed task goes
+back to the builder that wrote it, and the same verifier — resumed, not a fresh one — re-checks only
+what failed. A queue of three tasks or fewer is built inline, with one verifier at the end; when the
+plan gives tasks `Track:` letters, one builder per track works in parallel on its own files, and a
+phase's verifier starts once all its tracks are built. Agents wait with the Agent Reference's
+`wait.mjs` (never a shell `sleep`) and drive the browser with its `bt-cdp.mjs` — their own headless
+Chrome, never yours.
 Docs are read once by the orchestrator and handed to subagents as a brief instead of every
 subagent re-fetching the Agent Reference.
 
@@ -389,7 +398,7 @@ thresholds, repeats, every engine on every criterion) are opt-in: `/bt-spec --pa
 oracles, re-deriving from the plan as it sees fit), live QA on every task with a rendered or
 exported surface, a full fresh re-verify on each fix attempt, and a 5-attempt fix loop. It
 combines with `--auto-pilot`. There is no separate testing subagent in either mode — the
-implementer writes the tests and the independent verifier judges them.
+builder writes the tests and the independent verifier judges them.
 
 ### Unattended runs (`/bt-execute --auto-pilot`)
 
