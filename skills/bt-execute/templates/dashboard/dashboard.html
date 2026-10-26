@@ -190,7 +190,7 @@
   .status-done, .status-complete { color: var(--done); background: var(--done-soft); }
   .status-in-progress { color: var(--active); background: var(--active-soft); }
   .status-in-progress::before { animation: pulse 1.6s ease-in-out infinite; }
-  .status-pending, .status-specified, .status-planned, .status-paused { color: var(--pending); background: var(--pending-soft); }
+  .status-pending, .status-specified, .status-specced, .status-planned, .status-paused { color: var(--pending); background: var(--pending-soft); }
   .status-deferred, .status-partial, .status-incomplete { color: var(--deferred); background: var(--deferred-soft); }
   .status-failed { color: var(--failed); background: var(--failed-soft); }
   .status-built, .status-verifying { color: var(--accent); background: var(--accent-soft); }
@@ -765,6 +765,22 @@
   .follow-up-bar { display: grid; gap: 10px; padding: 16px 22px 18px; border-top: 1px solid var(--line); }
   .follow-up-bar-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; justify-content: space-between; }
   .follow-up-bar .copy-command:disabled { opacity: 0.45; cursor: default; }
+  /* The switch between bt-spec and Quick Plan commands, at the top of the follow ups. */
+  .follow-up-tool { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; padding: 10px 22px 12px; border-bottom: 1px solid var(--line); }
+  .follow-up-tool-choices { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px; }
+  .follow-up-tool-choice { padding: 5px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--text-muted); font: 600 11.5px/1 var(--font-mono); cursor: pointer; }
+  .follow-up-tool-choice span { color: var(--text-faint); font-weight: 500; }
+  .follow-up-tool-choice.is-on { background: var(--accent-soft); color: var(--accent); }
+  .follow-up-tool-choice.is-on span { color: var(--accent); }
+  .follow-up-tool + .row { border-top: 0; }
+  /* The title on the left, its state and Updated badges flush right — the task rows' layout. */
+  .follow-up-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px 14px; }
+  .follow-up-head > strong { flex: 1 1 auto; min-width: 0; }
+  .follow-up-head .task-tags { flex: none; margin-left: auto; }
+  /* The link to the later feature that takes the follow-up on. */
+  .follow-up-address { margin-top: 8px; font-size: 13px; color: var(--text-muted); }
+  .follow-up-address a { color: var(--accent); }
+  .row.follow-up.is-addressed .follow-up-detail { color: var(--text-faint); }
   .timeline { position: relative; margin: 0; padding: 4px 0 4px 26px; list-style: none; }
   .timeline::before { content: ""; position: absolute; left: 7px; top: 8px; bottom: 8px; width: 2px; background: var(--line); }
   .timeline li { position: relative; padding: 8px 0; }
@@ -831,6 +847,8 @@
     .row { grid-template-columns: 1fr; gap: 4px; padding: 12px 16px; }
     .row.follow-up { grid-template-columns: 22px minmax(0, 1fr); gap: 4px 10px; }
     .row.follow-up > div:last-child { grid-column: 2; }
+    .follow-up-head { flex-wrap: wrap; }
+    .follow-up-head .task-tags { margin-left: 0; }
     .follow-up-bar { padding: 14px 16px 16px; }
     .after-action { padding: 18px; }
     .after-action-columns { grid-template-columns: 1fr; }
@@ -887,9 +905,18 @@
   ];
   const planChoice = { heavy: false, parity: false, noTimeLimit: false, brief: '' };
   // The follow-ups ticked to spec together, kept when the page refreshes; one the page has not shown before arrives ticked.
-  const followUpChoice = { selected: new Set(), seen: new Set() };
+  /** The two ways to take on follow-ups: spec them first, or a Quick Plan straight from them. */
+  const FOLLOW_UP_TOOLS = {
+    spec: { skill: 'bt-spec', label: 'Full Spec', hint: 'bt-spec writes a spec; plan it with bt-plan after' },
+    plan: { skill: 'bt-plan', label: 'Quick Plan', hint: 'bt-plan plans them straight away, with a short interview' },
+  };
+  /** Where the follow-up command switch is remembered in this browser (a convenience; the page works without it). */
+  const FOLLOW_UP_TOOL_STORAGE_KEY = 'bt-dashboard-follow-up-tool';
+  const followUpChoice = { selected: new Set(), seen: new Set(), tool: readFollowUpTool() };
   /** The longest title a follow-up written as plain text shows; the whole text stays below it — the helper's rule. */
   const MAXIMUM_FOLLOW_UP_TITLE = 100;
+  /** How each follow-up state reads, once a later feature addresses it (the helper keeps the state in step). */
+  const FOLLOW_UP_STATE_LABELS = { open: 'Open', specced: 'Specced', planned: 'Planned', 'in-progress': 'In progress', done: 'Done', partial: 'Partly done' };
   // A verifier result that names a live check: "live two-tab race in headless Chrome", "end-to-end on WebGPU".
   const LIVE_CHECK_WORDS = /\blive\b|chrome|browser|webgl|webgpu|unity editor|play ?mode/i;
   /** Where the Babylon Toolkit Desktop Agent, whose skills generate this dashboard, is published. */
@@ -1642,49 +1669,96 @@
       .filter((task) => task.status === 'deferred' || task.status === 'failed')
       .map((task) => `<div class="row"><div class="row-key">${escapeHtml(task.id || '')}</div><div><strong>${escapeHtml(task.title || '')}</strong>${task.deferredReason ? `<div class="row-source">${formatInline(task.deferredReason)}</div>` : ''}</div></div>`);
     const followUps = report.followUps || [];
-    const ids = followUps.map((followUp) => followUp.id);
-    for (const id of ids.filter((candidate) => !followUpChoice.seen.has(candidate))) {
-      followUpChoice.seen.add(id);
-      followUpChoice.selected.add(id);
+    const openIds = followUps.filter(isOpenFollowUp).map((followUp) => followUp.id);
+    for (const followUp of followUps.filter((candidate) => !followUpChoice.seen.has(candidate.id))) {
+      followUpChoice.seen.add(followUp.id);
+      if (isOpenFollowUp(followUp)) followUpChoice.selected.add(followUp.id);
     }
     const followUpRows = followUps.map((followUp) => {
+      const isOpen = isOpenFollowUp(followUp);
       const raised = [followUp.source, followUp.at].filter(Boolean).join(' · ');
       const files = followUp.files.length ? `Files: ${followUp.files.map((file) => `\`${file}\``).join(', ')}` : '';
       const where = [raised && `Raised by ${raised}`, files].filter(Boolean).join(' — ');
+      const pick = isOpen
+        ? `<label class="follow-up-pick"><input type="checkbox" data-follow-up="${escapeAttribute(followUp.id)}"${followUpChoice.selected.has(followUp.id) ? ' checked' : ''} aria-label="Spec ${escapeAttribute(followUp.id)} together with the others ticked"></label>`
+        : '<span class="follow-up-pick" aria-hidden="true"></span>';
+      const badges = `${followUpStateBadge(followUp)}${updatedBadge(followUp.updates)}`;
       return `
-        <div class="row follow-up">
-          <label class="follow-up-pick"><input type="checkbox" data-follow-up="${escapeAttribute(followUp.id)}"${followUpChoice.selected.has(followUp.id) ? ' checked' : ''} aria-label="Spec ${escapeAttribute(followUp.id)} together with the others ticked"></label>
+        <div class="row follow-up${isOpen ? '' : ' is-addressed'}">
+          ${pick}
           <div class="row-key">${escapeHtml(followUp.id)}</div>
           <div>
-            <strong>${formatInline(followUp.title || '')}</strong> ${updatedBadge(followUp.updates)}
+            <div class="follow-up-head"><strong>${formatInline(followUp.title || '')}</strong>${badges ? `<span class="task-tags">${badges}</span>` : ''}</div>
             ${followUp.detail ? `<div class="follow-up-detail">${formatInline(followUp.detail)}</div>` : ''}
             ${where ? `<div class="row-source">${formatInline(where)}</div>` : ''}
+            ${followUpAddress(followUp)}
             ${updateNotes(followUp.updates)}
-            ${copyableCommand(followUpSpecCommand([followUp.id]))}
+            ${isOpen ? copyableCommand(followUpCommand([followUp.id])) : ''}
           </div>
         </div>`;
     });
-    const together = ids.length > 1 ? `
+    const together = openIds.length > 1 ? `
       <div class="follow-up-bar">
-        <div class="follow-up-bar-head"><span class="run-builder-title">Spec the ticked follow ups together</span><button type="button" class="copy-command" data-copy="${escapeAttribute(followUpSpecCommand(ids))}" data-label="Copy all ${ids.length}" title="${escapeAttribute(followUpSpecCommand(ids))}">Copy all ${ids.length}</button></div>
+        <div class="follow-up-bar-head"><span class="run-builder-title">Take on the ticked follow ups together</span><button type="button" class="copy-command" data-copy="${escapeAttribute(followUpCommand(openIds))}" data-label="Copy all ${openIds.length} open" title="${escapeAttribute(followUpCommand(openIds))}">Copy all ${openIds.length} open</button></div>
         ${selectedFollowUpsCommand()}
       </div>` : '';
     const rows = deferredRows.concat(followUpRows).join('');
-    const note = followUps.length ? 'What a human should look at next — copy a command to spec any of them with bt-spec' : 'What a human should look at next';
+    const addressedCount = followUps.length - openIds.length;
+    const counts = addressedCount ? ` · ${openIds.length} open, ${addressedCount} taken on by a later feature` : '';
+    const note = followUps.length ? `What a human should look at next — copy a command to spec or Quick Plan any open one${counts}` : 'What a human should look at next';
+    const toolSwitch = openIds.length ? followUpToolSwitch() : '';
     return `
       <section id="follow-ups">
         <div class="section-head"><h2>Follow ups</h2><span class="section-note">${note}</span></div>
-        ${rows ? `<div class="card list-card">${rows}${together}</div>` : '<div class="empty">Nothing deferred, nothing outstanding.</div>'}
+        ${rows ? `<div class="card list-card">${toolSwitch}${rows}${together}</div>` : '<div class="empty">Nothing deferred, nothing outstanding.</div>'}
       </section>`;
+  }
+
+  /** The follow-up command switch this browser last used, else bt-spec; storage can be missing or blocked. */
+  function readFollowUpTool() {
+    try {
+      const stored = window.localStorage.getItem(FOLLOW_UP_TOOL_STORAGE_KEY);
+      return stored === 'plan' ? 'plan' : 'spec';
+    } catch (error) {
+      return 'spec';
+    }
+  }
+
+  /** The switch between bt-spec and Quick Plan commands, shown while any follow-up is open. */
+  function followUpToolSwitch() {
+    const buttons = Object.entries(FOLLOW_UP_TOOLS).map(([key, tool]) => `<button type="button" class="follow-up-tool-choice${followUpChoice.tool === key ? ' is-on' : ''}" data-follow-up-tool="${key}" title="${escapeAttribute(tool.hint)}" aria-pressed="${followUpChoice.tool === key}">${escapeHtml(tool.label)} <span>/${escapeHtml(tool.skill)}</span></button>`).join('');
+    return `<div class="follow-up-tool"><span class="run-builder-title">Take them on with</span><div class="follow-up-tool-choices" role="group" aria-label="Command for the follow ups">${buttons}</div></div>`;
+  }
+
+  /** Whether a follow-up still waits for someone to address it: never specced, or addressed only in part. */
+  function isOpenFollowUp(followUp) {
+    return !followUp.status || followUp.status === 'open' || followUp.status === 'partial';
+  }
+
+  /** The follow-up's state as a badge, once a later feature has taken it on; nothing while it is open. */
+  function followUpStateBadge(followUp) {
+    const state = followUp.status || 'open';
+    if (state === 'open') return '';
+    return `<span class="status status-${escapeAttribute(state)}">${escapeHtml(FOLLOW_UP_STATE_LABELS[state] || state)}</span>`;
+  }
+
+  /** "Addressed by <feature>", linked to that feature's dashboard from this page's own folder. */
+  function followUpAddress(followUp) {
+    const address = followUp.addressedBy;
+    if (!address || !address.folder) return '';
+    const depth = featureFolderPath().split('/').filter(Boolean).length;
+    const href = `${'../'.repeat(depth)}${address.folder}/dashboard.html`;
+    const since = address.at ? ` · ${escapeHtml((FOLLOW_UP_STATE_LABELS[followUp.status] || '').toLowerCase())} since ${escapeHtml(address.at)}` : '';
+    return `<div class="follow-up-address">Addressed by <a href="${safeUrl(href)}">${escapeHtml(address.title || address.slug || address.folder)}</a>${since} <span class="row-source">(${escapeHtml(address.folder)})</span></div>`;
   }
 
   /** The command for the ticked follow-ups, or a disabled hint when none is ticked; redrawn as the boxes change. */
   function selectedFollowUpsCommand() {
-    const ids = (report.followUps || []).map((followUp) => followUp.id).filter((id) => followUpChoice.selected.has(id));
+    const ids = (report.followUps || []).filter(isOpenFollowUp).map((followUp) => followUp.id).filter((id) => followUpChoice.selected.has(id));
     if (!ids.length) {
       return '<div class="run-copy" id="selected-follow-ups"><code class="run-command">Tick the follow ups to spec together</code><button type="button" class="copy-command" disabled>Copy</button></div>';
     }
-    return `<div id="selected-follow-ups">${copyableCommand(followUpSpecCommand(ids))}</div>`;
+    return `<div id="selected-follow-ups">${copyableCommand(followUpCommand(ids))}</div>`;
   }
 
   function renderUpdateLog(allUpdates) {
@@ -2099,10 +2173,14 @@
     return `@${featureFolderPath()}/${relativePath}`;
   }
 
-  /** The bt-spec command for some follow-ups, worded like bt-profile's: `/bt-spec Fix F1, F2 and F4 from @…`. */
-  function followUpSpecCommand(ids) {
+  /**
+   * The command that takes on some follow-ups, worded like bt-profile's — bt-spec to spec them first, or bt-plan for a
+   * Quick Plan, as the section's switch says: `/bt-spec Fix F1, F2 and F4 from @…`.
+   */
+  function followUpCommand(ids) {
     const joined = ids.length <= 1 ? ids.join('') : `${ids.slice(0, -1).join(', ')} and ${ids[ids.length - 1]}`;
-    return `/bt-spec Fix ${joined} from ${followUpsReference()}`;
+    const skill = FOLLOW_UP_TOOLS[followUpChoice.tool].skill;
+    return `/${skill} Fix ${joined} from ${followUpsReference()}`;
   }
 
   function copyableCommand(command, id = '', label = 'Copy') {
@@ -2123,6 +2201,14 @@
       };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(copied, () => { copyWithSelection(text); copied(); });
       else { copyWithSelection(text); copied(); }
+    });
+    document.addEventListener('click', (event) => {
+      const choice = event.target.closest('[data-follow-up-tool]');
+      if (!choice) return;
+      followUpChoice.tool = choice.getAttribute('data-follow-up-tool') === 'plan' ? 'plan' : 'spec';
+      try { window.localStorage.setItem(FOLLOW_UP_TOOL_STORAGE_KEY, followUpChoice.tool); } catch (error) { /* remembered for this visit only */ }
+      const section = document.getElementById('follow-ups');
+      if (section) section.outerHTML = renderFollowUps(collectTasks());
     });
     document.addEventListener('change', (event) => {
       const box = event.target.closest('[data-follow-up]');

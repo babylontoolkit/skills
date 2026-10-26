@@ -118,7 +118,7 @@ One folder per profiled moment — everything a slug's runs produce stays inside
   .tools/                         the installed scripts + node_modules (git-ignored, shared)
   <slug>/
     dashboard.html                the dashboard — live while a run goes on, the report once it is done
-    findings.md                   the diagnosis as a spec-ready document, with the recon and spec commands
+    findings.md                   the diagnosis as a spec-ready document, with the recon and Full Spec / Quick Plan commands
     recon/                        this profile's bt-recon docs, one per subsystem (--recon, or the report's commands)
     data/
       progress.js                 the run's live progress, written by progress.mjs (git-ignored)
@@ -146,7 +146,7 @@ The project is just **the root folder of the web app**: where its source lives (
 ## Phase 0 — Preflight
 
 ```bash
-for folder in specs complete archived profile recon; do mkdir -p "$PROJ/.agents/$folder"; [ -e "$PROJ/.agents/$folder/.gitkeep" ] || : > "$PROJ/.agents/$folder/.gitkeep"; done   # the default .agents folders
+for folder in specs complete archived followup profile recon; do mkdir -p "$PROJ/.agents/$folder"; [ -e "$PROJ/.agents/$folder/.gitkeep" ] || : > "$PROJ/.agents/$folder/.gitkeep"; done   # the default .agents folders
 mkdir -p "$TOOLS" "$DATA/runs" "$DATA/logs"
 cp -R "$SKILL_DIR"/scripts/* "$TOOLS/"                                            # refresh on every skill update
 node "$TOOLS/progress.mjs" start "$S" --title "<Project> — <scenario> performance" --brief "<the user's words>" --project "$PROJ" --url "<url, or the dev server's / until known>" --open true
@@ -336,7 +336,7 @@ What a heavy function usually means, and where to look. Always confirm with `cal
 |---|---|
 | `.agents/profile/.tools/` | The installed scripts and their node_modules, shared by every slug (git-ignored) |
 | `.agents/profile/<slug>/dashboard.html` | The dashboard — follows the run live, then holds the report |
-| `.agents/profile/<slug>/findings.md` | The diagnosis as a spec-ready document: the recon command per subsystem and the spec command per fix |
+| `.agents/profile/<slug>/findings.md` | The diagnosis as a spec-ready document: the recon command per subsystem and the Full Spec (`/bt-spec`) or Quick Plan (`/bt-plan`) command per fix |
 | `.agents/profile/<slug>/recon/` | This profile's bt-recon docs, one per subsystem — quick ones from `--recon`, deep ones from the report's commands |
 | `.agents/profile/<slug>/data/progress.js` | The run's live progress: status, stages, fixes, numbers, what is happening now (written only by `progress.mjs`; git-ignored) |
 | `.agents/profile/<slug>/data/profile.config.json` | URL, scenario, owner rules and source roots |

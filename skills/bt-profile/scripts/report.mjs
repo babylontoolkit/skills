@@ -239,6 +239,12 @@ td.nw { white-space: nowrap; }
 .copy-spec { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--surface-3); border-radius: 6px; font-size: 12px; padding: 4px 10px; cursor: pointer; }
 .copy-spec:disabled { opacity: 0.5; cursor: default; }
 .spec-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.fix-tool { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; margin: 0 0 10px; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+.fix-tool-choices { display: inline-flex; border: 1px solid var(--surface-3); border-radius: 999px; padding: 2px; text-transform: none; letter-spacing: 0; }
+.fix-tool-choice { background: transparent; border: 0; border-radius: 999px; padding: 5px 12px; color: var(--text-secondary); font: 600 12px var(--mono); cursor: pointer; }
+.fix-tool-choice span { opacity: 0.6; font-weight: 500; }
+.fix-tool-choice.is-on { background: var(--surface-3); color: var(--accent); }
+.fix-tool-choice.is-on span { opacity: 1; }
 .spec-bar code { flex: 1 1 320px; font: 12px var(--mono); background: var(--surface-0); border: 1px solid var(--surface-3); border-radius: 6px; padding: 6px 10px; overflow-wrap: anywhere; }
 @media print { .pick, .act, .spec-bar, #fixes .hint { display: none !important; } }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -436,8 +442,9 @@ function renderTimeline() {
 /**
  * The fixes, listed whether or not they were applied, in two steps: recon the code behind them (one bt-recon per
  * subsystem, so the spec has the callers, invariants and tests mapped), then spec one (its row's button) or a group
- * (tick them) with bt-spec. The spec command points bt-spec at findings.md, which carries each fix's cause, evidence,
- * code, gain, risk and check, and cites the recon docs it rests on.
+ * (tick them) with bt-spec — a Full Spec — or bt-plan — a Quick Plan — as the switch above the table says. The
+ * command points the skill at findings.md, which carries each fix's cause, evidence, code, gain, risk and check, and
+ * cites the recon docs it rests on.
  */
 function renderFixes() {
   const wrap = $("#fixes-wrap");
@@ -449,7 +456,17 @@ function renderFixes() {
   const join = (ids) => ids.length <= 1 ? ids.join("") : ids.slice(0, -1).join(", ") + " and " + ids[ids.length - 1];
   const groupsFor = (ids) => [...new Set(ids.map(groupOf).filter(Boolean))];
   const using = (ids) => { const paths = groupsFor(ids).map((g) => "@" + g.path); return paths.length ? " using " + join(paths) : ""; };
-  const specCommand = (ids) => "/bt-spec Fix " + join(ids) + " from " + source + using(ids);
+  // The two ways to take on fixes; the choice is remembered in this browser when storage allows.
+  const FIX_TOOLS = {
+    spec: { skill: "bt-spec", label: "Full Spec", noun: "spec", hint: "bt-spec writes a spec; plan it with bt-plan after" },
+    plan: { skill: "bt-plan", label: "Quick Plan", noun: "plan", hint: "bt-plan plans the fixes straight away, with a short interview" },
+  };
+  const TOOL_STORAGE_KEY = "bt-profile-fix-tool";
+  let fixTool = "spec";
+  try { if (window.localStorage.getItem(TOOL_STORAGE_KEY) === "plan") fixTool = "plan"; } catch (error) { /* storage blocked — default to Full Spec */ }
+  const specCommand = (ids) => "/" + FIX_TOOLS[fixTool].skill + " Fix " + join(ids) + " from " + source + using(ids);
+  const toolSwitch = '<div class="fix-tool"><span>Take them on with</span><div class="fix-tool-choices" role="group" aria-label="Command for the fixes">' +
+    Object.entries(FIX_TOOLS).map(([key, tool]) => '<button type="button" class="fix-tool-choice" data-fix-tool="' + key + '" title="' + esc(tool.hint) + '">' + esc(tool.label) + ' <span>/' + esc(tool.skill) + '</span></button>').join("") + '</div></div>';
   const reconCommands = (ids) => groupsFor(ids).map((g) => g.command).join("\n");
   // A fix is done once it is in the code: "kept" (applied and proven by the fix loop) or "fixed".
   const isDone = (f) => f.status === "kept" || f.status === "fixed";
@@ -467,23 +484,40 @@ function renderFixes() {
     '<td>' + reconCell(f) + '</td>' +
     '<td>' + esc(f.gain || f.cost || "–") + '</td><td>' + esc(f.risk || "–") + '</td>' +
     '<td class="act"><button type="button" class="copy-spec" data-kind="recon" data-ids="' + esc(f.id) + '">Copy recon command</button>' +
-    '<button type="button" class="copy-spec" data-kind="spec" data-ids="' + esc(f.id) + '">Copy spec command</button></td></tr>').join("");
+    '<button type="button" class="copy-spec" data-kind="spec" data-ids="' + esc(f.id) + '" data-label="Copy {noun} command">Copy spec command</button></td></tr>').join("");
   $("#fixes").innerHTML = '<div class="panel"><p class="hint"><strong>1. Recon</strong> the code behind the fixes with <code>/bt-recon</code>: it maps how that code works, every caller, and what a change must not break. Fixes in the same code share one recon; run each command on its own. ' +
-    '<strong>2. Spec</strong> them one at a time or several together with <code>/bt-spec</code>; the command cites the recon docs. ' +
-    (open.length ? open.length + " not fixed yet." : "All of them are fixed.") + '</p>' +
+    '<strong>2. Spec or Quick Plan</strong> them one at a time or several together — a Full Spec with <code>/bt-spec</code>, or a Quick Plan straight away with <code>/bt-plan</code>; either command cites the recon docs. ' +
+    (open.length ? open.length + " not fixed yet." : "All of them are fixed.") + '</p>' + toolSwitch +
     '<div class="scroll"><table class="fixes"><thead><tr><th class="pick"></th><th>ID</th><th>Fix</th><th>Status</th><th>Cause</th><th>Recon</th><th>Expected gain</th><th>Risk</th><th class="act"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<div class="spec-bar"><code id="recon-selected"></code><button type="button" class="copy-spec" data-kind="recon" id="copy-recon-selected">1. Copy recon for the selected</button></div>' +
-    '<div class="spec-bar"><code id="spec-selected"></code><button type="button" class="copy-spec" data-kind="spec" id="copy-selected">2. Copy spec for the selected</button>' +
-    (open.length ? '<button type="button" class="copy-spec" data-kind="spec" data-ids="' + esc(open.join(" ")) + '">Copy spec for all open fixes</button>' : "") + '</div></div>';
+    '<div class="spec-bar"><code id="spec-selected"></code><button type="button" class="copy-spec" data-kind="spec" id="copy-selected" data-label="2. Copy {noun} for the selected">2. Copy spec for the selected</button>' +
+    (open.length ? '<button type="button" class="copy-spec" data-kind="spec" data-ids="' + esc(open.join(" ")) + '" data-label="Copy {noun} for all open fixes">Copy spec for all open fixes</button>' : "") + '</div></div>';
   const selected = () => [...document.querySelectorAll("#fixes input[type=checkbox]:checked")].map((box) => box.value);
   const refresh = () => {
     const ids = selected();
     $("#recon-selected").textContent = ids.length ? reconCommands(ids) : "Tick the fixes to recon together";
-    $("#spec-selected").textContent = ids.length ? specCommand(ids) : "Tick the fixes to spec together";
+    $("#spec-selected").textContent = ids.length ? specCommand(ids) : "Tick the fixes to " + FIX_TOOLS[fixTool].noun + " together";
     $("#copy-selected").disabled = $("#copy-recon-selected").disabled = !ids.length;
+  };
+  // The switch re-words the spec buttons and the selected command in place; the listeners below stay as they are.
+  const applyTool = () => {
+    document.querySelectorAll("#fixes .fix-tool-choice").forEach((choice) => {
+      const isOn = choice.dataset.fixTool === fixTool;
+      choice.classList.toggle("is-on", isOn);
+      choice.setAttribute("aria-pressed", String(isOn));
+    });
+    document.querySelectorAll("#fixes .copy-spec[data-label]").forEach((button) => { button.textContent = button.dataset.label.replace("{noun}", FIX_TOOLS[fixTool].noun); });
+    refresh();
   };
   $("#fixes").addEventListener("change", refresh);
   $("#fixes").addEventListener("click", (event) => {
+    const choice = event.target.closest(".fix-tool-choice");
+    if (choice) {
+      fixTool = choice.dataset.fixTool === "plan" ? "plan" : "spec";
+      try { window.localStorage.setItem(TOOL_STORAGE_KEY, fixTool); } catch (error) { /* remembered for this visit only */ }
+      applyTool();
+      return;
+    }
     const button = event.target.closest(".copy-spec");
     if (!button) return;
     const ids = button.id === "copy-selected" || button.id === "copy-recon-selected" ? selected() : button.dataset.ids.split(" ");
@@ -492,7 +526,7 @@ function renderFixes() {
     const done = () => { const label = button.textContent; button.textContent = "Copied"; setTimeout(() => { button.textContent = label; }, 1500); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, done); else done();
   });
-  refresh();
+  applyTool();
 }
 
 function renderFindings() {
@@ -842,7 +876,7 @@ function findingsMarkdown(findings, analysis, slugName, recon) {
     const cell = (text) => String(text || "–").replace(/\|/g, "\\|").replace(/\n/g, " ");
     push(`## The fixes (${open.length} not fixed yet)`);
     push();
-    push("Two steps: **recon** the code behind the fixes (bt-recon maps how it works, every caller and what a change must not break), then **spec** them one at a time or several together. Each spec command points bt-spec at this file, which carries every fix's cause, evidence, code, gain, risk and how to verify it, and cites the recon docs as its grounding.");
+    push("Two steps: **recon** the code behind the fixes (bt-recon maps how it works, every caller and what a change must not break), then take them on one at a time or several together — a **Full Spec** with `/bt-spec`, or a **Quick Plan** straight away with `/bt-plan` (the same command with `/bt-plan` in place of `/bt-spec`). Each command points the skill at this file, which carries every fix's cause, evidence, code, gain, risk and how to verify it, and cites the recon docs as its grounding.");
     push();
     // The recon docs a set of fixes rests on, as bt-spec's `using` clause.
     const using = (ids) => {
@@ -850,6 +884,7 @@ function findingsMarkdown(findings, analysis, slugName, recon) {
         return paths.length ? ` using ${join(paths)}` : "";
     };
     const specCommand = (ids) => `/bt-spec Fix ${join(ids)} from ${source}${using(ids)}`;
+    const quickPlanCommand = (ids) => `/bt-plan Fix ${join(ids)} from ${source}${using(ids)}`;
     if (fixable.length) {
         push("### 1. Recon the code behind them");
         push();
@@ -859,14 +894,16 @@ function findingsMarkdown(findings, analysis, slugName, recon) {
         push("|---|---|---|---|");
         for (const group of recon.groups) push(`| ${cell(group.name)} | ${group.ids.join(", ")} | ${group.exists ? `\`${group.path}\` (${group.depth})` : "not yet"} | \`${cell(group.command)}\` |`);
         push();
-        push("### 2. Spec them");
+        push("### 2. Spec or Quick Plan them");
+        push();
+        push("The commands below are Full Specs. For a Quick Plan, use `/bt-plan` in place of `/bt-spec` — the rest stays the same.");
         push();
         push("| ID | Fix | Status | Cause | Expected gain | Risk | Spec it |");
         push("|---|---|---|---|---|---|---|");
         for (const finding of fixable) push(`| ${finding.id} | ${cell(finding.title)} | ${finding.status || "proposed"} | ${finding.confidence || "–"} | ${cell(finding.gain || finding.cost)} | ${cell(finding.risk)} | \`${specCommand([finding.id])}\` |`);
         push();
         const openIds = open.filter((finding) => finding.fix).map((finding) => finding.id);
-        if (openIds.length > 1) { push(`**All open fixes together:** \`${specCommand(openIds)}\``); push(); }
+        if (openIds.length > 1) { push(`**All open fixes together:** Full Spec \`${specCommand(openIds)}\` · Quick Plan \`${quickPlanCommand(openIds)}\``); push(); }
         // The example group names real fixes: the first and last open ones, or the first two in the table.
         const exampleIds = openIds.length > 2 ? [openIds[0], openIds[openIds.length - 1]] : fixable.slice(0, 2).map((finding) => finding.id);
         if (exampleIds.length > 1) push(`**A group of your choice:** \`${specCommand(exampleIds)}\` (any IDs from the table)`);

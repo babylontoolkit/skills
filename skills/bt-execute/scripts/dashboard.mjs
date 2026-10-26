@@ -41,7 +41,10 @@
  * Follow-ups — what a human should look at next — are added with `followup`, which numbers them `F1`, `F2`, … and
  * rewrites `documents/<slug>_followups.md`: each follow-up in full, the document bt-spec reads when the dashboard's
  * `/bt-spec Fix F1 and F3 from @…_followups.md` command is run. A follow-up written as plain text is repaired into
- * one with an id by every write, and `check` rewrites the document.
+ * one with an id by every write, and `check` rewrites the document. A feature specced from follow-ups records them
+ * with `addresses` (bt-spec runs it); from then on every `status` write and `check` on that feature carries its
+ * progress back to the source follow-ups (specced → planned → in progress → done, or partly done).
+ *   node dashboard.mjs addresses <feature-folder> --source <source-feature-folder> --ids F1,F3
  *
  * `check` is the gate at every phase boundary and at run end. Beyond the snapshots it fails, listing every problem in
  * one message, when a deliverable was skipped: a `documents/<slug>_plan.md` without `dashboard.html`, the dashboard
@@ -77,6 +80,12 @@ const FOLLOW_UP_ID = /^F(\d+)$/;
 const FOLLOW_UP_TEXT_WITH_ID = /^(F\d+)\s+[—–-]\s+([\s\S]*)$/;
 /** The longest title a follow-up repaired from plain text keeps; the whole text stays in its detail. */
 const MAXIMUM_FOLLOW_UP_TITLE = 100;
+/** A source follow-up's state for each status of the feature that addresses it. */
+const FOLLOW_UP_STATE_FOR_STATUS = { specified: 'specced', planned: 'planned', 'in-progress': 'in-progress', paused: 'in-progress', complete: 'done', incomplete: 'partial' };
+/** How a follow-up's state reads in its update note and in the follow-ups document. */
+const FOLLOW_UP_STATE_LABELS = { open: 'Open', specced: 'Specced', planned: 'Planned', 'in-progress': 'In progress', done: 'Done', partial: 'Partly done' };
+/** How deep under `.agents/` a moved source feature is looked for (`archived/<group>/<slug>` is three). */
+const MAXIMUM_FEATURE_SEARCH_DEPTH = 4;
 /** Image files a snapshot can show. */
 const SNAPSHOT_IMAGE_FILE = /\.(png|jpe?g|webp|gif|avif)$/i;
 /** The plan-wide "before" frame, saved before T1 of the first run. */
@@ -782,8 +791,192 @@ function repairFollowUps(dashboard) {
  * @returns {string}
  */
 function featureFolderFromRoot(folder) {
-  const fromRoot = relative(process.cwd(), resolve(folder)).split('\\').join('/');
+  const fromRoot = relative(projectRootOf(folder), resolve(folder)).split('\\').join('/');
   return fromRoot.startsWith('.agents/') ? fromRoot : `.agents/specs/${dataPaths(folder).slug}`;
+}
+
+/**
+ * The project root a feature folder sits in: everything before its `.agents/`, else the working directory.
+ * @param {string} folder The feature folder.
+ * @returns {string} An absolute path.
+ */
+function projectRootOf(folder) {
+  const absolute = resolve(folder).split('\\').join('/');
+  const agentsAt = absolute.lastIndexOf('/.agents/');
+  return agentsAt >= 0 ? absolute.slice(0, agentsAt) : process.cwd();
+}
+
+/**
+ * Finds a feature folder from where it was recorded, or — when the user has moved it since (`specs/` → `complete/`
+ * → `archived/…`) — by its slug anywhere under the project's `.agents/`.
+ * @param {string} projectRoot The project root.
+ * @param {string} recordedFolder The folder as recorded, from the project root.
+ * @param {string} slug The feature's slug (its data file's prefix).
+ * @returns {string} The folder's absolute path, or `''` when it is gone.
+ */
+function locateFeatureFolder(projectRoot, recordedFolder, slug) {
+  const holdsFeature = (candidate) => existsSync(join(candidate, 'documents', `${slug}_dashboard.js`));
+  const recorded = resolve(projectRoot, recordedFolder);
+  if (holdsFeature(recorded)) return recorded;
+  const search = (folder, depth) => {
+    if (depth > MAXIMUM_FEATURE_SEARCH_DEPTH) return '';
+    let entries;
+    try {
+      entries = readdirSync(folder, { withFileTypes: true });
+    } catch {
+      return '';
+    }
+    for (const entry of entries.filter((candidate) => candidate.isDirectory())) {
+      const child = join(folder, entry.name);
+      if (holdsFeature(child)) return child;
+      const found = search(child, depth + 1);
+      if (found) return found;
+    }
+    return '';
+  };
+  return search(join(projectRoot, '.agents'), 1);
+}
+
+/**
+ * Records that this feature addresses some of another feature's follow-ups — bt-spec runs it when a spec comes from
+ * `Fix F1 and F3 from @…_followups.md` — then marks them on the source dashboard (see `syncAddressedFollowUps`).
+ * The new feature's dashboard links the source follow-ups document.
+ * @param {string} folder This feature's folder.
+ * @param {string[]} argumentList `--source <source feature folder> --ids F1,F3`.
+ */
+function writeAddresses(folder, argumentList) {
+  const { options } = parseOptions(argumentList);
+  const usage = 'usage: addresses <feature-folder> --source <source-feature-folder> --ids F1,F3';
+  if (typeof options.source !== 'string' || typeof options.ids !== 'string') throw new Error(usage);
+  const ids = options.ids.split(/[\s,]+/).filter(Boolean);
+  const sourceFolder = resolve(options.source.replace(/^@/, ''));
+  const source = dataPaths(sourceFolder);
+  if (!existsSync(source.dashboardPath)) throw new Error(`no feature dashboard in ${options.source} — expected ${source.dashboardPath}`);
+  const sourceData = readData(source.dashboardPath).data;
+  repairFollowUps(sourceData);
+  const sourceIds = (sourceData.followUps || []).map((followUp) => followUp.id);
+  const unknown = ids.filter((id) => !sourceIds.includes(id));
+  if (!ids.length || unknown.length) throw new Error(`${options.source} has no follow-up ${unknown.join(', ') || '(none given)'} — it has ${sourceIds.filter(Boolean).join(', ') || 'none'}`);
+  const { dashboardPath } = dataPaths(folder);
+  const { prefix, data } = readData(dashboardPath);
+  data.feature = data.feature && typeof data.feature === 'object' ? data.feature : {};
+  const entry = { folder: featureFolderFromRoot(sourceFolder), slug: source.slug, ids };
+  const others = (Array.isArray(data.feature.addresses) ? data.feature.addresses : []).filter((existing) => existing.slug !== source.slug);
+  data.feature.addresses = [...others, entry];
+  const followUpsPath = relative(resolve(folder), join(sourceFolder, 'documents', `${source.slug}_followups.md`)).split('\\').join('/');
+  data.documents = Array.isArray(data.documents) ? data.documents : [];
+  if (!data.documents.some((document) => document && document.path === followUpsPath)) data.documents.push({ label: 'Source follow-ups', path: followUpsPath });
+  data.updatedAt = localTime().stamp;
+  syncAddressedFollowUps(folder, data);
+  writeData(dashboardPath, prefix, data);
+  console.log(`${dataPaths(folder).slug} addresses ${joinFollowUpIds(ids)} of ${entry.folder} — marked there as ${FOLLOW_UP_STATE_LABELS[FOLLOW_UP_STATE_FOR_STATUS[data.status]] || 'Specced'}`);
+}
+
+/**
+ * The follow-ups this feature's own plan or spec says it takes on, for a feature that was never linked with
+ * `addresses` (an agent skipped the call): the first paragraph that cites another feature's `…_followups.md`, and the
+ * `F<n>` ids in that paragraph which the source really has.
+ * @param {string} folder This feature's folder.
+ * @returns {{ folder: string, slug: string, ids: string[] } | null}
+ */
+function citedFollowUps(folder) {
+  const { slug } = dataPaths(folder);
+  const projectRoot = projectRootOf(folder);
+  for (const kind of ['plan', 'spec']) {
+    const path = join(folder, 'documents', `${slug}_${kind}.md`);
+    if (!existsSync(path)) continue;
+    for (const paragraph of readFileSync(path, 'utf8').split(/\n\s*\n/)) {
+      const citation = /(\.agents\/[^\s`)'"]+)\/documents\/([a-z0-9-]+)_followups\.md/.exec(paragraph);
+      if (!citation || citation[2] === slug) continue;
+      const sourceFolder = locateFeatureFolder(projectRoot, citation[1], citation[2]);
+      if (!sourceFolder) continue;
+      const source = readData(dataPaths(sourceFolder).dashboardPath).data;
+      repairFollowUps(source);
+      const sourceIds = (source.followUps || []).map((followUp) => followUp.id);
+      const ids = [...new Set(paragraph.match(/\bF\d+\b/g) || [])].filter((id) => sourceIds.includes(id));
+      if (ids.length) return { folder: featureFolderFromRoot(sourceFolder), slug: citation[2], ids };
+    }
+  }
+  return null;
+}
+
+/**
+ * Links a feature to the follow-ups its plan or spec cites, when nothing linked it yet (see `citedFollowUps`), and
+ * adds the Source follow-ups document link.
+ * @param {string} folder This feature's folder.
+ * @param {any} dashboard This feature's dashboard data.
+ * @returns {boolean} Whether a link was made.
+ */
+function linkCitedFollowUps(folder, dashboard) {
+  dashboard.feature = dashboard.feature && typeof dashboard.feature === 'object' ? dashboard.feature : {};
+  if (Array.isArray(dashboard.feature.addresses) && dashboard.feature.addresses.length) return false;
+  const cited = citedFollowUps(folder);
+  if (!cited) return false;
+  dashboard.feature.addresses = [cited];
+  const followUpsPath = relative(resolve(folder), join(resolve(projectRootOf(folder), cited.folder), 'documents', `${cited.slug}_followups.md`)).split('\\').join('/');
+  dashboard.documents = Array.isArray(dashboard.documents) ? dashboard.documents : [];
+  if (!dashboard.documents.some((document) => document && document.path === followUpsPath)) dashboard.documents.push({ label: 'Source follow-ups', path: followUpsPath });
+  console.log(`linked from the plan: ${dataPaths(folder).slug} takes on ${joinFollowUpIds(cited.ids)} of ${cited.folder}`);
+  return true;
+}
+
+/**
+ * Carries this feature's progress to the follow-ups it addresses: each source follow-up's `status` follows this
+ * feature's (specified → specced, planned, in progress, complete → done, incomplete → partly done) and `addressedBy`
+ * names this feature and when the state last changed (`at`), and the source's follow-ups document is rewritten. A
+ * source the user has moved is found again by its slug. Runs on every `status` write and every `check`.
+ * @param {string} folder This feature's folder.
+ * @param {any} dashboard This feature's dashboard data; a moved source's new folder is recorded in it.
+ * @returns {boolean} Whether this feature's data changed (a source found in a new place).
+ */
+function syncAddressedFollowUps(folder, dashboard) {
+  const entries = dashboard.feature && Array.isArray(dashboard.feature.addresses) ? dashboard.feature.addresses : [];
+  const state = FOLLOW_UP_STATE_FOR_STATUS[dashboard.status] || 'specced';
+  const projectRoot = projectRootOf(folder);
+  const addressedBy = { folder: featureFolderFromRoot(folder), slug: dataPaths(folder).slug, title: (dashboard.feature && dashboard.feature.title) || dataPaths(folder).slug };
+  let changed = false;
+  for (const entry of entries) {
+    const sourceFolder = locateFeatureFolder(projectRoot, entry.folder || '', entry.slug || '');
+    if (!sourceFolder) {
+      console.log(`note: the follow-ups' source ${entry.folder} is gone — its follow-ups were not updated`);
+      continue;
+    }
+    const sourceFromRoot = featureFolderFromRoot(sourceFolder);
+    if (sourceFromRoot !== entry.folder) {
+      entry.folder = sourceFromRoot;
+      changed = true;
+    }
+    const { dashboardPath, slug } = dataPaths(sourceFolder);
+    const { prefix, data: source } = readData(dashboardPath);
+    repairFollowUps(source);
+    const now = localTime();
+    let sourceChanged = false;
+    for (const followUp of (source.followUps || []).filter((candidate) => entry.ids.includes(candidate.id))) {
+      const previous = followUp.addressedBy;
+      const sameAddress = previous && previous.slug === addressedBy.slug && previous.folder === addressedBy.folder;
+      if (followUp.status === state && sameAddress) continue;
+      // The state is progress on the follow-up, not a revision of it: it is dated here, not added to `updates`.
+      const since = followUp.status === state && previous && previous.at ? previous.at : now.stamp;
+      followUp.status = state;
+      followUp.addressedBy = { ...addressedBy, at: since };
+      sourceChanged = true;
+    }
+    if (!sourceChanged) continue;
+    source.updatedAt = now.stamp;
+    writeData(dashboardPath, prefix, source);
+    writeFollowUpsDocument(sourceFolder, source);
+    console.log(`${slug}: ${joinFollowUpIds(entry.ids)} now ${FOLLOW_UP_STATE_LABELS[state].toLowerCase()}`);
+  }
+  return changed;
+}
+
+/**
+ * Whether a follow-up still waits for someone to address it: never specced, or addressed only in part.
+ * @param {any} followUp The follow-up.
+ * @returns {boolean}
+ */
+function isOpenFollowUp(followUp) {
+  return !followUp.status || followUp.status === 'open' || followUp.status === 'partial';
 }
 
 /**
@@ -807,19 +1000,23 @@ function followUpsDocument(folder, dashboard) {
   const { slug } = dataPaths(folder);
   const featureTitle = (dashboard.feature && dashboard.feature.title) || slug;
   const source = `@${featureFolderFromRoot(folder)}/documents/${slug}_followups.md`;
-  const ids = dashboard.followUps.map((followUp) => followUp.id);
+  const ids = dashboard.followUps.filter(isOpenFollowUp).map((followUp) => followUp.id);
   const documents = (Array.isArray(dashboard.documents) ? dashboard.documents : [])
     .filter((document) => document && document.path && !/follow/i.test(document.label || ''))
     .map((document) => `${String(document.label).toLowerCase()} \`${document.path}\``);
   const lines = [
     `# Follow-ups — ${featureTitle}`,
     '',
-    `What the bt-execute runs of **${featureTitle}** left for a human to look at next. Spec any of them on its own, or several together, with bt-spec:`,
-    '',
-    '```',
-    `/bt-spec Fix ${ids[0]} from ${source}`,
-    ...(ids.length > 1 ? [`/bt-spec Fix ${joinFollowUpIds(ids)} from ${source}`] : []),
-    '```',
+    ...(ids.length
+      ? [
+        `What the bt-execute runs of **${featureTitle}** left for a human to look at next. Spec any open one on its own, or several together, with bt-spec:`,
+        '',
+        '```',
+        `/bt-spec Fix ${ids[0]} from ${source}`,
+        ...(ids.length > 1 ? [`/bt-spec Fix ${joinFollowUpIds(ids)} from ${source}`] : []),
+        '```',
+      ]
+      : [`What the bt-execute runs of **${featureTitle}** left for a human to look at next. Every one is already being addressed by a later feature (its **Status** line says which).`]),
     '',
     `Where they came from: this feature's ${documents.length ? documents.join(', ') : 'plan and run log'} (paths relative to \`${featureFolderFromRoot(folder)}/\`).`,
     '',
@@ -827,11 +1024,13 @@ function followUpsDocument(folder, dashboard) {
   ];
   for (const followUp of dashboard.followUps) {
     const raised = [followUp.at, followUp.source].filter(Boolean).join(' · ');
+    const address = followUp.addressedBy;
     lines.push('', `## ${followUp.id} — ${followUp.title || 'Untitled follow-up'}`, '');
+    if (address) lines.push(`- **Status:** ${FOLLOW_UP_STATE_LABELS[followUp.status] || 'Open'} — addressed by ${address.title} (\`${address.folder}\`)`);
     if (raised) lines.push(`- **Raised:** ${raised}`);
     if (followUp.files.length) lines.push(`- **Files:** ${followUp.files.map((file) => `\`${file}\``).join(', ')}`);
     for (const update of followUp.updates) lines.push(`- **Revised ${update.at || ''}${update.by ? ` by ${update.by}` : ''}:** ${update.note || ''}`);
-    if (raised || followUp.files.length || followUp.updates.length) lines.push('');
+    if (address || raised || followUp.files.length || followUp.updates.length) lines.push('');
     lines.push(followUp.detail || followUp.title || '');
   }
   return `${lines.join('\n')}\n`;
@@ -1004,6 +1203,8 @@ function writeStatus(folder, argumentList) {
   const { prefix, data } = readData(dashboardPath);
   data.status = status;
   data.updatedAt = localTime().stamp;
+  linkCitedFollowUps(folder, data);
+  syncAddressedFollowUps(folder, data);
   writeData(dashboardPath, prefix, data);
   if (status !== 'planned') writeLiveForRun(folder, status);
 }
@@ -1180,7 +1381,9 @@ function checkData(folder) {
   const followUpRepairs = repairFollowUps(data);
   const hasFollowUps = Array.isArray(data.followUps) && data.followUps.length > 0;
   const linkedFollowUps = hasFollowUps && linkFollowUpsDocument(folder, data);
-  if (repairs.length || decisionRepairs.length || followUpRepairs.length || linkedFollowUps) writeData(dashboardPath, prefix, data);
+  const linkedFromPlan = linkCitedFollowUps(folder, data);
+  const sourceMoved = syncAddressedFollowUps(folder, data);
+  if (repairs.length || decisionRepairs.length || followUpRepairs.length || linkedFollowUps || linkedFromPlan || sourceMoved) writeData(dashboardPath, prefix, data);
   if (hasFollowUps) writeFollowUpsDocument(folder, data);
   if (repairs.length) {
     console.log(`repaired ${repairs.length} snapshot entr${repairs.length === 1 ? 'y' : 'ies'} the page could not show:\n  ${repairs.join('\n  ')}`);
@@ -1371,10 +1574,10 @@ function checkLive(dashboard, livePath, roots, projectRoot, quietMinutes, stallM
   console.log(`watchdog ${clock}: ${activity}`);
 }
 
-const commands = { live: writeLive, task: writeTask, snapshot: writeSnapshot, followup: writeFollowUp, activity: writeActivity, status: writeStatus, check: checkData, watch };
+const commands = { live: writeLive, task: writeTask, snapshot: writeSnapshot, followup: writeFollowUp, addresses: writeAddresses, activity: writeActivity, status: writeStatus, check: checkData, watch };
 
 if (!commands[command] || !featureFolder) {
-  console.error('usage: node dashboard.mjs <live|task|snapshot|followup|activity|status|check|watch> <feature-folder> [options] — see the header of this file');
+  console.error('usage: node dashboard.mjs <live|task|snapshot|followup|addresses|activity|status|check|watch> <feature-folder> [options] — see the header of this file');
   process.exit(2);
 }
 try {

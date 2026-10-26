@@ -304,6 +304,81 @@ test('check turns plain-text follow-ups into numbered ones without reusing an id
   assert.match(readFollowUpsDocument(folder), /\/bt-spec Fix F2, F1 and F3 from/);
 });
 
+/**
+ * Builds a project with a source feature that has two follow-ups and a new, specified feature beside it.
+ * @returns {{ root: string, source: string, target: string }}
+ */
+function makeFollowUpProject() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bt-followups-'));
+  const makeFeature = (group, slug, data) => {
+    const folder = path.join(root, '.agents', group, slug);
+    fs.mkdirSync(path.join(folder, 'documents'), { recursive: true });
+    fs.writeFileSync(path.join(folder, 'documents', `${slug}_dashboard.js`), `window.FEATURE_DASHBOARD = ${JSON.stringify(data)};\n`);
+    return folder;
+  };
+  const source = makeFeature('complete', 'kart-shadows', { status: 'complete', feature: { title: 'Kart Shadows', slug: 'kart-shadows' }, phases: [], followUps: ['The GO! banner stays up on clients.', 'Held items cast their own shadows.'] });
+  const target = makeFeature('specs', 'banner-fix', { status: 'specified', feature: { title: 'Banner Fix', slug: 'banner-fix' }, phases: [], documents: [] });
+  return { root, source, target };
+}
+
+/**
+ * Reads any feature's dashboard data.
+ * @param {string} folder The feature folder.
+ * @returns {any}
+ */
+function readFeature(folder) {
+  const slug = path.basename(folder);
+  const text = fs.readFileSync(path.join(folder, 'documents', `${slug}_dashboard.js`), 'utf8');
+  return JSON.parse(text.slice(text.indexOf('=') + 1).trim().replace(/;\s*$/, ''));
+}
+
+test('addresses marks the source follow-ups specced, and the feature\'s progress follows them to done', () => {
+  const { source, target } = makeFollowUpProject();
+  const linked = runHelper(['addresses', target, '--source', source, '--ids', 'F1']);
+  assert.equal(linked.status, 0, linked.output);
+  let [banner, items] = readFeature(source).followUps;
+  assert.deepEqual([banner.status, banner.addressedBy.folder, banner.addressedBy.title], ['specced', '.agents/specs/banner-fix', 'Banner Fix']);
+  assert.equal(items.status, undefined);
+  const feature = readFeature(target);
+  assert.deepEqual(feature.feature.addresses, [{ folder: '.agents/complete/kart-shadows', slug: 'kart-shadows', ids: ['F1'] }]);
+  assert.ok(feature.documents.some((document) => document.label === 'Source follow-ups' && document.path === '../../complete/kart-shadows/documents/kart-shadows_followups.md'));
+  assert.equal(runHelper(['status', target, 'in-progress']).status, 0);
+  assert.equal(readFeature(source).followUps[0].status, 'in-progress');
+  assert.equal(runHelper(['status', target, 'complete']).status, 0);
+  [banner, items] = readFeature(source).followUps;
+  assert.equal(banner.status, 'done');
+  assert.match(banner.addressedBy.at, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  assert.deepEqual(banner.updates, [], 'progress is dated on addressedBy, never logged as a revision');
+  const document = fs.readFileSync(path.join(source, 'documents', 'kart-shadows_followups.md'), 'utf8');
+  assert.match(document, /- \*\*Status:\*\* Done — addressed by Banner Fix \(`\.agents\/specs\/banner-fix`\)/);
+  assert.match(document, /\/bt-spec Fix F2 from @\.agents\/complete\/kart-shadows/);
+  assert.doesNotMatch(document, /Fix F1 from/);
+});
+
+test('addresses refuses an id the source does not have, and finds a source the user moved', () => {
+  const { root, source, target } = makeFollowUpProject();
+  const refused = runHelper(['addresses', target, '--source', source, '--ids', 'F1,F9']);
+  assert.equal(refused.status, 1);
+  assert.match(refused.output, /has no follow-up F9 — it has F1, F2/);
+  assert.equal(runHelper(['addresses', target, '--source', source, '--ids', 'F1,F2']).status, 0);
+  const moved = path.join(root, '.agents', 'archived', 'shadows', 'kart-shadows');
+  fs.mkdirSync(path.dirname(moved), { recursive: true });
+  fs.renameSync(source, moved);
+  const planned = readFeature(target);
+  planned.status = 'planned';
+  fs.writeFileSync(path.join(target, 'documents', 'banner-fix_dashboard.js'), `window.FEATURE_DASHBOARD = ${JSON.stringify(planned)};\n`);
+  const checked = runHelper(['check', target]);
+  assert.match(checked.output, /kart-shadows: F1 and F2 now planned/);
+  assert.deepEqual(readFeature(moved).followUps.map((followUp) => followUp.status), ['planned', 'planned']);
+  assert.equal(readFeature(target).feature.addresses[0].folder, '.agents/archived/shadows/kart-shadows');
+});
+
+test('the dashboard page shows an addressed follow-up\'s state and link instead of its spec command', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'skills', 'bt-execute', 'templates', 'dashboard', 'dashboard.html'), 'utf8');
+  assert.match(page, /\$\{isOpen \? copyableCommand\(followUpCommand\(\[followUp\.id\]\)\) : ''\}/);
+  assert.match(page, /Addressed by <a href=/);
+});
+
 test('a renamed feature folder still finds its data files by their own slug', () => {
   const folder = makeFeatureFolder();
   const renamed = path.join(path.dirname(folder), 'renamed-folder');
@@ -314,9 +389,27 @@ test('a renamed feature folder still finds its data files by their own slug', ()
   assert.equal(readDashboard(renamed).followUps[0].id, 'F1');
 });
 
-test('the dashboard page offers a bt-spec command per follow-up and for those ticked together', () => {
+test('a Quick Plan that cites follow-ups in its plan is linked by check, and its progress reaches the source', () => {
+  const { source, target } = makeFollowUpProject();
+  const quickPlan = readFeature(target);
+  quickPlan.status = 'planned';
+  quickPlan.feature.origin = 'quick-plan';
+  fs.writeFileSync(path.join(target, 'documents', 'banner-fix_dashboard.js'), `window.FEATURE_DASHBOARD = ${JSON.stringify(quickPlan)};\n`);
+  fs.writeFileSync(path.join(target, 'documents', 'banner-fix_plan.md'), '# Plan — Banner Fix\n\nQuick Plan for follow-up **F2** of Kart Shadows\n(`.agents/specs/kart-shadows/documents/kart-shadows_followups.md`).\n\nF1 is not part of this plan.\n');
+  const checked = runHelper(['check', target]);
+  assert.match(checked.output, /linked from the plan: banner-fix takes on F2 of \.agents\/complete\/kart-shadows/);
+  const linked = readFeature(target);
+  assert.deepEqual(linked.feature.addresses, [{ folder: '.agents/complete/kart-shadows', slug: 'kart-shadows', ids: ['F2'] }]);
+  assert.deepEqual(readFeature(source).followUps.map((followUp) => followUp.status), [undefined, 'planned']);
+  assert.equal(runHelper(['status', target, 'complete']).status, 0);
+  assert.equal(readFeature(source).followUps[1].status, 'done');
+});
+
+test('the dashboard page offers a bt-spec or Quick Plan command per follow-up and for those ticked together', () => {
   const page = fs.readFileSync(path.join(__dirname, '..', 'skills', 'bt-execute', 'templates', 'dashboard', 'dashboard.html'), 'utf8');
-  assert.match(page, /return `\/bt-spec Fix \$\{joined\} from \$\{followUpsReference\(\)\}`/);
+  assert.match(page, /return `\/\$\{skill\} Fix \$\{joined\} from \$\{followUpsReference\(\)\}`/);
+  assert.match(page, /spec: \{ skill: 'bt-spec'/);
+  assert.match(page, /plan: \{ skill: 'bt-plan'/);
   assert.match(page, /data\.followUps = asFollowUps\(asList\(data\.followUps\)\)/);
   assert.match(page, /data-follow-up="/);
 });

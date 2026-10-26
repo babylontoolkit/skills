@@ -97,7 +97,7 @@ Top level:
 | Field | Meaning |
 |---|---|
 | `schema` | `1` |
-| `feature` | `{ "title", "slug", "branch", "origin": "spec" \| "quick-plan", "size", "proof", "summary" }` — `branch` is the branch that was checked out when the feature was specced (skills never create one); `summary` is one plain-language paragraph |
+| `feature` | `{ "title", "slug", "branch", "origin": "spec" \| "quick-plan", "size", "proof", "summary" }` — `branch` is the branch that was checked out when the feature was specced (skills never create one); `summary` is one plain-language paragraph. A feature specced from another feature's follow-ups also has `addresses: [{ "folder", "slug", "ids": ["F1", "F3"] }]`, written by `dashboard.mjs addresses` (bt-spec runs it); every `status` write and `check` on this feature then updates those follow-ups on the source dashboard, finding a source the user has moved by its slug |
 | `documents` | `[{ "label", "path" }]` — Spec (omitted for a Quick Plan), Plan, and Run log once bt-execute has run |
 | `status` | see *Status* |
 | `detail` | `"normal"`, or `"verbose"` once any run used `bt-execute --verbose` (never set back) |
@@ -108,7 +108,7 @@ Top level:
 | `afterAction` | the After Action Report (below) |
 | `phases` | the plan's phases, each with its tasks (below) |
 | `decisions` | `[{ "id": "D1" \| "T7", "text", "source", "updates" }]` — objects, never plain `"D1 — …"` strings (the page and `check` repair one, but it is a slip) |
-| `followUps` | what a human should look at next: `[{ "id": "F1", "title", "detail", "source", "files": [], "at", "updates": [] }]`, added with `dashboard.mjs followup` (it numbers them and writes `documents/<slug>_followups.md`; `--id F2 … --note` revises one). `title` is one line; `detail` carries enough to spec it alone — what is wrong, the evidence, where to look, what fixing it involves; `source` names who raised it (`T2 verifier`). The page gives each a `/bt-spec Fix F1 from @…_followups.md` command, plus one for those ticked together. A plain string (older dashboards) is repaired into an entry with the next free id |
+| `followUps` | what a human should look at next: `[{ "id": "F1", "title", "detail", "source", "files": [], "at", "updates": [] }]`, added with `dashboard.mjs followup` (it numbers them and writes `documents/<slug>_followups.md`; `--id F2 … --note` revises one). `title` is one line; `detail` carries enough to spec it alone — what is wrong, the evidence, where to look, what fixing it involves; `source` names who raised it (`T2 verifier`). The page gives each a `/bt-spec Fix F1 from @…_followups.md` command, plus one for those ticked together. A plain string (older dashboards) is repaired into an entry with the next free id. Once a later feature takes one on, the helper adds `status` (`specced` · `planned` · `in-progress` · `done` · `partial`; no status means open) and `addressedBy: { "folder", "slug", "title", "at" }` (`at`: when the state last changed — progress, not a revision, so no `updates` note); the page then shows a state badge and a link to that feature instead of the spec command (`partial` is open again) |
 | `activity` | `[{ "at", "text" }]`, oldest first — the milestones (the page shows newest first) |
 
 `afterAction` — empty while planned; written by bt-execute at the end of every run:
