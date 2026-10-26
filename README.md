@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.2.2)
+# Babylon Toolkit Desktop Agent (1.2.3)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -318,13 +318,17 @@ only when something changed — a task result, a finished run, the next run star
 reopened because you added a task after it was complete (the dashboard drops back to *paused* and
 the After Action Report is revised when the new work is done). A `check` at every phase boundary and
 at run end fails if anything was skipped — a plan without its dashboard, tasks that differ from the plan,
-a *complete* that is not, a visual task with no snapshot, a ticked task with no verifier result. Phase by
+a *complete* that is not, a visual task with no snapshot, frames saved to `snapshots/` that never reached
+the page, a ticked task with no verifier result. Phase by
 phase and task by task it shows what was actually done, files, tests, verifier verdicts, attempts,
 decisions, deferrals and follow-ups. The snapshots tell the story of the build, taken from the captures
-the work already makes (never an extra session just for a picture): for every visual task the builder's
-first look and the verifier's verified comparison, **progressions** from the same camera as meaningful
-layers land (a terrain: heightmap → textures → roads → trees → foliage → lighting), played back as a
-storyboard, plus before/after sliders and stills where those prove the point. When later work
+the work already makes (never an extra session just for a picture): a plan-wide "before" ahead of T1;
+for every visual task a **progression** from the same camera as each meaningful layer lands (a terrain:
+heightmap → textures → roads → trees → foliage → lighting) — the builder's before, milestone and built
+frames, then the verifier's verified frames — played back as a storyboard, plus before/after sliders and
+stills where those prove the point, and one plan-wide before/after in the After Action Report. They reach
+the page while the task is being built: the helper refuses to mark a task built while a frame saved for it
+is not on the dashboard, or a visual task built with no frame at all. When later work
 revises an earlier result, the earlier entry is marked **Updated** with who changed it and why —
 nothing is rewritten silently.
 

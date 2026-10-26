@@ -7,10 +7,12 @@
  * renamed over the original), so the page can never load a half-written file and no hand edit can break it.
  *
  *   node dashboard.mjs live     <feature-folder> --task T19 --role implementer --activity "…" [--phase 7] [--step "…"]… [--reset] [--title "…"]
- *   node dashboard.mjs task     <feature-folder> <task-id> --set '{"status":"built","summary":"…"}' [--note "why an earlier result changed" --by T21]
+ *   node dashboard.mjs task     <feature-folder> <task-id> --set '{"status":"built","summary":"…"}' [--note "why an earlier result changed" --by T21] [--no-frame "why a visual task has no built frame"]
  *   node dashboard.mjs snapshot <feature-folder> <T7|P2|plan> --src snapshots/T7-01-stage.png --caption "…" [--title "…"] [--source unity]
  *                              (comparison: --before snapshots/a.png --after snapshots/b.png [--before-caption …] [--after-caption …];
  *                               progression: --frame "snapshots/x.png|stage|caption" repeated)
+ *   node dashboard.mjs snapshot <feature-folder> comparison --before snapshots/plan-before.png --after snapshots/plan-after.png --caption "…"
+ *                              (the After Action Report's one plan-wide before/after — replaces the previous one)
  *   node dashboard.mjs activity <feature-folder> "Phase 2 verified — T4–T6 PASS"
  *   node dashboard.mjs status   <feature-folder> in-progress|paused|complete|incomplete
  *   node dashboard.mjs check    <feature-folder>
@@ -28,15 +30,22 @@
  * an image under `path` (or `file`, `image`, …) instead of `src`, or a `src` that is not a file under the feature
  * folder — because such an entry renders as "No snapshot".
  *
+ * The snapshots are the story of how the plan was built, so frames are never left behind. A `task --set` that moves
+ * a task to `built`, `verifying` or `done` is refused while `snapshots/` holds a `<task-id>-…` image no dashboard entry
+ * shows — add each with `snapshot` first. Moving a visual task (kind live, game or unity) to `built` with no snapshot
+ * at all is refused too, unless `--no-frame "<reason>"` records why it has nothing to show yet.
+ *
  * `check` is the gate at every phase boundary and at run end. Beyond the snapshots it fails, listing every problem in
  * one message, when a deliverable was skipped: a `documents/<slug>_plan.md` without `dashboard.html`, the dashboard
  * data or the live file; dashboard tasks that differ from the plan's checklist (ids or order); a `complete` status
  * while the plan has an unticked box or without `documents/<slug>_summary.html`; a visual task (kind live, game or
  * unity) that is `done` with no snapshot of its own or progression frame tagged with its id; a task ticked in the plan
- * whose dashboard entry has no verifier result. With no plan in the folder, the plan checks are skipped.
+ * whose dashboard entry has no verifier result. With no plan in the folder, the plan checks are skipped. It also
+ * fails on frames left behind in `snapshots/`: a built or finished task's `T<n>-…` images, a closed phase's `P<N>-…`
+ * images and — once a run has ended — a `plan-before` image that no dashboard entry shows.
  */
 import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 
 /** How many entries a task's live step log keeps. */
 const MAXIMUM_LIVE_STEPS = 12;
@@ -46,6 +55,16 @@ const LIVE_PREFIX = 'window.FEATURE_LIVE';
 const ROLE_FOR_TASK_STATUS = { 'in-progress': 'implementer', built: 'implementer', verifying: 'verifier' };
 /** Task kinds whose result is seen on screen, so a `done` task of this kind must have a snapshot. */
 const VISUAL_TASK_KINDS = new Set(['live', 'game', 'unity']);
+/** Task statuses that mean its builder is finished, so every frame saved for it belongs on the dashboard. */
+const BUILT_TASK_STATUSES = new Set(['built', 'verifying', 'done']);
+/** Phase statuses that mean a phase is closed, so every `P<N>-…` frame saved for it belongs on the dashboard. */
+const CLOSED_PHASE_STATUSES = new Set(['done', 'partial', 'deferred']);
+/** Run statuses that mean a run has ended and written its After Action Report. */
+const RUN_ENDED_STATUSES = new Set(['paused', 'complete', 'incomplete']);
+/** Image files a snapshot can show. */
+const SNAPSHOT_IMAGE_FILE = /\.(png|jpe?g|webp|gif|avif)$/i;
+/** The plan-wide "before" frame, saved before T1 of the first run. */
+const PLAN_BEFORE_FILE = /^plan-before\.(png|jpe?g|webp|gif|avif)$/i;
 /** A plan checklist line: `- [ ] **T3.1** — …` or `- [x] T4 …`; captures the tick mark and the task id. */
 const PLAN_CHECKLIST_LINE = /^\s*[-*]\s+\[([ xX])\]\s+(?:\*\*)?(T\d+(?:\.\d+)*)\b/;
 /** Folders the watchdog never descends into when looking for signs of work. */
@@ -306,7 +325,8 @@ function findTask(dashboard, taskId) {
 
 /**
  * Merges fields into one task, optionally recording why an earlier result changed. A change that sets `status` also
- * rewrites the live file (see `writeLiveForTask`); any other change leaves it as it was.
+ * rewrites the live file (see `writeLiveForTask`); any other change leaves it as it was. A move to `built`,
+ * `verifying` or `done` is refused while the task's frames are left behind (see `frameHandOffProblem`).
  * @param {string} folder The feature folder.
  * @param {string[]} argumentList The task id and options.
  */
@@ -328,14 +348,55 @@ function writeTask(folder, argumentList) {
     if (problems.length) throw new Error(snapshotRefusal(problems));
   }
   Object.assign(task, changes);
+  const noFrameReason = typeof options['no-frame'] === 'string' ? options['no-frame'] : '';
+  const handOffProblem = frameHandOffProblem(folder, data, task, changes.status, noFrameReason);
+  if (handOffProblem) throw new Error(handOffProblem);
   const now = localTime();
   if (typeof options.note === 'string') {
     task.updates = Array.isArray(task.updates) ? task.updates : [];
     task.updates.push({ at: now.stamp, by: typeof options.by === 'string' ? options.by : taskId, note: options.note });
   }
+  if (noFrameReason && changes.status === 'built') {
+    data.activity = Array.isArray(data.activity) ? data.activity : [];
+    data.activity.push({ at: now.stamp, text: `${taskId} built with no frame yet — ${noFrameReason}` });
+  }
   data.updatedAt = now.stamp;
   writeData(dashboardPath, prefix, data);
   if (typeof changes.status === 'string') writeLiveForTask(folder, phase.number, task, changes.summary);
+}
+
+/**
+ * Why a status change must wait for the task's frames, or `''` when it may go ahead. The snapshots are the story of
+ * the build, so a task never moves past its builder while a frame saved for it (`snapshots/<task-id>-…`) is on no
+ * dashboard entry, and a visual task is not `built` until its built frame is on the page — unless the builder gives
+ * a reason it has nothing to show yet.
+ * @param {string} folder The feature folder.
+ * @param {any} dashboard The dashboard data, with the change already merged.
+ * @param {any} task The task, with the change already merged.
+ * @param {string | undefined} newStatus The status being written, if any.
+ * @param {string} noFrameReason The `--no-frame` reason, or `''`.
+ * @returns {string} The refusal message, or `''`.
+ */
+function frameHandOffProblem(folder, dashboard, task, newStatus, noFrameReason) {
+  if (!BUILT_TASK_STATUSES.has(newStatus)) return '';
+  const leftBehind = framesNamedFor(unshownSnapshotFiles(folder, dashboard), task.id);
+  if (leftBehind.length) {
+    return [
+      `refused — ${task.id} cannot be "${newStatus}" while its frames are on disk but not on the dashboard (the snapshots tell the story of the build):`,
+      ...leftBehind.map((name) => `  snapshots/${name}`),
+      'Add them first, then repeat this write — a progression from one camera, or a still each:',
+      `  node dashboard.mjs snapshot ${folder} ${task.id} --frame "snapshots/${leftBehind[0]}|<stage>|<what this stage added>" … --caption "…"`,
+      `  node dashboard.mjs snapshot ${folder} ${task.id} --src snapshots/${leftBehind[0]} --caption "…"`,
+    ].join('\n');
+  }
+  const isVisual = VISUAL_TASK_KINDS.has(task.kind);
+  if (newStatus !== 'built' || !isVisual || noFrameReason || taskIdsWithSnapshots(dashboard).has(task.id)) return '';
+  return [
+    `refused — ${task.id} (kind ${task.kind}) is visual and has no snapshot, so the dashboard would show nothing of what was built.`,
+    `Save its built frame (and the before / milestone frames you took) to snapshots/${task.id}-<NN>-<stage>.png, add them with`,
+    `  node dashboard.mjs snapshot ${folder} ${task.id} --src snapshots/${task.id}-01-<stage>.png --caption "…"`,
+    'then repeat this write. Only when it truly has nothing to show yet, add --no-frame "<why>" to this write.',
+  ].join('\n');
 }
 
 /**
@@ -428,15 +489,20 @@ function snapshotListFor(dashboard, target) {
 /**
  * Appends one snapshot — a still (`--src`), a comparison (`--before` and `--after`) or a progression (`--frame`,
  * repeated, each `src|stage|caption`) — to a task, a phase or the plan, building the shape the page renders and
- * refusing an image that is not on disk. This is the way to add snapshots: nobody writes snapshot JSON by hand.
+ * refusing an image that is not on disk. The target `comparison` instead sets the After Action Report's one
+ * plan-wide before/after. This is the way to add snapshots: nobody writes snapshot JSON by hand.
  * @param {string} folder The feature folder.
  * @param {string[]} argumentList The target and options.
  */
 function writeSnapshot(folder, argumentList) {
   const { options, positional } = parseOptions(argumentList, ['frame']);
   const [target] = positional;
-  const usage = 'usage: snapshot <feature-folder> <T3|P1|plan> (--src snapshots/x.png | --before snapshots/a.png --after snapshots/b.png | --frame "snapshots/x.png|stage|caption"…) --caption "…" [--title "…"] [--source browser|unity|blender|reference] [--before-caption "…"] [--after-caption "…"] [--task T3]';
+  const usage = 'usage: snapshot <feature-folder> <T3|P1|plan|comparison> (--src snapshots/x.png | --before snapshots/a.png --after snapshots/b.png | --frame "snapshots/x.png|stage|caption"…) --caption "…" [--title "…"] [--source browser|unity|blender|reference] [--before-caption "…"] [--after-caption "…"] [--task T3]';
   if (!target) throw new Error(usage);
+  const isPlanComparison = target === 'comparison';
+  if (isPlanComparison && !(typeof options.before === 'string' && typeof options.after === 'string')) {
+    throw new Error('the plan-wide comparison takes --before snapshots/plan-before.png --after snapshots/plan-after.png');
+  }
   const caption = typeof options.caption === 'string' ? options.caption : '';
   const snapshot = { title: typeof options.title === 'string' ? options.title : caption, caption, source: typeof options.source === 'string' ? options.source : 'browser' };
   if (typeof options.src === 'string') {
@@ -458,7 +524,12 @@ function writeSnapshot(folder, argumentList) {
   if (problems.length) throw new Error(snapshotRefusal(problems));
   const { dashboardPath } = dataPaths(folder);
   const { prefix, data } = readData(dashboardPath);
-  snapshotListFor(data, target).push(snapshot);
+  if (isPlanComparison) {
+    data.afterAction = data.afterAction && typeof data.afterAction === 'object' ? data.afterAction : {};
+    data.afterAction.comparison = snapshot;
+  } else {
+    snapshotListFor(data, target).push(snapshot);
+  }
   data.updatedAt = localTime().stamp;
   writeData(dashboardPath, prefix, data);
 }
@@ -586,6 +657,53 @@ function allSnapshots(dashboard) {
 }
 
 /**
+ * The images one snapshot entry shows: a progression's frames, a comparison's two sides, or the still itself.
+ * @param {any} snapshot A still, comparison or progression.
+ * @returns {any[]} Objects that carry a `src`.
+ */
+function snapshotImages(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return [];
+  if (Array.isArray(snapshot.frames)) return snapshot.frames;
+  if (snapshot.before !== undefined || snapshot.after !== undefined) return [snapshot.before, snapshot.after];
+  return [snapshot];
+}
+
+/**
+ * The images in the feature folder's `snapshots/` that no dashboard entry shows — frames a builder or verifier saved
+ * that never reached the page, so the story of the build is missing them.
+ * @param {string} folder The feature folder.
+ * @param {any} dashboard The dashboard data.
+ * @returns {string[]} File names inside `snapshots/`, e.g. `T1-02-lit.png`.
+ */
+function unshownSnapshotFiles(folder, dashboard) {
+  const snapshotsFolder = join(folder, 'snapshots');
+  if (!existsSync(snapshotsFolder)) return [];
+  const shownPaths = new Set(
+    allSnapshots(dashboard)
+      .flatMap(({ snapshot }) => snapshotImages(snapshot))
+      .map((image) => (image && typeof image.src === 'string' ? image.src : ''))
+      .filter((source) => source && !/^[a-z]+:/i.test(source))
+      .map((source) => resolve(folder, source)),
+  );
+  return readdirSync(snapshotsFolder)
+    .filter((name) => SNAPSHOT_IMAGE_FILE.test(name))
+    .filter((name) => !shownPaths.has(resolve(snapshotsFolder, name)))
+    .sort();
+}
+
+/**
+ * The file names saved for one task or phase: those named `<id>-…` (`T7-02-lit.png`, `P2-01-blockout.png`).
+ * `T1-` never matches `T10-…` or `T1.2-…`.
+ * @param {string[]} fileNames File names inside `snapshots/`.
+ * @param {string} ownerId A task id (`T7`, `T3.1`) or phase id (`P2`).
+ * @returns {string[]}
+ */
+function framesNamedFor(fileNames, ownerId) {
+  const prefix = `${ownerId}-`.toLowerCase();
+  return fileNames.filter((name) => name.toLowerCase().startsWith(prefix));
+}
+
+/**
  * Appends one milestone to the activity log.
  * @param {string} folder The feature folder.
  * @param {string[]} argumentList The milestone text.
@@ -703,24 +821,63 @@ function planProblems(folder, dashboard, planTasks) {
 }
 
 /**
+ * The ids of tasks that have something on the page: a snapshot of their own, or a phase or After Action Report
+ * progression frame tagged with their id.
+ * @param {any} dashboard The dashboard data.
+ * @returns {Set<string>}
+ */
+function taskIdsWithSnapshots(dashboard) {
+  const sharedLists = [dashboard.afterAction && dashboard.afterAction.snapshots, ...(dashboard.phases || []).map((phase) => phase.snapshots)];
+  const taskIds = new Set(
+    sharedLists
+      .flatMap((list) => (Array.isArray(list) ? list : []))
+      .flatMap((snapshot) => (snapshot && Array.isArray(snapshot.frames) ? snapshot.frames : []))
+      .map((frame) => frame && frame.task),
+  );
+  for (const task of (dashboard.phases || []).flatMap((phase) => phase.tasks || [])) {
+    if (Array.isArray(task.snapshots) && task.snapshots.length) taskIds.add(task.id);
+  }
+  return taskIds;
+}
+
+/**
  * Visual tasks marked `done` with nothing to show for it: no snapshot of their own and no phase or After Action
  * Report progression frame tagged with their id.
  * @param {any} dashboard The dashboard data.
  * @returns {string[]} One line per task.
  */
 function visualTaskProblems(dashboard) {
-  const sharedLists = [dashboard.afterAction && dashboard.afterAction.snapshots, ...(dashboard.phases || []).map((phase) => phase.snapshots)];
-  const taggedTaskIds = new Set(
-    sharedLists
-      .flatMap((list) => (Array.isArray(list) ? list : []))
-      .flatMap((snapshot) => (snapshot && Array.isArray(snapshot.frames) ? snapshot.frames : []))
-      .map((frame) => frame && frame.task),
-  );
+  const taskIds = taskIdsWithSnapshots(dashboard);
   return (dashboard.phases || [])
     .flatMap((phase) => phase.tasks || [])
-    .filter((task) => task.status === 'done' && VISUAL_TASK_KINDS.has(task.kind))
-    .filter((task) => !(Array.isArray(task.snapshots) && task.snapshots.length) && !taggedTaskIds.has(task.id))
-    .map((task) => `${task.id} (kind ${task.kind}) is done with no snapshot — add the builder's built frame and the verifier's comparison with \`dashboard.mjs snapshot\``);
+    .filter((task) => task.status === 'done' && VISUAL_TASK_KINDS.has(task.kind) && !taskIds.has(task.id))
+    .map((task) => `${task.id} (kind ${task.kind}) is done with no snapshot — add the builder's frames and the verifier's comparison with \`dashboard.mjs snapshot\``);
+}
+
+/**
+ * Frames left behind in `snapshots/`: a built or finished task's `T<n>-…` images, a closed phase's `P<N>-…` images,
+ * and — once a run has ended — a `plan-before` image, that no dashboard entry shows.
+ * @param {string} folder The feature folder.
+ * @param {any} dashboard The dashboard data.
+ * @returns {string[]} One line per task, phase or plan-wide frame.
+ */
+function unshownFrameProblems(folder, dashboard) {
+  const unshown = unshownSnapshotFiles(folder, dashboard);
+  if (!unshown.length) return [];
+  const problems = [];
+  const report = (ownerId, names) => {
+    if (names.length) problems.push(`${ownerId} has frames on disk that no dashboard entry shows: ${names.map((name) => `snapshots/${name}`).join(', ')} — add each to ${ownerId} with \`dashboard.mjs snapshot\``);
+  };
+  for (const phase of dashboard.phases || []) {
+    for (const task of (phase.tasks || []).filter((candidate) => BUILT_TASK_STATUSES.has(candidate.status))) report(task.id, framesNamedFor(unshown, task.id));
+    if (CLOSED_PHASE_STATUSES.has(phase.status)) report(`P${phase.number}`, framesNamedFor(unshown, `P${phase.number}`));
+  }
+  if (RUN_ENDED_STATUSES.has(dashboard.status)) {
+    for (const name of unshown.filter((candidate) => PLAN_BEFORE_FILE.test(candidate))) {
+      problems.push(`snapshots/${name} is not in the After Action Report — make it the plan-wide "before": \`dashboard.mjs snapshot <feature-folder> comparison --before snapshots/${name} --after snapshots/plan-after.png --caption "…"\``);
+    }
+  }
+  return problems;
 }
 
 /**
@@ -758,7 +915,7 @@ function checkData(folder) {
   }
   const snapshots = allSnapshots(data);
   const problems = snapshots.flatMap(({ snapshot, where }) => snapshotProblems(folder, snapshot, where));
-  const deliverables = [...missing, ...visualTaskProblems(data), ...(planTasks ? planProblems(folder, data, planTasks) : [])];
+  const deliverables = [...missing, ...visualTaskProblems(data), ...unshownFrameProblems(folder, data), ...(planTasks ? planProblems(folder, data, planTasks) : [])];
   const refusals = [problems.length ? snapshotRefusal(problems) : '', deliverables.length ? deliverableRefusal(deliverables) : ''].filter(Boolean);
   if (refusals.length) throw new Error(refusals.join('\n'));
   const planNote = planTasks ? `; the dashboard matches the plan's ${planTasks.length} tasks` : '';

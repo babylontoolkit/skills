@@ -150,6 +150,93 @@ test('check and every write turn a decision written as plain text into the objec
   assert.deepEqual(readDashboard(folder).decisions, [{ id: 'D2', text: 'Written around the helper.', updates: [] }]);
 });
 
+/**
+ * Rewrites one task's fields directly in the data file, as a test setup step.
+ * @param {string} folder The feature folder.
+ * @param {Record<string, any>} fields The fields to merge into T1.
+ */
+function setFirstTask(folder, fields) {
+  const dashboard = readDashboard(folder);
+  Object.assign(dashboard.phases[0].tasks[0], fields);
+  fs.writeFileSync(path.join(folder, 'documents', `${SLUG}_dashboard.js`), `window.FEATURE_DASHBOARD = ${JSON.stringify(dashboard)};\n`);
+}
+
+test('task refuses built, verifying and done while frames saved for the task are not on the dashboard', () => {
+  const folder = makeFeatureFolder();
+  fs.writeFileSync(path.join(folder, 'snapshots', 'T10-01-other.png'), 'png');
+  for (const status of ['built', 'verifying', 'done']) {
+    const refused = runHelper(['task', folder, 'T1', '--set', JSON.stringify({ status })]);
+    assert.equal(refused.status, 1, refused.output);
+    assert.match(refused.output, new RegExp(`T1 cannot be "${status}" while its frames are on disk`));
+    assert.match(refused.output, /snapshots\/T1-01-before\.png/);
+    assert.doesNotMatch(refused.output, /T10-01-other/);
+  }
+  assert.equal(readDashboard(folder).phases[0].tasks[0].status, 'in-progress');
+  assert.equal(runHelper(['snapshot', folder, 'T1', '--src', 'snapshots/T1-01-before.png', '--caption', 'Before']).status, 0);
+  const stillOneLeft = runHelper(['task', folder, 'T1', '--set', JSON.stringify({ status: 'built' })]);
+  assert.equal(stillOneLeft.status, 1);
+  assert.match(stillOneLeft.output, /snapshots\/T1-02-after\.png/);
+  assert.doesNotMatch(stillOneLeft.output, /T1-01-before/);
+  assert.equal(runHelper(['snapshot', folder, 'T1', '--src', 'snapshots/T1-02-after.png', '--caption', 'After']).status, 0);
+  const built = runHelper(['task', folder, 'T1', '--set', JSON.stringify({ status: 'built' })]);
+  assert.equal(built.status, 0, built.output);
+  assert.equal(readDashboard(folder).phases[0].tasks[0].status, 'built');
+});
+
+test('a visual task is not built with no snapshot, unless --no-frame records why', () => {
+  const folder = makeFeatureFolder();
+  fs.rmSync(path.join(folder, 'snapshots', 'T1-01-before.png'));
+  fs.rmSync(path.join(folder, 'snapshots', 'T1-02-after.png'));
+  setFirstTask(folder, { kind: 'game' });
+  const refused = runHelper(['task', folder, 'T1', '--set', JSON.stringify({ status: 'built' })]);
+  assert.equal(refused.status, 1, refused.output);
+  assert.match(refused.output, /T1 \(kind game\) is visual and has no snapshot/);
+  const reason = 'the change shows only in a two-browser network race; the verifier captures it';
+  const built = runHelper(['task', folder, 'T1', '--set', JSON.stringify({ status: 'built' }), '--no-frame', reason]);
+  assert.equal(built.status, 0, built.output);
+  const dashboard = readDashboard(folder);
+  assert.equal(dashboard.phases[0].tasks[0].status, 'built');
+  assert.match(dashboard.activity.at(-1).text, /T1 built with no frame yet — the change shows only/);
+});
+
+test('check fails on frames left behind by a finished task, a closed phase and an unused plan-before', () => {
+  const folder = makeFeatureFolder();
+  fs.writeFileSync(path.join(folder, 'snapshots', 'P1-01-overview.png'), 'png');
+  fs.writeFileSync(path.join(folder, 'snapshots', 'plan-before.png'), 'png');
+  fs.writeFileSync(path.join(folder, 'snapshots', 'plan-after.png'), 'png');
+  const dashboard = readDashboard(folder);
+  dashboard.status = 'paused';
+  dashboard.phases[0].status = 'done';
+  dashboard.phases[0].tasks[0].status = 'done';
+  fs.writeFileSync(path.join(folder, 'documents', `${SLUG}_dashboard.js`), `window.FEATURE_DASHBOARD = ${JSON.stringify(dashboard)};\n`);
+  const failed = runHelper(['check', folder]);
+  assert.equal(failed.status, 1, failed.output);
+  assert.match(failed.output, /T1 has frames on disk that no dashboard entry shows: snapshots\/T1-01-before\.png, snapshots\/T1-02-after\.png/);
+  assert.match(failed.output, /P1 has frames on disk that no dashboard entry shows: snapshots\/P1-01-overview\.png/);
+  assert.match(failed.output, /snapshots\/plan-before\.png is not in the After Action Report/);
+  assert.equal(runHelper(['snapshot', folder, 'T1', '--frame', 'snapshots/T1-01-before.png|Before|Start', '--frame', 'snapshots/T1-02-after.png|Built|Done', '--caption', 'T1']).status, 0);
+  assert.equal(runHelper(['snapshot', folder, 'P1', '--src', 'snapshots/P1-01-overview.png', '--caption', 'Overview']).status, 0);
+  assert.equal(runHelper(['snapshot', folder, 'comparison', '--before', 'snapshots/plan-before.png', '--after', 'snapshots/plan-after.png', '--caption', 'The plan']).status, 0);
+  const passed = runHelper(['check', folder]);
+  assert.equal(passed.status, 0, passed.output);
+  const comparison = readDashboard(folder).afterAction.comparison;
+  assert.deepEqual([comparison.before.src, comparison.after.src], ['snapshots/plan-before.png', 'snapshots/plan-after.png']);
+});
+
+test('check leaves a plan-before alone while the run is still going, and frames of tasks still being built', () => {
+  const folder = makeFeatureFolder();
+  fs.writeFileSync(path.join(folder, 'snapshots', 'plan-before.png'), 'png');
+  const result = runHelper(['check', folder]);
+  assert.equal(result.status, 0, result.output);
+});
+
+test('snapshot comparison needs both sides', () => {
+  const folder = makeFeatureFolder();
+  const result = runHelper(['snapshot', folder, 'comparison', '--src', 'snapshots/T1-01-before.png']);
+  assert.equal(result.status, 1);
+  assert.match(result.output, /plan-wide comparison takes --before/);
+});
+
 test('the dashboard page shows a decision written as plain text instead of an empty row', () => {
   const page = fs.readFileSync(path.join(__dirname, '..', 'skills', 'bt-execute', 'templates', 'dashboard', 'dashboard.html'), 'utf8');
   assert.match(page, /data\.decisions = asList\(data\.decisions\)\.map\(asDecision\)/);
