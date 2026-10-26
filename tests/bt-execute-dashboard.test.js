@@ -304,6 +304,16 @@ test('check turns plain-text follow-ups into numbered ones without reusing an id
   assert.match(readFollowUpsDocument(folder), /\/bt-spec Fix F2, F1 and F3 from/);
 });
 
+test('a renamed feature folder still finds its data files by their own slug', () => {
+  const folder = makeFeatureFolder();
+  const renamed = path.join(path.dirname(folder), 'renamed-folder');
+  fs.renameSync(folder, renamed);
+  const result = runHelper(['followup', renamed, '--title', 'Still found', '--detail', 'The files keep the old slug.']);
+  assert.equal(result.status, 0, result.output);
+  assert.ok(fs.existsSync(path.join(renamed, 'documents', `${SLUG}_followups.md`)));
+  assert.equal(readDashboard(renamed).followUps[0].id, 'F1');
+});
+
 test('the dashboard page offers a bt-spec command per follow-up and for those ticked together', () => {
   const page = fs.readFileSync(path.join(__dirname, '..', 'skills', 'bt-execute', 'templates', 'dashboard', 'dashboard.html'), 'utf8');
   assert.match(page, /return `\/bt-spec Fix \$\{joined\} from \$\{followUpsReference\(\)\}`/);

@@ -108,12 +108,27 @@ const SNAPSHOT_SHAPES_HELP = [
 const [command, featureFolder, ...rest] = process.argv.slice(2);
 
 /**
+ * The feature's slug: the folder's name, as bt-spec creates it. A folder renamed after the fact keeps its files'
+ * original names, so when `documents/<folder name>_dashboard.js` is missing and the folder holds exactly one
+ * `documents/*_dashboard.js`, that file's prefix is the slug.
+ * @param {string} folder The feature folder.
+ * @returns {string}
+ */
+function featureSlug(folder) {
+  const folderName = basename(folder.replace(/[\\/]+$/, ''));
+  const documentsFolder = join(folder, 'documents');
+  if (existsSync(join(documentsFolder, `${folderName}_dashboard.js`)) || !existsSync(documentsFolder)) return folderName;
+  const dataFiles = readdirSync(documentsFolder).filter((name) => name.endsWith('_dashboard.js'));
+  return dataFiles.length === 1 ? dataFiles[0].slice(0, -'_dashboard.js'.length) : folderName;
+}
+
+/**
  * Reads the paths of a feature folder's two data files.
  * @param {string} folder The feature folder, `.agents/specs/<slug>`.
  * @returns {{ slug: string, dashboardPath: string, livePath: string }}
  */
 function dataPaths(folder) {
-  const slug = basename(folder.replace(/[\\/]+$/, ''));
+  const slug = featureSlug(folder);
   return {
     slug,
     dashboardPath: join(folder, 'documents', `${slug}_dashboard.js`),
