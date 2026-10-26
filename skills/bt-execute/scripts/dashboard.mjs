@@ -13,6 +13,8 @@
  *                               progression: --frame "snapshots/x.png|stage|caption" repeated)
  *   node dashboard.mjs snapshot <feature-folder> comparison --before snapshots/plan-before.png --after snapshots/plan-after.png --caption "…"
  *                              (the After Action Report's one plan-wide before/after — replaces the previous one)
+ *   node dashboard.mjs followup <feature-folder> --title "…" --detail "…" [--source "T2 verifier"] [--file path]…
+ *                              (revise one: --id F2 [--title …] [--detail …] [--file …] --note "why it changed" [--by T4])
  *   node dashboard.mjs activity <feature-folder> "Phase 2 verified — T4–T6 PASS"
  *   node dashboard.mjs status   <feature-folder> in-progress|paused|complete|incomplete
  *   node dashboard.mjs check    <feature-folder>
@@ -20,11 +22,12 @@
  *
  * <feature-folder> is .agents/specs/<slug>. Timestamps come from this machine's local clock.
  *
- * The live file (`documents/<slug>_live.js`) is written by this helper, not by agents: every `task --set` that
- * changes a task's `status` rewrites it from that change (the task, its phase, the role its status implies, one
- * sentence on its new state plus the summary's first sentence, and a step in its log), and every `status` write
- * records the run starting or ending. A `--set` without `status` leaves it untouched. `live` remains for a hand
- * write; `watch` is a manual tool — no skill launches it.
+ * The live file (`documents/<slug>_live.js`) is how the page shows the run is alive. Every `task --set` that changes a
+ * task's `status` rewrites it from that change (the task, its phase, the role its status implies, one sentence on its
+ * new state plus the summary's first sentence, and a step in its log), every `snapshot` adds a step, and every
+ * `status` write records the run starting or ending. A `--set` without `status` leaves it untouched. Between those,
+ * agents write `live` at each meaningful step (before anything slow, at each fix attempt), and `watch` — the
+ * watchdog bt-execute launches in the background at run start — writes a heartbeat after 10 quiet minutes.
  *
  * Snapshots go in only through `snapshot`. `task --set` and `check` refuse any snapshot entry the page cannot show —
  * an image under `path` (or `file`, `image`, …) instead of `src`, or a `src` that is not a file under the feature
@@ -34,6 +37,11 @@
  * a task to `built`, `verifying` or `done` is refused while `snapshots/` holds a `<task-id>-…` image no dashboard entry
  * shows — add each with `snapshot` first. Moving a visual task (kind live, game or unity) to `built` with no snapshot
  * at all is refused too, unless `--no-frame "<reason>"` records why it has nothing to show yet.
+ *
+ * Follow-ups — what a human should look at next — are added with `followup`, which numbers them `F1`, `F2`, … and
+ * rewrites `documents/<slug>_followups.md`: each follow-up in full, the document bt-spec reads when the dashboard's
+ * `/bt-spec Fix F1 and F3 from @…_followups.md` command is run. A follow-up written as plain text is repaired into
+ * one with an id by every write, and `check` rewrites the document.
  *
  * `check` is the gate at every phase boundary and at run end. Beyond the snapshots it fails, listing every problem in
  * one message, when a deliverable was skipped: a `documents/<slug>_plan.md` without `dashboard.html`, the dashboard
@@ -53,6 +61,8 @@ const MAXIMUM_LIVE_STEPS = 12;
 const LIVE_PREFIX = 'window.FEATURE_LIVE';
 /** Who is working on a task in each status — the live file's `role` after a `task` write; anything else is the orchestrator. */
 const ROLE_FOR_TASK_STATUS = { 'in-progress': 'implementer', built: 'implementer', verifying: 'verifier' };
+/** How the live file names a snapshot target that is not a task or phase id. */
+const SNAPSHOT_OWNER_NAMES = { plan: 'the After Action Report', comparison: 'the plan-wide before/after' };
 /** Task kinds whose result is seen on screen, so a `done` task of this kind must have a snapshot. */
 const VISUAL_TASK_KINDS = new Set(['live', 'game', 'unity']);
 /** Task statuses that mean its builder is finished, so every frame saved for it belongs on the dashboard. */
@@ -61,6 +71,12 @@ const BUILT_TASK_STATUSES = new Set(['built', 'verifying', 'done']);
 const CLOSED_PHASE_STATUSES = new Set(['done', 'partial', 'deferred']);
 /** Run statuses that mean a run has ended and written its After Action Report. */
 const RUN_ENDED_STATUSES = new Set(['paused', 'complete', 'incomplete']);
+/** A follow-up id: `F1`, `F12`. */
+const FOLLOW_UP_ID = /^F(\d+)$/;
+/** A follow-up written as plain text that starts with its id: `"F3 — The banner stays up"`. */
+const FOLLOW_UP_TEXT_WITH_ID = /^(F\d+)\s+[—–-]\s+([\s\S]*)$/;
+/** The longest title a follow-up repaired from plain text keeps; the whole text stays in its detail. */
+const MAXIMUM_FOLLOW_UP_TITLE = 100;
 /** Image files a snapshot can show. */
 const SNAPSHOT_IMAGE_FILE = /\.(png|jpe?g|webp|gif|avif)$/i;
 /** The plan-wide "before" frame, saved before T1 of the first run. */
@@ -129,6 +145,7 @@ function writeData(path, prefix, data) {
   // reads) can never reach the page as "No snapshot", whoever wrote it.
   if (data && Array.isArray(data.phases)) repairSnapshots(data);
   if (data && Array.isArray(data.decisions)) repairDecisions(data);
+  if (data && Array.isArray(data.followUps)) repairFollowUps(data);
   const temporaryPath = `${path}.${process.pid}.tmp`;
   writeFileSync(temporaryPath, `${prefix} = ${JSON.stringify(data, null, 2)};\n`, 'utf8');
   renameSync(temporaryPath, path);
@@ -268,6 +285,32 @@ function writeLiveForTask(folder, phaseNumber, task, summary) {
     task: task.id,
     title: '',
     role: ROLE_FOR_TASK_STATUS[task.status] || 'orchestrator',
+    activity,
+    steps: steps.slice(-MAXIMUM_LIVE_STEPS),
+    source: 'agent',
+  });
+}
+
+/**
+ * Records a snapshot just added as a step in the live file, so the page sees the work moving between status changes
+ * (frames are added as they are saved). The task, phase and role stay as they were.
+ * @param {string} folder The feature folder.
+ * @param {string} target The snapshot's target: a task, a phase, `plan` or `comparison`.
+ * @param {string} caption The snapshot's caption.
+ */
+function writeLiveForSnapshot(folder, target, caption) {
+  const { livePath } = dataPaths(folder);
+  const { prefix, data: live } = readLive(livePath);
+  const now = localTime();
+  const owner = SNAPSHOT_OWNER_NAMES[target] || target;
+  const activity = caption ? `Added a snapshot to ${owner} — ${caption}` : `Added a snapshot to ${owner}.`;
+  const steps = Array.isArray(live.steps) ? live.steps : [];
+  steps.push({ at: now.clock, text: activity });
+  writeData(livePath, prefix, {
+    ...live,
+    updatedAt: now.stamp,
+    task: live.task || '',
+    role: live.role || 'orchestrator',
     activity,
     steps: steps.slice(-MAXIMUM_LIVE_STEPS),
     source: 'agent',
@@ -532,6 +575,7 @@ function writeSnapshot(folder, argumentList) {
   }
   data.updatedAt = localTime().stamp;
   writeData(dashboardPath, prefix, data);
+  writeLiveForSnapshot(folder, target, caption);
 }
 
 /**
@@ -637,6 +681,175 @@ function repairDecisions(dashboard) {
 }
 
 /**
+ * The next free follow-up id: one past the highest `F<n>` in the list, so ids never repeat after one is revised.
+ * @param {any[]} followUps The follow-ups so far.
+ * @param {Set<string>} [alsoTaken] Ids claimed by entries not yet in the list.
+ * @returns {string}
+ */
+function nextFollowUpId(followUps, alsoTaken = new Set()) {
+  const taken = [...followUps.map((followUp) => followUp && followUp.id), ...alsoTaken];
+  const highest = taken.reduce((maximum, id) => {
+    const match = FOLLOW_UP_ID.exec(String(id || ''));
+    return match ? Math.max(maximum, Number(match[1])) : maximum;
+  }, 0);
+  return `F${highest + 1}`;
+}
+
+/**
+ * A short title from a follow-up written as one block of text: its first sentence, cut at a word near
+ * `MAXIMUM_FOLLOW_UP_TITLE` characters when longer. A sentence ends only where the next word starts with a capital,
+ * so "the GO! banner" stays whole.
+ * @param {string} text The follow-up's text.
+ * @returns {string}
+ */
+function followUpTitleFrom(text) {
+  const trimmed = String(text || '').trim();
+  const sentenceMatch = /^[\s\S]*?[.!?](?=\s+[A-Z]|$)/.exec(trimmed);
+  const sentence = sentenceMatch ? sentenceMatch[0] : trimmed;
+  if (sentence.length <= MAXIMUM_FOLLOW_UP_TITLE) return sentence;
+  const cut = sentence.lastIndexOf(' ', MAXIMUM_FOLLOW_UP_TITLE);
+  return `${sentence.slice(0, cut > 0 ? cut : MAXIMUM_FOLLOW_UP_TITLE).replace(/[\s,;:—–-]+$/, '')}…`;
+}
+
+/**
+ * The ids the follow-ups already carry — an entry's `id`, or the `F3 — ` a plain-text one starts with — so a repair
+ * never hands out an id that a later entry in the list already has.
+ * @param {any[]} followUps The follow-ups, possibly mixed with plain text.
+ * @returns {Set<string>}
+ */
+function claimedFollowUpIds(followUps) {
+  const ids = followUps.map((followUp) => {
+    if (followUp && typeof followUp === 'object') return followUp.id;
+    const match = FOLLOW_UP_TEXT_WITH_ID.exec(String(followUp));
+    return match ? match[1] : '';
+  });
+  return new Set(ids.filter(Boolean));
+}
+
+/**
+ * Repairs the follow-ups in place, so each has the id the dashboard's bt-spec commands name: a follow-up written as
+ * plain text becomes `{ "id": "F3", "title", "detail", … }` (its own `F3 — ` prefix kept as the id, else the next free
+ * one), and an entry without an id gets the next free one. Lists and `updates` are made lists.
+ * @param {any} dashboard The dashboard data.
+ * @returns {string[]} One line per repair made.
+ */
+function repairFollowUps(dashboard) {
+  const repairs = [];
+  if (!Array.isArray(dashboard.followUps)) return repairs;
+  const claimed = claimedFollowUpIds(dashboard.followUps);
+  dashboard.followUps = dashboard.followUps.map((followUp, index) => {
+    if (typeof followUp === 'string') {
+      const match = FOLLOW_UP_TEXT_WITH_ID.exec(followUp);
+      const text = match ? match[2] : followUp;
+      const id = match ? match[1] : nextFollowUpId([], claimed);
+      claimed.add(id);
+      const title = followUpTitleFrom(text);
+      repairs.push(`followUps[${index}]: plain text → { "id": "${id}", "title", "detail" }`);
+      return { id, title, detail: title === text ? '' : text, source: '', files: [], at: '', updates: [] };
+    }
+    if (!followUp || typeof followUp !== 'object') return followUp;
+    if (!followUp.id) {
+      followUp.id = nextFollowUpId([], claimed);
+      claimed.add(followUp.id);
+      repairs.push(`followUps[${index}]: no id → "${followUp.id}"`);
+    }
+    if (!Array.isArray(followUp.files)) followUp.files = [];
+    if (!Array.isArray(followUp.updates)) followUp.updates = [];
+    return followUp;
+  }).filter((followUp) => followUp && typeof followUp === 'object');
+  return repairs;
+}
+
+/**
+ * This feature's folder as a path from the project root (`.agents/specs/<slug>`, or wherever the user moved it),
+ * for the bt-spec commands. The helper runs from the project root, so a folder under it is named as it is.
+ * @param {string} folder The feature folder.
+ * @returns {string}
+ */
+function featureFolderFromRoot(folder) {
+  const fromRoot = relative(process.cwd(), resolve(folder)).split('\\').join('/');
+  return fromRoot.startsWith('.agents/') ? fromRoot : `.agents/specs/${dataPaths(folder).slug}`;
+}
+
+/**
+ * Joins follow-up ids the way the bt-spec commands read: `F1`, `F1 and F2`, `F1, F2 and F3`.
+ * @param {string[]} ids The ids.
+ * @returns {string}
+ */
+function joinFollowUpIds(ids) {
+  if (ids.length <= 1) return ids.join('');
+  return `${ids.slice(0, -1).join(', ')} and ${ids[ids.length - 1]}`;
+}
+
+/**
+ * The follow-ups document bt-spec reads: the feature it came from, the commands that spec its follow-ups, and every
+ * follow-up in full under its id.
+ * @param {string} folder The feature folder.
+ * @param {any} dashboard The dashboard data, follow-ups repaired.
+ * @returns {string} Markdown.
+ */
+function followUpsDocument(folder, dashboard) {
+  const { slug } = dataPaths(folder);
+  const featureTitle = (dashboard.feature && dashboard.feature.title) || slug;
+  const source = `@${featureFolderFromRoot(folder)}/documents/${slug}_followups.md`;
+  const ids = dashboard.followUps.map((followUp) => followUp.id);
+  const documents = (Array.isArray(dashboard.documents) ? dashboard.documents : [])
+    .filter((document) => document && document.path && !/follow/i.test(document.label || ''))
+    .map((document) => `${String(document.label).toLowerCase()} \`${document.path}\``);
+  const lines = [
+    `# Follow-ups — ${featureTitle}`,
+    '',
+    `What the bt-execute runs of **${featureTitle}** left for a human to look at next. Spec any of them on its own, or several together, with bt-spec:`,
+    '',
+    '```',
+    `/bt-spec Fix ${ids[0]} from ${source}`,
+    ...(ids.length > 1 ? [`/bt-spec Fix ${joinFollowUpIds(ids)} from ${source}`] : []),
+    '```',
+    '',
+    `Where they came from: this feature's ${documents.length ? documents.join(', ') : 'plan and run log'} (paths relative to \`${featureFolderFromRoot(folder)}/\`).`,
+    '',
+    `> Written by bt-execute's dashboard helper from \`${slug}_dashboard.js\`. Add or revise a follow-up with \`dashboard.mjs followup\`, never by editing this file.`,
+  ];
+  for (const followUp of dashboard.followUps) {
+    const raised = [followUp.at, followUp.source].filter(Boolean).join(' · ');
+    lines.push('', `## ${followUp.id} — ${followUp.title || 'Untitled follow-up'}`, '');
+    if (raised) lines.push(`- **Raised:** ${raised}`);
+    if (followUp.files.length) lines.push(`- **Files:** ${followUp.files.map((file) => `\`${file}\``).join(', ')}`);
+    for (const update of followUp.updates) lines.push(`- **Revised ${update.at || ''}${update.by ? ` by ${update.by}` : ''}:** ${update.note || ''}`);
+    if (raised || followUp.files.length || followUp.updates.length) lines.push('');
+    lines.push(followUp.detail || followUp.title || '');
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Lists the follow-ups document among the dashboard's documents, once, so the page links it.
+ * @param {string} folder The feature folder.
+ * @param {any} dashboard The dashboard data.
+ * @returns {boolean} Whether the list changed.
+ */
+function linkFollowUpsDocument(folder, dashboard) {
+  const path = `documents/${dataPaths(folder).slug}_followups.md`;
+  dashboard.documents = Array.isArray(dashboard.documents) ? dashboard.documents : [];
+  if (dashboard.documents.some((document) => document && document.path === path)) return false;
+  dashboard.documents.push({ label: 'Follow-ups', path });
+  return true;
+}
+
+/**
+ * Rewrites the follow-ups document from the dashboard data, atomically; nothing is written while there are none.
+ * @param {string} folder The feature folder.
+ * @param {any} dashboard The dashboard data, follow-ups repaired.
+ */
+function writeFollowUpsDocument(folder, dashboard) {
+  if (!Array.isArray(dashboard.followUps) || !dashboard.followUps.length) return;
+  const path = join(folder, 'documents', `${dataPaths(folder).slug}_followups.md`);
+  const temporaryPath = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporaryPath, followUpsDocument(folder, dashboard), 'utf8');
+  renameSync(temporaryPath, path);
+}
+
+/**
  * Every snapshot entry in the dashboard with where it sits: the After Action Report, each phase and each task.
  * @param {any} dashboard The dashboard data.
  * @returns {{ snapshot: any, where: string }[]}
@@ -718,6 +931,49 @@ function writeActivity(folder, argumentList) {
   data.activity.push({ at: now.stamp, text });
   data.updatedAt = now.stamp;
   writeData(dashboardPath, prefix, data);
+}
+
+/**
+ * Adds a follow-up with the next free id (`F1`, `F2`, …), or revises one (`--id F2 … --note "why"`), then rewrites
+ * the follow-ups document bt-spec reads. The dashboard offers `/bt-spec Fix F2 from @…_followups.md` for each, so a
+ * follow-up carries enough to be specced alone: what is wrong, the evidence, where to look, what fixing it involves.
+ * @param {string} folder The feature folder.
+ * @param {string[]} argumentList Follow-up options.
+ */
+function writeFollowUp(folder, argumentList) {
+  const { options } = parseOptions(argumentList, ['file']);
+  const usage = 'usage: followup <feature-folder> --title "…" --detail "…" [--source "T2 verifier"] [--file path]…  (revise: --id F2 [--title …] [--detail …] [--file …] --note "why it changed" [--by T4])';
+  const { dashboardPath } = dataPaths(folder);
+  const { prefix, data } = readData(dashboardPath);
+  data.followUps = Array.isArray(data.followUps) ? data.followUps : [];
+  repairFollowUps(data);
+  const now = localTime();
+  const fields = {
+    ...(typeof options.title === 'string' ? { title: options.title } : {}),
+    ...(typeof options.detail === 'string' ? { detail: options.detail } : {}),
+    ...(typeof options.source === 'string' ? { source: options.source } : {}),
+    ...(options.file.length ? { files: options.file.map(String) } : {}),
+  };
+  const isRevision = typeof options.id === 'string';
+  let followUpId;
+  if (isRevision) {
+    const followUp = data.followUps.find((candidate) => candidate.id === options.id);
+    if (!followUp) throw new Error(`no follow-up "${options.id}" — the dashboard has ${data.followUps.map((candidate) => candidate.id).join(', ') || 'none'}`);
+    if (typeof options.note !== 'string') throw new Error('revising a follow-up needs --note "why it changed" — an earlier result is never rewritten silently');
+    Object.assign(followUp, fields);
+    followUp.updates.push({ at: now.stamp, by: typeof options.by === 'string' ? options.by : followUp.id, note: options.note });
+    followUpId = followUp.id;
+  } else {
+    if (!fields.title || !fields.detail) throw new Error(usage);
+    followUpId = nextFollowUpId(data.followUps);
+    data.followUps.push({ id: followUpId, title: '', detail: '', source: '', files: [], at: now.stamp, updates: [], ...fields });
+  }
+  linkFollowUpsDocument(folder, data);
+  data.updatedAt = now.stamp;
+  writeData(dashboardPath, prefix, data);
+  writeFollowUpsDocument(folder, data);
+  const followUpsSource = `@${featureFolderFromRoot(folder)}/documents/${dataPaths(folder).slug}_followups.md`;
+  console.log(`${isRevision ? 'revised' : 'added'} ${followUpId} — spec it with: /bt-spec Fix ${followUpId} from ${followUpsSource}`);
 }
 
 /**
@@ -906,12 +1162,19 @@ function checkData(folder) {
   if (existsSync(livePath)) readData(livePath);
   const repairs = repairSnapshots(data);
   const decisionRepairs = repairDecisions(data);
-  if (repairs.length || decisionRepairs.length) writeData(dashboardPath, prefix, data);
+  const followUpRepairs = repairFollowUps(data);
+  const hasFollowUps = Array.isArray(data.followUps) && data.followUps.length > 0;
+  const linkedFollowUps = hasFollowUps && linkFollowUpsDocument(folder, data);
+  if (repairs.length || decisionRepairs.length || followUpRepairs.length || linkedFollowUps) writeData(dashboardPath, prefix, data);
+  if (hasFollowUps) writeFollowUpsDocument(folder, data);
   if (repairs.length) {
     console.log(`repaired ${repairs.length} snapshot entr${repairs.length === 1 ? 'y' : 'ies'} the page could not show:\n  ${repairs.join('\n  ')}`);
   }
   if (decisionRepairs.length) {
     console.log(`repaired ${decisionRepairs.length} decision${decisionRepairs.length === 1 ? '' : 's'} written as plain text:\n  ${decisionRepairs.join('\n  ')}`);
+  }
+  if (followUpRepairs.length) {
+    console.log(`repaired ${followUpRepairs.length} follow-up${followUpRepairs.length === 1 ? '' : 's'} without an id:\n  ${followUpRepairs.join('\n  ')}`);
   }
   const snapshots = allSnapshots(data);
   const problems = snapshots.flatMap(({ snapshot, where }) => snapshotProblems(folder, snapshot, where));
@@ -969,8 +1232,9 @@ function parseStamp(stamp) {
 }
 
 /**
- * The watchdog — a manual tool (no skill launches it; `task` and `status` keep the live file current). While the
- * dashboard says a run is in progress it checks the live status every interval:
+ * The watchdog — bt-execute launches it in the background at run start, as the safety net behind the agents' own
+ * live writes, so the page never shows a long silence while work goes on. While the dashboard says a run is in
+ * progress it checks the live status every interval:
  *  - the live status names a task that is already finished while another task is active → it points the live
  *    status at the active task (the agent working on it has not written yet);
  *  - nothing has been written for `quiet-minutes` → it writes a heartbeat naming the latest file that changed in
@@ -1092,10 +1356,10 @@ function checkLive(dashboard, livePath, roots, projectRoot, quietMinutes, stallM
   console.log(`watchdog ${clock}: ${activity}`);
 }
 
-const commands = { live: writeLive, task: writeTask, snapshot: writeSnapshot, activity: writeActivity, status: writeStatus, check: checkData, watch };
+const commands = { live: writeLive, task: writeTask, snapshot: writeSnapshot, followup: writeFollowUp, activity: writeActivity, status: writeStatus, check: checkData, watch };
 
 if (!commands[command] || !featureFolder) {
-  console.error('usage: node dashboard.mjs <live|task|snapshot|activity|status|check|watch> <feature-folder> [options] — see the header of this file');
+  console.error('usage: node dashboard.mjs <live|task|snapshot|followup|activity|status|check|watch> <feature-folder> [options] — see the header of this file');
   process.exit(2);
 }
 try {

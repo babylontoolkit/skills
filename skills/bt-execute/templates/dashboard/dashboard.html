@@ -756,6 +756,15 @@
   .row:first-child { border-top: 0; }
   .row-key { font: 600 12.5px/1.6 var(--font-mono); color: var(--accent); overflow-wrap: anywhere; }
   .row-source { margin-top: 4px; color: var(--text-faint); font-size: 12.5px; }
+  /* A follow-up: a tick box to spec several together, its id, then its text and its own bt-spec command. */
+  .row.follow-up { grid-template-columns: 22px 56px minmax(0, 1fr); gap: 12px; }
+  .follow-up-pick { padding-top: 2px; }
+  .follow-up-pick input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .follow-up-detail { margin-top: 4px; color: var(--text-muted); font-size: 13.5px; }
+  .follow-up .run-copy { margin-top: 10px; }
+  .follow-up-bar { display: grid; gap: 10px; padding: 16px 22px 18px; border-top: 1px solid var(--line); }
+  .follow-up-bar-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; justify-content: space-between; }
+  .follow-up-bar .copy-command:disabled { opacity: 0.45; cursor: default; }
   .timeline { position: relative; margin: 0; padding: 4px 0 4px 26px; list-style: none; }
   .timeline::before { content: ""; position: absolute; left: 7px; top: 8px; bottom: 8px; width: 2px; background: var(--line); }
   .timeline li { position: relative; padding: 8px 0; }
@@ -820,6 +829,9 @@
     .task-tags { grid-column: 2 / -1; justify-content: flex-start; }
     .task-body { padding: 0 14px 16px; }
     .row { grid-template-columns: 1fr; gap: 4px; padding: 12px 16px; }
+    .row.follow-up { grid-template-columns: 22px minmax(0, 1fr); gap: 4px 10px; }
+    .row.follow-up > div:last-child { grid-column: 2; }
+    .follow-up-bar { padding: 14px 16px 16px; }
     .after-action { padding: 18px; }
     .after-action-columns { grid-template-columns: 1fr; }
     .route-label { display: none; }
@@ -874,6 +886,10 @@
     { key: 'noTimeLimit', flag: '--no-time-limit', label: 'No time limit', hint: 'Turns off the default TIME MATTERS mode' },
   ];
   const planChoice = { heavy: false, parity: false, noTimeLimit: false, brief: '' };
+  // The follow-ups ticked to spec together, kept when the page refreshes; one the page has not shown before arrives ticked.
+  const followUpChoice = { selected: new Set(), seen: new Set() };
+  /** The longest title a follow-up written as plain text shows; the whole text stays below it — the helper's rule. */
+  const MAXIMUM_FOLLOW_UP_TITLE = 100;
   // A verifier result that names a live check: "live two-tab race in headless Chrome", "end-to-end on WebGPU".
   const LIVE_CHECK_WORDS = /\blive\b|chrome|browser|webgl|webgpu|unity editor|play ?mode/i;
   /** Where the Babylon Toolkit Desktop Agent, whose skills generate this dashboard, is published. */
@@ -1617,18 +1633,58 @@
       </section>`;
   }
 
+  /**
+   * Deferred tasks (finished by running the plan again), then the follow-ups — each with its own bt-spec command, and
+   * tick boxes to spec several together, like bt-profile's fixes.
+   */
   function renderFollowUps(allTasks) {
     const deferredRows = allTasks
       .filter((task) => task.status === 'deferred' || task.status === 'failed')
       .map((task) => `<div class="row"><div class="row-key">${escapeHtml(task.id || '')}</div><div><strong>${escapeHtml(task.title || '')}</strong>${task.deferredReason ? `<div class="row-source">${formatInline(task.deferredReason)}</div>` : ''}</div></div>`);
-    const followUpRows = (report.followUps || [])
-      .map((item, index) => `<div class="row"><div class="row-key">#${index + 1}</div><div>${formatInline(item)}</div></div>`);
+    const followUps = report.followUps || [];
+    const ids = followUps.map((followUp) => followUp.id);
+    for (const id of ids.filter((candidate) => !followUpChoice.seen.has(candidate))) {
+      followUpChoice.seen.add(id);
+      followUpChoice.selected.add(id);
+    }
+    const followUpRows = followUps.map((followUp) => {
+      const raised = [followUp.source, followUp.at].filter(Boolean).join(' · ');
+      const files = followUp.files.length ? `Files: ${followUp.files.map((file) => `\`${file}\``).join(', ')}` : '';
+      const where = [raised && `Raised by ${raised}`, files].filter(Boolean).join(' — ');
+      return `
+        <div class="row follow-up">
+          <label class="follow-up-pick"><input type="checkbox" data-follow-up="${escapeAttribute(followUp.id)}"${followUpChoice.selected.has(followUp.id) ? ' checked' : ''} aria-label="Spec ${escapeAttribute(followUp.id)} together with the others ticked"></label>
+          <div class="row-key">${escapeHtml(followUp.id)}</div>
+          <div>
+            <strong>${formatInline(followUp.title || '')}</strong> ${updatedBadge(followUp.updates)}
+            ${followUp.detail ? `<div class="follow-up-detail">${formatInline(followUp.detail)}</div>` : ''}
+            ${where ? `<div class="row-source">${formatInline(where)}</div>` : ''}
+            ${updateNotes(followUp.updates)}
+            ${copyableCommand(followUpSpecCommand([followUp.id]))}
+          </div>
+        </div>`;
+    });
+    const together = ids.length > 1 ? `
+      <div class="follow-up-bar">
+        <div class="follow-up-bar-head"><span class="run-builder-title">Spec the ticked follow ups together</span><button type="button" class="copy-command" data-copy="${escapeAttribute(followUpSpecCommand(ids))}" data-label="Copy all ${ids.length}" title="${escapeAttribute(followUpSpecCommand(ids))}">Copy all ${ids.length}</button></div>
+        ${selectedFollowUpsCommand()}
+      </div>` : '';
     const rows = deferredRows.concat(followUpRows).join('');
+    const note = followUps.length ? 'What a human should look at next — copy a command to spec any of them with bt-spec' : 'What a human should look at next';
     return `
       <section id="follow-ups">
-        <div class="section-head"><h2>Deferred follow ups</h2><span class="section-note">What a human should look at next</span></div>
-        ${rows ? `<div class="card list-card">${rows}</div>` : '<div class="empty">Nothing deferred, nothing outstanding.</div>'}
+        <div class="section-head"><h2>Follow ups</h2><span class="section-note">${note}</span></div>
+        ${rows ? `<div class="card list-card">${rows}${together}</div>` : '<div class="empty">Nothing deferred, nothing outstanding.</div>'}
       </section>`;
+  }
+
+  /** The command for the ticked follow-ups, or a disabled hint when none is ticked; redrawn as the boxes change. */
+  function selectedFollowUpsCommand() {
+    const ids = (report.followUps || []).map((followUp) => followUp.id).filter((id) => followUpChoice.selected.has(id));
+    if (!ids.length) {
+      return '<div class="run-copy" id="selected-follow-ups"><code class="run-command">Tick the follow ups to spec together</code><button type="button" class="copy-command" disabled>Copy</button></div>';
+    }
+    return `<div id="selected-follow-ups">${copyableCommand(followUpSpecCommand(ids))}</div>`;
   }
 
   function renderUpdateLog(allUpdates) {
@@ -1756,7 +1812,7 @@
     data.decisions = asList(data.decisions).map(asDecision)
       .filter((decision) => decision && typeof decision === 'object')
       .map((decision) => Object.assign(decision, { updates: asUpdates(decision.updates) }));
-    data.followUps = asList(data.followUps);
+    data.followUps = asFollowUps(asList(data.followUps));
     data.activity = asList(data.activity);
     if (data.afterAction && typeof data.afterAction === 'object') {
       const afterAction = data.afterAction;
@@ -1806,6 +1862,42 @@
       if (typeof value === 'string') return value ? [value] : [];
       return asList(value).filter((item) => item !== null && item !== undefined && item !== '');
     }
+
+    /**
+     * Follow-ups as objects with the ids the bt-spec commands name. One written as plain text (an older dashboard)
+     * gets its own `F3 — ` prefix as the id, else the next free one, and a short title — the helper's repair, so the
+     * page and `documents/<slug>_followups.md` name the same F-numbers.
+     */
+    function asFollowUps(list) {
+      const textId = (text) => (/^(F\d+)\s+[—–-]\s+/.exec(text) || [])[1] || '';
+      const claimed = new Set(list.map((item) => (item && typeof item === 'object' ? item.id : textId(String(item)))).filter(Boolean));
+      const nextId = () => {
+        const highest = [...claimed].reduce((maximum, id) => Math.max(maximum, Number((/^F(\d+)$/.exec(id) || [])[1] || 0)), 0);
+        const id = `F${highest + 1}`;
+        claimed.add(id);
+        return id;
+      };
+      return list.map((item) => {
+        if (typeof item === 'string') {
+          const id = textId(item) || nextId();
+          const text = item.replace(/^F\d+\s+[—–-]\s+/, '');
+          const title = followUpTitleFrom(text);
+          return { id, title, detail: title === text ? '' : text, source: '', files: [], updates: [] };
+        }
+        if (!item || typeof item !== 'object') return null;
+        return Object.assign(item, { id: item.id || nextId(), files: asTextList(item.files), updates: asUpdates(item.updates) });
+      }).filter(Boolean);
+    }
+  }
+
+  /** A short title from a follow-up written as one block of text: its first sentence, cut at a word when long. */
+  function followUpTitleFrom(text) {
+    const trimmed = String(text || '').trim();
+    const sentenceMatch = /^[\s\S]*?[.!?](?=\s+[A-Z]|$)/.exec(trimmed);
+    const sentence = sentenceMatch ? sentenceMatch[0] : trimmed;
+    if (sentence.length <= MAXIMUM_FOLLOW_UP_TITLE) return sentence;
+    const cut = sentence.lastIndexOf(' ', MAXIMUM_FOLLOW_UP_TITLE);
+    return `${sentence.slice(0, cut > 0 ? cut : MAXIMUM_FOLLOW_UP_TITLE).replace(/[\s,;:—–-]+$/, '')}…`;
   }
 
   /* ===================== Updated notifications ===================== */
@@ -1985,23 +2077,61 @@
     return runCommand(RUN_OPTIONS.filter((option) => runChoice[option.key]).map((option) => option.flag), runChoice.tasks);
   }
 
-  function copyableCommand(command, id = '') {
-    return `<div class="run-copy"><code class="run-command"${id ? ` id="${id}"` : ''}>${escapeHtml(command)}</code><button type="button" class="copy-command" data-copy="${escapeAttribute(command)}">Copy</button></div>`;
+  /**
+   * This feature's folder from the project root. Read from the page's own address when it sits under `.agents/`,
+   * so a feature the user moved to `complete/` or `archived/` still gets commands that resolve; else the usual
+   * `.agents/specs/<slug>`.
+   */
+  function featureFolderPath() {
+    const slug = (report.feature && report.feature.slug) || '';
+    const pagePath = decodeURIComponent(window.location.pathname || '');
+    const agentsAt = pagePath.lastIndexOf('/.agents/');
+    const pageName = '/dashboard.html';
+    if (agentsAt >= 0 && pagePath.endsWith(pageName)) return pagePath.slice(agentsAt + 1, pagePath.length - pageName.length);
+    return `.agents/specs/${slug}`;
+  }
+
+  /** The follow-ups document as bt-spec takes it: `@.agents/specs/<slug>/documents/<slug>_followups.md`. */
+  function followUpsReference() {
+    const slug = (report.feature && report.feature.slug) || '';
+    const listed = (report.documents || []).find((document) => /follow/i.test(document.label || '') && document.path);
+    const relativePath = listed ? String(listed.path).replace(/^\.?\//, '') : `documents/${slug}_followups.md`;
+    return `@${featureFolderPath()}/${relativePath}`;
+  }
+
+  /** The bt-spec command for some follow-ups, worded like bt-profile's: `/bt-spec Fix F1, F2 and F4 from @…`. */
+  function followUpSpecCommand(ids) {
+    const joined = ids.length <= 1 ? ids.join('') : `${ids.slice(0, -1).join(', ')} and ${ids[ids.length - 1]}`;
+    return `/bt-spec Fix ${joined} from ${followUpsReference()}`;
+  }
+
+  function copyableCommand(command, id = '', label = 'Copy') {
+    return `<div class="run-copy"><code class="run-command"${id ? ` id="${id}"` : ''}>${escapeHtml(command)}</code><button type="button" class="copy-command" data-copy="${escapeAttribute(command)}" data-label="${escapeAttribute(label)}">${escapeHtml(label)}</button></div>`;
   }
 
   /** Copy buttons and the command builder; delegated, so they keep working after the page redraws. */
   function wireRunCommands() {
     document.addEventListener('click', (event) => {
       const button = event.target.closest('.copy-command');
-      if (!button) return;
+      if (!button || button.disabled) return;
       const text = button.getAttribute('data-copy') || '';
+      const label = button.getAttribute('data-label') || 'Copy';
       const copied = () => {
         button.textContent = 'Copied';
         button.classList.add('is-copied');
-        setTimeout(() => { button.textContent = 'Copy'; button.classList.remove('is-copied'); }, 1500);
+        setTimeout(() => { button.textContent = label; button.classList.remove('is-copied'); }, 1500);
       };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(copied, () => { copyWithSelection(text); copied(); });
       else { copyWithSelection(text); copied(); }
+    });
+    document.addEventListener('change', (event) => {
+      const box = event.target.closest('[data-follow-up]');
+      if (!box) return;
+      const id = box.getAttribute('data-follow-up');
+      if (box.checked) followUpChoice.selected.add(id);
+      else followUpChoice.selected.delete(id);
+      const output = document.getElementById('selected-follow-ups');
+      if (output) output.outerHTML = selectedFollowUpsCommand();
     });
     const updateBuilt = (event) => {
       const control = event.target.closest('[data-run-choice], [data-plan-choice]');

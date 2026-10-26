@@ -5,7 +5,8 @@
 | File | Holds | Written |
 |---|---|---|
 | `<slug>_dashboard.js` | the feature's record — status, phases, tasks and their results, decisions, snapshots, the After Action Report | bt-spec creates it from `dashboard.template.js` (`specified`), bt-plan fills in the plan (`planned`), bt-execute writes it at every task boundary; a Quick Plan creates it at bt-plan |
-| `<slug>_live.js` | what is happening this minute — the current task, one sentence, its step log | by bt-execute's helper, never by an agent: every `dashboard.mjs task` write that changes a task's status, and every `status` write (bt-plan creates it from `live.template.js`) |
+| `<slug>_live.js` | what is happening this minute — the current task, one sentence, its step log | by bt-execute's helper: every `dashboard.mjs task` write that changes a task's status, every `snapshot` and every `status` write; between them every `live` write an agent makes at a meaningful step, and the watchdog's heartbeat after 10 quiet minutes (bt-plan creates it from `live.template.js`) |
+| `<slug>_followups.md` | every follow-up in full under its id, and the bt-spec commands that spec them — the document the dashboard's `/bt-spec Fix F1 from @…` commands point at | by bt-execute's helper, from `followUps`: every `followup` write and every `check` (never by hand) |
 
 They are **data, not code.** Each file is exactly one line of prefix and one strict-JSON value:
 
@@ -21,11 +22,11 @@ The status of the plan itself lives in the plan file's checkboxes; the dashboard
 
 ## Updating a data file
 
-Use bt-execute's helper — `node <skills>/bt-execute/scripts/dashboard.mjs task|snapshot|activity|status|check <feature-folder> …`
-(every option is in its header). It parses, checks field shapes and writes atomically. Its `task` and `status`
-commands also rewrite the live file, so agents never write it. `live` remains for a hand write, and `watch` is an
-optional watchdog for manual use (a heartbeat into the live file when nothing has been written for 10 minutes) —
-no skill launches it.
+Use bt-execute's helper — `node <skills>/bt-execute/scripts/dashboard.mjs task|snapshot|followup|live|activity|status|check <feature-folder> …`
+(every option is in its header). It parses, checks field shapes and writes atomically. Its `task`, `snapshot` and
+`status` commands also rewrite the live file; between them agents write it with `live` at each meaningful step, never
+15 minutes apart. `watch` is the watchdog bt-execute launches in the background at run start: a heartbeat into the
+live file when nothing has been written for 10 minutes, naming the latest file that changed.
 
 ### Fallback — parse, change, write back
 
@@ -107,7 +108,7 @@ Top level:
 | `afterAction` | the After Action Report (below) |
 | `phases` | the plan's phases, each with its tasks (below) |
 | `decisions` | `[{ "id": "D1" \| "T7", "text", "source", "updates" }]` — objects, never plain `"D1 — …"` strings (the page and `check` repair one, but it is a slip) |
-| `followUps` | plain strings — what a human should look at next |
+| `followUps` | what a human should look at next: `[{ "id": "F1", "title", "detail", "source", "files": [], "at", "updates": [] }]`, added with `dashboard.mjs followup` (it numbers them and writes `documents/<slug>_followups.md`; `--id F2 … --note` revises one). `title` is one line; `detail` carries enough to spec it alone — what is wrong, the evidence, where to look, what fixing it involves; `source` names who raised it (`T2 verifier`). The page gives each a `/bt-spec Fix F1 from @…_followups.md` command, plus one for those ticked together. A plain string (older dashboards) is repaired into an entry with the next free id |
 | `activity` | `[{ "at", "text" }]`, oldest first — the milestones (the page shows newest first) |
 
 `afterAction` — empty while planned; written by bt-execute at the end of every run:
@@ -201,8 +202,10 @@ Any list of snapshots may mix them. `source` names where the image came from: `"
 whole from each change it makes: a `task` write that sets a status names the task, its phase, the role the status
 implies (`in-progress` / `built` → implementer, `verifying` → verifier, otherwise orchestrator), one sentence on the
 new state plus the first sentence of the summary written with it, and appends that sentence to the task's step log;
-a `status` write records the run starting or ending. A `task` write without a status leaves it untouched, and
-agents never write it. A 20-minute silence shows as a warning. The page shows it only while `status` is
+a `snapshot` adds a step naming the frame; a `status` write records the run starting or ending. A `task` write
+without a status leaves it untouched. Between those, the agent doing the work writes it with `dashboard.mjs live` at
+each milestone, before anything slow and at each fix attempt, never 15 minutes apart, and the watchdog writes a
+heartbeat after 10 quiet minutes. A 20-minute silence shows as a warning. The page shows it only while `status` is
 `in-progress`.
 
 | Field | Meaning |
@@ -213,7 +216,7 @@ agents never write it. A 20-minute silence shows as a warning. The page shows it
 | `title` | only when there is no task: `"Verifying phase 1"`, `"Closing phase 1"` |
 | `role` | `implementer` · `verifier` · `orchestrator` |
 | `activity` | one plain-language sentence on what is happening this minute |
-| `source` | `agent` (the helper, from an agent's write) or `watchdog` (a heartbeat from the manual watchdog — the page tags it) |
+| `source` | `agent` (the helper, from an agent's write) or `watchdog` (a heartbeat from the watchdog bt-execute launches at run start — the page tags it) |
 | `steps` | `[{ "at": "HH:MM", "text" }]` — the current task's log, oldest first; fresh for each task, the last 12 kept. Plain language a non-developer follows, which is why a task's `summary` leads with a plain first sentence |
 
 ## `check` — the gate

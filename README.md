@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.2.3)
+# Babylon Toolkit Desktop Agent (1.2.4)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -311,8 +311,10 @@ start without a spec:
 `dashboard.html` is a live dashboard for the whole feature. `bt-plan` writes it as a roadmap (every
 phase and task pending, with the time estimate); `bt-execute` updates it **task by task**, not phase
 by phase: a *Now* banner says which task is being worked on and what is happening this minute (the
-dashboard helper rewrites a small live-status file each time a task starts, is built, is being verified
-or is done — no agent spends time on it), and each task's result appears the moment it is built. An open tab keeps itself current: it
+dashboard helper rewrites a small live-status file each time a task starts, is built, is being verified,
+fails into a fix round or is done, and each time a snapshot is added; between those the agents write it
+before anything slow, never 15 minutes apart, and a background watchdog writes a heartbeat naming the
+latest file that changed after 10 quiet minutes), and each task's result appears the moment it is built. An open tab keeps itself current: it
 re-reads its data in the background (every 10 s during a run, every 30 s otherwise) and refreshes
 only when something changed — a task result, a finished run, the next run starting, or a plan
 reopened because you added a task after it was complete (the dashboard drops back to *paused* and
@@ -321,7 +323,9 @@ at run end fails if anything was skipped — a plan without its dashboard, tasks
 a *complete* that is not, a visual task with no snapshot, frames saved to `snapshots/` that never reached
 the page, a ticked task with no verifier result. Phase by
 phase and task by task it shows what was actually done, files, tests, verifier verdicts, attempts,
-decisions, deferrals and follow-ups. The snapshots tell the story of the build, taken from the captures
+decisions, deferrals and follow-ups. Follow-ups are numbered `F1`, `F2` … and each comes with a
+`/bt-spec Fix F1 from @…/documents/<slug>_followups.md` command to copy (tick several to spec them together),
+the same way bt-profile hands its fixes to bt-spec. The snapshots tell the story of the build, taken from the captures
 the work already makes (never an extra session just for a picture): a plan-wide "before" ahead of T1;
 for every visual task a **progression** from the same camera as each meaningful layer lands (a terrain:
 heightmap → textures → roads → trees → foliage → lighting) — the builder's before, milestone and built

@@ -230,6 +230,87 @@ test('check leaves a plan-before alone while the run is still going, and frames 
   assert.equal(result.status, 0, result.output);
 });
 
+test('every snapshot added is a step in the live file, so the page sees the work between status changes', () => {
+  const folder = makeFeatureFolder();
+  assert.equal(runHelper(['task', folder, 'T1', '--set', JSON.stringify({ status: 'in-progress' })]).status, 0);
+  assert.equal(runHelper(['snapshot', folder, 'T1', '--src', 'snapshots/T1-01-before.png', '--caption', 'The track before the fix']).status, 0);
+  const text = fs.readFileSync(path.join(folder, 'documents', `${SLUG}_live.js`), 'utf8');
+  const live = JSON.parse(text.slice(text.indexOf('=') + 1).trim().replace(/;\s*$/, ''));
+  assert.deepEqual([live.task, live.role, live.source], ['T1', 'implementer', 'agent']);
+  assert.equal(live.activity, 'Added a snapshot to T1 — The track before the fix');
+  assert.deepEqual(live.steps.map((step) => step.text), ['Building T1.', 'Added a snapshot to T1 — The track before the fix']);
+});
+
+/**
+ * Reads the follow-ups document the helper writes.
+ * @param {string} folder The feature folder.
+ * @returns {string}
+ */
+function readFollowUpsDocument(folder) {
+  return fs.readFileSync(path.join(folder, 'documents', `${SLUG}_followups.md`), 'utf8');
+}
+
+test('followup numbers each follow-up and writes the document bt-spec reads', () => {
+  const folder = makeFeatureFolder();
+  const first = runHelper(['followup', folder, '--title', 'GO! banner stays up on clients', '--detail', 'Seen 15–27 s into every client race.', '--source', 'T2 verifier', '--file', 'src/hud/Banner.tsx']);
+  assert.equal(first.status, 0, first.output);
+  assert.match(first.output, /added F1 — spec it with: \/bt-spec Fix F1 from @\.agents\/specs\/demo-feature\/documents\/demo-feature_followups\.md/);
+  assert.equal(runHelper(['followup', folder, '--title', 'Late compiles on the host', '--detail', '29–52 records after the reveal.']).status, 0);
+  const dashboard = readDashboard(folder);
+  assert.deepEqual(dashboard.followUps.map((followUp) => followUp.id), ['F1', 'F2']);
+  assert.deepEqual(dashboard.followUps[0].files, ['src/hud/Banner.tsx']);
+  assert.ok(dashboard.documents.some((document) => document.path === `documents/${SLUG}_followups.md`));
+  const document = readFollowUpsDocument(folder);
+  assert.match(document, /\/bt-spec Fix F1 and F2 from @\.agents\/specs\/demo-feature\/documents\/demo-feature_followups\.md/);
+  assert.match(document, /## F1 — GO! banner stays up on clients\n\n- \*\*Raised:\*\* .* · T2 verifier\n- \*\*Files:\*\* `src\/hud\/Banner\.tsx`\n\nSeen 15–27 s into every client race\./);
+  assert.match(document, /## F2 — Late compiles on the host/);
+  const missingDetail = runHelper(['followup', folder, '--title', 'No detail']);
+  assert.equal(missingDetail.status, 1);
+  assert.match(missingDetail.output, /usage: followup/);
+});
+
+test('followup revises one only with a note, and the document shows the revision', () => {
+  const folder = makeFeatureFolder();
+  assert.equal(runHelper(['followup', folder, '--title', 'Held items cast shadows', '--detail', '0.2–3 draws a frame.']).status, 0);
+  const silent = runHelper(['followup', folder, '--id', 'F1', '--detail', 'Changed']);
+  assert.equal(silent.status, 1);
+  assert.match(silent.output, /needs --note/);
+  assert.match(runHelper(['followup', folder, '--id', 'F9', '--note', 'x']).output, /no follow-up "F9" — the dashboard has F1/);
+  const revised = runHelper(['followup', folder, '--id', 'F1', '--detail', 'Up to 3 draws a frame.', '--note', 'Measured on all tracks', '--by', 'T4']);
+  assert.equal(revised.status, 0, revised.output);
+  const [followUp] = readDashboard(folder).followUps;
+  assert.equal(followUp.detail, 'Up to 3 draws a frame.');
+  assert.equal(followUp.updates[0].note, 'Measured on all tracks');
+  assert.match(readFollowUpsDocument(folder), /\*\*Revised .* by T4:\*\* Measured on all tracks/);
+});
+
+test('check turns plain-text follow-ups into numbered ones without reusing an id, and writes the document', () => {
+  const folder = makeFeatureFolder();
+  const dashboard = readDashboard(folder);
+  dashboard.followUps = [
+    'Network client page: the GO! banner and the Start bar stay on screen 15–27 s into the race. Seen in every client frame.',
+    'F1 — Already numbered by hand',
+    { title: 'An entry with no id', detail: 'It still gets one.' },
+  ];
+  fs.writeFileSync(path.join(folder, 'documents', `${SLUG}_dashboard.js`), `window.FEATURE_DASHBOARD = ${JSON.stringify(dashboard)};\n`);
+  const result = runHelper(['check', folder]);
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /repaired 3 follow-ups without an id/);
+  const [plain, numbered, unnumbered] = readDashboard(folder).followUps;
+  assert.deepEqual([plain.id, numbered.id, unnumbered.id], ['F2', 'F1', 'F3']);
+  assert.equal(plain.title, 'Network client page: the GO! banner and the Start bar stay on screen 15–27 s into the race.');
+  assert.match(plain.detail, /Seen in every client frame\./);
+  assert.equal(numbered.title, 'Already numbered by hand');
+  assert.match(readFollowUpsDocument(folder), /\/bt-spec Fix F2, F1 and F3 from/);
+});
+
+test('the dashboard page offers a bt-spec command per follow-up and for those ticked together', () => {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'skills', 'bt-execute', 'templates', 'dashboard', 'dashboard.html'), 'utf8');
+  assert.match(page, /return `\/bt-spec Fix \$\{joined\} from \$\{followUpsReference\(\)\}`/);
+  assert.match(page, /data\.followUps = asFollowUps\(asList\(data\.followUps\)\)/);
+  assert.match(page, /data-follow-up="/);
+});
+
 test('snapshot comparison needs both sides', () => {
   const folder = makeFeatureFolder();
   const result = runHelper(['snapshot', folder, 'comparison', '--src', 'snapshots/T1-01-before.png']);
