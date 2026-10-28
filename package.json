@@ -1,6 +1,6 @@
 {
   "name": "@babylonjs-toolkit/agent",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "description": "Installs the Babylon Toolkit Desktop Agent for Claude Code, Codex, GitHub Copilot, Gemini CLI and Antigravity.",
   "keywords": [
     "babylonjs",
