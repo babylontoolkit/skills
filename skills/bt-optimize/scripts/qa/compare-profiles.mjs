@@ -30,6 +30,47 @@ function change(before, after, digits = 0) {
     return `${before.toFixed(digits)} → **${after.toFixed(digits)}** (${percent >= 0 ? "+" : ""}${percent}%)`;
 }
 
+/** How many owners and repeated shapes each pin's accounting tables list. */
+const DRAW_OWNER_ROWS = 12;
+
+/**
+ * Appends, per pinned view, the main-pass draws by owning scene object for every run side by side, then the last
+ * run's repeated shapes that still cost one draw per copy and why. Runs profiled before draw accounting existed
+ * are skipped.
+ * @param {string[]} lines - the report lines to append to
+ * @param {object[]} runs - the parsed profile runs, in label order
+ * @param {(index: number) => string} name - the label of run `index`
+ */
+function appendDrawOwners(lines, runs, name) {
+    const last = runs[runs.length - 1];
+    for (const pin of last.pins) {
+        const accountings = runs.map((run) => (run.pins || []).find((candidate) => candidate.atSeconds === pin.atSeconds)?.drawOwners ?? null);
+        const lastAccounting = accountings[accountings.length - 1];
+        if (lastAccounting == null) continue;
+        const ownerNames = [...new Set(accountings.filter(Boolean).flatMap((accounting) => accounting.owners.slice(0, DRAW_OWNER_ROWS).map((owner) => owner.owner)))];
+        lines.push(`**Main-pass draws by owner — ${pin.atSeconds} s view**`);
+        lines.push("");
+        lines.push(`| Owner | ${runs.map((_, index) => name(index)).join(" | ")} | Skinned / instanced / lightmapped meshes (${name(runs.length - 1)}) | Shadow-map casters (${name(runs.length - 1)}) |`);
+        lines.push(`|---|${runs.map(() => "---").join("|")}|---|---|`);
+        for (const ownerName of ownerNames) {
+            const cells = accountings.map((accounting) => accounting?.owners.find((owner) => owner.owner === ownerName)?.draws ?? (accounting ? 0 : "—"));
+            const latest = lastAccounting.owners.find((owner) => owner.owner === ownerName);
+            const kinds = latest ? `${latest.skinned} / ${latest.instances} / ${latest.lightmapped}` : "—";
+            lines.push(`| ${ownerName} | ${cells.join(" | ")} | ${kinds} | ${latest ? latest.shadowCasters : "—"} |`);
+        }
+        lines.push(`| **All main-pass draws** | ${accountings.map((accounting) => (accounting ? `**${accounting.mainDraws}**` : "—")).join(" | ")} | | |`);
+        lines.push("");
+        const costly = lastAccounting.repeats.filter((repeat) => repeat.blocker != null).slice(0, DRAW_OWNER_ROWS);
+        if (costly.length === 0) continue;
+        lines.push(`Repeated shapes still drawn once per copy (${name(runs.length - 1)}):`);
+        lines.push("");
+        lines.push("| Shape | Owner | Copies | Draws | Why the copies do not share one draw |");
+        lines.push("|---|---|---|---|---|");
+        for (const repeat of costly) lines.push(`| ${repeat.shape} | ${repeat.owner} | ${repeat.copies} | ${repeat.draws} | ${repeat.blocker} |`);
+        lines.push("");
+    }
+}
+
 /** Entry point. */
 function main() {
     const { flags, files } = parseArguments(process.argv.slice(2));
@@ -59,6 +100,7 @@ function main() {
             lines.push(`| ${pin.atSeconds} s @ ${pin.pinned.position ? pin.pinned.position.map((v) => v.toFixed(1)).join(",") : pin.pinned} | ${change(a.fps, b.fps, 1)} | ${change(a.p50Ms, b.p50Ms, 1)} | ${change(a.p95Ms, b.p95Ms, 1)} | ${change(a.drawCalls, b.drawCalls)} | ${change(a.passes.shadowMaps, b.passes.shadowMaps)} | ${change(a.passes.otherTargets, b.passes.otherTargets)} | ${change(a.passes.main, b.passes.main)} | ${change(a.activeMeshes, b.activeMeshes)} |`);
         }
         lines.push("");
+        appendDrawOwners(lines, runs, name);
     }
     if (first.samples && last.samples) {
         lines.push(`| Timeline | FPS | p95 frame ms | Worst frame ms | Draws / frame |`);

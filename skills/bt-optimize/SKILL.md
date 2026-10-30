@@ -1,6 +1,6 @@
 ---
 name: bt-optimize
-description: "The Babylon Toolkit Optimize Skill makes an exported Unity scene run fast as BabylonJS web content. It measures the exported scene in the browser first (frame rate, draw calls per pass — shadow maps, depth / velocity buffers, main pass, post — CPU hot spots, light binding), surveys the Unity scene for the causes, then fixes them on a copy of the scene: runtime practical lights baked, realtime point / spot shadows removed, non-moving props marked static, probe-lit props with lightmap UVs lightmapped, no-op post effects removed, and static meshes and LOD groups merged with the Babylon Toolkit MeshCombiner (packed source lightmap UVs, mirrored pieces, LOD clusters with corrected switch distances). It re-bakes, exports, and proves the result — frame rate and draw calls before → after at the same pinned views, and the same look in Unity and in the browser. Every decision is written down with its reason. Use when the user wants a Unity scene to run faster or lighter in the browser, or wants static meshes / LOD groups combined (e.g. `/bt-optimize Assets/Scenes/Garden/GardenScene.unity`, `/bt-optimize --combine-only`)."
+description: "The Babylon Toolkit Optimize Skill makes an exported Unity scene run fast as BabylonJS web content. It measures the exported scene in the browser first (frame rate, draw calls per pass — shadow maps, depth / velocity buffers, main pass, post — CPU hot spots, light binding), accounts for every draw by the object that owns it, surveys the Unity scene for the causes, then fixes them on a copy of the scene: skinned meshes that need no skinning (one-bone DAE / FBX imports — coins, item boxes, trees, signs) turned into plain meshes so repeated props share one instanced draw, runtime practical lights baked, realtime point / spot shadows removed, non-moving props marked static, probe-lit props with lightmap UVs lightmapped, no-op post effects removed, and static meshes and LOD groups merged with the Babylon Toolkit MeshCombiner (packed source lightmap UVs, mirrored pieces, LOD clusters with corrected switch distances). It re-bakes, exports, and proves the result — frame rate and draw calls before → after at the same pinned views, and the same look in Unity and in the browser. Every decision is written down with its reason. Use when the user wants a Unity scene to run faster or lighter in the browser, or wants static meshes / LOD groups combined (e.g. `/bt-optimize Assets/Scenes/Garden/GardenScene.unity`, `/bt-optimize --combine-only`)."
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch(domain:raw.githubusercontent.com)
 ---
 
@@ -14,7 +14,7 @@ Use the user's message after the skill name as the `arguments`.
 
 ```
 /bt-optimize [<scene asset path>] [--out:<asset path>] [--analyze] [--reset]
-             [--no-combine | --combine-only] [--no-tune:lights,static,lightmaps,post]
+             [--no-combine | --combine-only] [--no-tune:unskin,lights,static,lightmaps,post] [--instance-from:4]
              [--keep-lights:Name1,Prefix*] [--bake-shadowed-lights] [--exclude:Name1,Prefix*] [--only:Path/A,Path/B]
              [--cell:15] [--spread:3] [--atlas-share:0.45] [--no-shadergraphs] [--no-lods] [--shaders:Name1,Name2]
              [--textures:ktx2] [--resolution:css] [--no-bake] [--no-export] [--no-browser] [--pins:40,60] [--times:10,20,30,45,60,90]
@@ -26,7 +26,8 @@ Use the user's message after the skill name as the `arguments`.
 - **`--reset`** — start again from the source (re-copies it over the working copy, deletes the previous merged meshes and reports).
 - **`--no-combine`** — every optimization except merging meshes.
 - **`--combine-only`** — only merge static meshes and LOD groups (no light, static, lightmap or post changes).
-- **`--no-tune:`** — skip individual tune steps: `lights` (bake practical lights / drop point-spot shadows), `static` (mark non-moving props static), `lightmaps` (probe-lit → lightmapped), `post` (no-op post effects).
+- **`--no-tune:`** — skip individual tune steps: `unskin` (rigid skinned meshes → plain meshes), `lights` (bake practical lights / drop point-spot shadows), `static` (mark non-moving props static), `lightmaps` (probe-lit → lightmapped), `post` (no-op post effects).
+- **`--instance-from:`** — a mesh drawn this many times or more (same mesh and materials) stays light-probe lit so its copies share one instanced draw instead of each getting its own lightmapped mesh (default `4`; `0` turns it off).
 - **`--keep-lights:`** — light names (or prefixes ending in `*`) that stay realtime / Mixed.
 - **`--bake-shadowed-lights`** — also bake point / spot lights that cast realtime shadows (default: they stay realtime with their shadows turned off).
 - **`--exclude:`** — object names (or prefixes) whose subtrees are never tuned or merged. **`--only:`** limits merging to these hierarchy paths.
@@ -44,6 +45,8 @@ Use the user's message after the skill name as the `arguments`.
 3. **Every decision has a written reason.** `.agents/optimize/<Out>/` holds the survey, the tune plan and log, the merge plan and manifest, verify results, profiles, captures and the report.
 4. **It looks the same.** Re-baked, then compared in Unity (LOD0 and LOD1) and in the browser at matching views. Expected, stated differences: baked practical lights lose their specular highlights and their realtime shadows on moving objects (they never had flicker or distance culling in the browser — those were Unity-only scripts).
 5. **No vertex bloat.** Merges use the toolkit's `UnityMeshSimplifier.MeshCombiner` in *Pack Source Lightmap UVs* mode — each source keeps its own lightmap UVs, packed at its original texel density.
+6. **Every draw is accounted for — ENFORCED.** Per-pass totals say *where* the frame goes; they never say *what* to fix. At every pinned view the profiler's `drawOwners` splits the main-pass draws by the scene object that owns them and lists every shape drawn more than once with why its copies do not share one draw. The plan and the report carry that table. **Every owner group of 5% or more of the main-pass draws is either fixed or has a written, measured reason it cannot be** — "it has an Animator", "it is skinned" or "a rule kept it" is not a reason on its own (see 7). The skill is not done while a large group is unexamined: a run that cut shadow draws but left 129 of 202 main-pass draws to copies of 8 props, all one-bone skinned meshes nobody looked at, was a failed optimization.
+7. **An Animator or a SkinnedMeshRenderer is evidence to check, never a reason to skip.** Look at what the clip actually animates (`survey.md` → Skinned meshes): a spawn pop that scales the object, a spin, a collider toggle all work on a plain mesh. Only real deformation (animated bones, blend shapes, cloth) needs skinning. Repeated props are the largest draw group in most levels after the level geometry — always check them.
 
 # Talk to the user while you work
 
@@ -60,7 +63,9 @@ Learned on a 2,400-renderer URP garden that ran 8–26 FPS (1–5 FPS in hitches
 - **Runtime lights that the browser never animates are pure cost.** Unity sample scenes drive lights with MonoBehaviours (`LightFlicker`, `DynamicLightController` distance culling). Without a toolkit TypeScript port those scripts **do not run in the browser**: the lights neither flicker nor cull — they just cost. Baked, their light lives in the lightmaps (static objects) and light probes (moving objects) at zero runtime cost.
 - **A depth pass appears when anything samples scene depth**: soft particles (`TOOLKIT.ShurikenParticles.SoftParticleDepth`, on by default) and Shader Graph Scene Depth nodes (`ShaderGraphPass.SceneDepth`) create a `DepthRenderer` that re-draws every visible opaque mesh each frame (20–25% of draws in the garden). Report it; merging reduces it; the runtime fix (take depth from the prepass renderer) belongs to the toolkit.
 - **Zero-intensity post effects may still run.** URP's pipeline-default Volume Profile ships Motion Blur at intensity 0 (off in Unity); older toolkit runtimes still built a motion-blur pass for it.
-- **Light binding is range-aware** in the toolkit (a mesh only binds lights whose range reaches it; at most `SceneController.maximumLights`, default 4).
+- **Light binding is NOT range-aware.** BabylonJS's `Light.canAffectMesh` checks only include / exclude lists and layer masks, so every mesh binds up to its cap of runtime lights wherever they are (verified on Mario Circuit: 5 × 5 m item boxes bound 8 lights, 7 out of range). Tighter mesh bounds never lower the bindings — only baking the lights does. The profiler's `lightAudit` clamps each light into the mesh's box, so scene-sized bounds (skinned or track-wide meshes) hide the waste: a low out-of-range share on such a scene is understated.
+- **Skinned meshes never instance.** Copies of a skinned mesh that animate separately each cost their own draw in every pass, and are skinned every frame. DAE and FBX imports routinely make rigid props one-bone skinned meshes: on Mario Circuit, 118 of 135 skinned renderers (coins, item-box parts, trees, track pieces) had one bone moving with the object and 129 of 202 main-pass draws came from 8 such repeated shapes. As plain meshes the exporter writes the copies as glTF instances (`ExportMeshInstances`, default on) — one draw per shape.
+- **Lightmapping a repeated prop costs its instancing.** A lightmapped renderer never shares a cached mesh (each copy gets its own lightmap UVs), so 16 lightmapped trees are 16 draws while 16 probe-lit trees are one. Repeated props stay probe-lit (`instanceRepeatsFrom`); unique geometry gets the lightmaps.
 - **Materials are cloned per renderer** for each reflection probe / lightmap combination and per LOD cross-fade level. Fewer renderers → fewer clones → fewer first-view shader compiles (hitches).
 - **Lightmapped renderers never share a cached mesh** (reference §4): repeated lightmapped props are one draw each — merging is the only way to cut them. Probe-lit repeated props stay glTF instances.
 
@@ -70,6 +75,8 @@ Enforced by `scripts/BtOptimize.cs` (`Tune`). A **browser driver** is anything t
 
 | Step | Rule | Why |
 |---|---|---|
+| Unskin rigid meshes | A SkinnedMeshRenderer with **one weighted bone** that moves with the object (no clip, Timeline, script, constraint or physics body moves the bone apart from the object), no blend shapes, no cloth, and no curve or reference aimed at the SkinnedMeshRenderer component becomes a MeshFilter + MeshRenderer on the same mesh and materials. Animators stay. When the bind pose offsets the mesh, a plain leaf object is moved onto it (the mesh stays shared — verified vertex by vertex); otherwise the offset is baked into one mesh asset shared by every copy with the same offset (`<Out>_UnskinnedMeshes/`). Runs first, so the later steps see the new renderers | Babylon skins a skinned mesh every frame and can never instance its copies. A one-bone import of a rigid prop bought nothing — Mario Circuit's coins, item boxes and trees were 112 draws at the start gate that become instances |
+| Repeated props stay instanceable | A mesh + materials drawn `instanceRepeatsFrom` (4) times or more stays light-probe lit when marked static (still Contribute GI for bounce) and is skipped by the lightmap step | The exporter gives every lightmapped copy its own mesh; probe-lit copies share one instanced draw |
 | Lights → Baked | Active Realtime / Mixed **point and spot** lights with no browser driver and **no realtime shadows** become Baked. Directional lights (the sun) and `--keep-lights` stay | Practical fill lights cost per-pixel lighting every frame; baked, they cost nothing and still light moving objects through probes |
 | Shadowed key lights stay runtime, shadows off | A point / spot light that casts realtime shadows (or that a browser driver animates) stays Realtime / Mixed and loses only its realtime shadows. `--bake-shadowed-lights` bakes them too | Each shadowed light re-draws the scene every frame (×6 for a point light) — the shadows are the cost, not the light. Keeping the light realtime keeps its exact look (direct light, specular highlights, light on moving objects) with no bake risk; on Garden, six such lights cost little once their shadow maps were gone. Use `--bake-shadowed-lights` when a scene has many of them and Phase 5 verifies the bake |
 | Fixture shells stop casting shadows | When a light is baked, the shadow-casting renderers of its own fixture prefab whose bounds hold the light get Cast Shadows Off | A lantern shell around the bulb is clipped by the realtime shadow map's near plane, but the lightmapper traces from the bulb: a shadow-casting shell traps a baked light (lit floor under each lantern, dark walls) |
@@ -78,6 +85,11 @@ Enforced by `scripts/BtOptimize.cs` (`Tune`). A **browser driver** is anything t
 | No-op post | Motion blur overrides with intensity 0 in the profiles the scene uses are deactivated | Off in Unity, but older toolkit runtimes still built the pass |
 
 Kept as they are, by design: wind / vertex-animated vegetation (probe-lit by intent, and unmergeable), props without lightmap UVs (probe-lit), anything a script points at, stencil / depth / VFX utility meshes (no Meta pass), inactive objects.
+
+Reported, never converted automatically — each with its next step in `survey.md` and `tune.md`:
+- **Rigid, convert by hand:** a single bone that moves apart from its object (parent a plain mesh under the bone), a clip that animates the SkinnedMeshRenderer itself (retarget the curve to MeshRenderer), a component that references the SkinnedMeshRenderer.
+- **Frozen pose:** several weighted bones that nothing animates — bake each copy to a static mesh (`SkinnedMeshRenderer.BakeMesh`).
+- **Really deforming and repeated** (a waving crowd): the toolkit's `AnimatorControlRig` VAT (crowd) mode draws the copies instanced (`unity-authoring-recipes.md` §13). Name the group, its copies and its draws in the report.
 
 **Every tune rule above came from a regression found by comparing Unity captures at the browser's poses** — run Phase 5 every time; a rule that changes what the lightmapper sees can change a whole room.
 
@@ -127,7 +139,7 @@ OUT=Assets/.../Scene_Optimized.unity        # --out, or <source folder>/<SceneNa
 NAME=$(basename "$OUT" .unity); SRC_NAME=$(basename "$SOURCE" .unity)
 REPORT="$PROJ/.agents/optimize/$NAME"; QA="$PROJ/.agents/optimize/.qa-tools"
 MERGE='{"cellSize":15,"maxSpread":3,"maxAtlasShare":0.45,"includeShaderGraphs":true,"combineLods":true,"exclude":[],"only":[],"extraShaders":[]}'
-TUNE='{"bakeLights":true,"bakeShadowedLights":false,"keepLights":[],"pointSpotShadowsOff":true,"markStatic":true,"lightmapProbeLit":true,"fixZeroMotionBlur":true,"exclude":[]}'
+TUNE='{"unskinRigid":true,"instanceRepeatsFrom":4,"bakeLights":true,"bakeShadowedLights":false,"keepLights":[],"pointSpotShadowsOff":true,"markStatic":true,"lightmapProbeLit":true,"fixZeroMotionBlur":true,"exclude":[]}'
 
 bt_run() {  # bt_run <File: BtOptimize|BtCombine> <Method> '<json args array>'
   unity command run_script --file "AgentScripts/bt-optimize/$1.cs" --entry "$1.$2" --args "$3" \
@@ -137,7 +149,7 @@ bt_run() {  # bt_run <File: BtOptimize|BtCombine> <Method> '<json args array>'
 arg() { python3 -c "import json,sys; print(json.dumps([sys.argv[1]]))" "$1"; }   # wraps one JSON options string as a run_script args array
 ```
 
-Map flags into `MERGE` / `TUNE` (`--exclude:A,B*` → both `"exclude":["A","B*"]`, `--keep-lights:` → `keepLights`, `--no-shadergraphs` → `"includeShaderGraphs":false`, `--no-lods` → `"combineLods":false`, `--no-tune:lights` → `"bakeLights":false,"pointSpotShadowsOff":false`, `--no-tune:static` → `"markStatic":false`, `--no-tune:lightmaps` → `"lightmapProbeLit":false`, `--no-tune:post` → `"fixZeroMotionBlur":false`, `--bake-shadowed-lights` → `"bakeShadowedLights":true`).
+Map flags into `MERGE` / `TUNE` (`--no-tune:unskin` → `"unskinRigid":false`, `--instance-from:N` → `"instanceRepeatsFrom":N`, `--exclude:A,B*` → both `"exclude":["A","B*"]`, `--keep-lights:` → `keepLights`, `--no-shadergraphs` → `"includeShaderGraphs":false`, `--no-lods` → `"combineLods":false`, `--no-tune:lights` → `"bakeLights":false,"pointSpotShadowsOff":false`, `--no-tune:static` → `"markStatic":false`, `--no-tune:lightmaps` → `"lightmapProbeLit":false`, `--no-tune:post` → `"fixZeroMotionBlur":false`, `--bake-shadowed-lights` → `"bakeShadowedLights":true`).
 
 ## Phase 0 — Preflight
 
@@ -166,7 +178,7 @@ node "$QA/profile-browser.mjs" --scene <source>.gltf --pin 40,60,75 --toggles no
 
 `--pin` waits the given seconds after the scene is ready, then detaches the camera from its rig and **records its exact pose** (position, rotation and lens — field of view and clip planes, because Timeline / Cinemachine tracks animate the lens too; the lens fields are made read-only while pinned, because a lens track keeps writing them and TAA builds its projection from them before any observer runs). Every later run replays those poses with `--poses before-pinned.json`, so before and after are measured from the same views — pinning by time alone lands on different views, because a lighter scene loads sooner and its tour runs ahead.
 
-Read the JSON: `census` (engine, render size, meshes, materials, lights, shadow generators and their casters, post passes, prepass), `samples` (FPS, p95 / worst frame, draws, active meshes), and per pin `baseline.passes` / `baseline.byTarget` (draws per frame in shadow maps, `DepthRenderer`, main pass, post), `lightAudit`, and `cpu.top`. **Pin inside the scene's own motion** (a flythrough, a spawn view after compile): the first seconds after load are still compiling shaders and are not comparable. To confirm a suspected cost, re-run with `--toggles shadows,lights,motionblur,taa,bloom,dpr` (each switched off alone and settled on `whenReadyAsync` — never compare a window that follows a toggle without that wait: thousands of materials recompile).
+Read the JSON: `census` (engine, render size, meshes, materials, lights, shadow generators and their casters, post passes, prepass), `samples` (FPS, p95 / worst frame, draws, active meshes), and per pin `baseline.passes` / `baseline.byTarget` (draws per frame in shadow maps, `DepthRenderer`, main pass, post), **`drawOwners`** (main-pass draws by owning object — `mainDraws` must equal `baseline.passes.main` — with each owner's skinned / instanced / lightmapped meshes and shadow casters, plus `repeats`: every shape drawn more than once and what stops its copies sharing one draw), `lightAudit`, and `cpu.top`. **Pin inside the scene's own motion** (a flythrough, a spawn view after compile): the first seconds after load are still compiling shaders and are not comparable. To confirm a suspected cost, re-run with `--toggles shadows,lights,motionblur,taa,bloom,dpr` (each switched off alone and settled on `whenReadyAsync` — never compare a window that follows a toggle without that wait: thousands of materials recompile).
 
 ## Phase 2 — Survey and plan
 
@@ -177,7 +189,9 @@ bt_run BtOptimize Tune "$(arg "$(echo "$TUNE" | sed 's/}$/,"dryRun":true}/')")" 
 bt_run BtCombine Analyze "$(arg "$MERGE")"                            # combine-plan.md (on the source: merges before tune unlocks)
 ```
 
-Tell the user in a few lines: the measured frame (FPS, draws per pass, the top costs), and the plan with numbers (lights to bake, props to mark static, renderers to lightmap, merges). `--analyze` stops here. Otherwise continue — do not wait for approval; the source is safe.
+**Account for every draw before planning — ENFORCED.** From `before-pinned.json` → `pins[].drawOwners`, write the main-pass draws by owner at each pin into the plan (`node "$QA/compare-profiles.mjs"` prints it), then put each owner group of 5% or more beside its Unity cause and its fix: `survey.md` → *Skinned meshes* (every skinned renderer's verdict — rigid, frozen pose, deforms — with the evidence), *Repeated meshes* (copies, draws now, draws if instanced, what stops sharing), *Renderers*, *Lights*. A group with no fix gets a measured reason. Do not start Phase 3 with a large group unexplained.
+
+Tell the user in a few lines: the measured frame (FPS, draws per pass, **the draw owners and the top repeated shapes**, the top costs), and the plan with numbers (rigid skinned meshes to convert, repeated props that will instance, lights to bake, props to mark static, renderers to lightmap, merges). `--analyze` stops here. Otherwise continue — do not wait for approval; the source is safe.
 
 ## Phase 3 — Working copy, tune, merge
 
@@ -306,7 +320,8 @@ Reply in plain language with images, and write `$REPORT/report.md`:
 
 - **Result:** FPS and frame time (p50 / p95 / worst) before → after at each pinned view and over the timeline; draws per frame by pass; meshes, primitives, materials, vertices and export size (`gltf-stats`); export time.
 - **What changed and why:** lights baked (count, which), shadows removed, props marked static, renderers lightmapped, post fixes, merges (static groups, LOD clusters, the biggest by name).
-- **What stayed and why:** top kept reasons with counts, and what the user could change (UV2 on props, scripts that point at objects, vegetation by design).
+- **Draws by owner, before → after, at each pin** (`compare-profiles` prints it): every group of 5% or more of the main-pass draws, with what changed it or the measured reason it could not change. The repeated shapes that still cost one draw per copy, and why.
+- **What stayed and why:** top kept reasons with counts, and what the user could change (UV2 on props, scripts that point at objects, vegetation by design, skinned meshes to convert by hand, repeated deforming crowds for the VAT mode).
 - **Toolkit findings:** costs the scene cannot fix (for example a `DepthRenderer` pass owned by soft particles or a Scene Depth node), with the runtime fix to ask for.
 - **Checks:** Verify result, Unity captures, browser frames, console errors; anything skipped or unverified, stated as such.
 - **How to undo:** `--reset`, or delete the working copy, `<Out>_CombinedMeshes/`, `<Out>/` (baked lighting) and `.agents/optimize/<Out>/`; re-tick any Volume Profile override listed in `tune.md`.
@@ -319,6 +334,7 @@ Reply in plain language with images, and write `$REPORT/report.md`:
 |---|---|
 | `<out scene>` | the working copy (tuned and merged) |
 | `<out scene folder>/<Out>_CombinedMeshes/*.asset` | merged meshes |
+| `<out scene folder>/<Out>_UnskinnedMeshes/*.asset` | plain meshes baked from rigid skinned meshes whose bind pose was offset and whose object could not be moved (usually empty) |
 | `<out scene folder>/<Out>/` | the copy's baked lighting |
 | `.agents/optimize/<Source>/` | survey, tune plan, merge plan and "before" profiles of the source |
 | `.agents/optimize/<Out>/` | `working-copy.txt`, `tune.md/json`, `combine-plan.*`, `combine-manifest.json`, `combine-verify.md`, `profile/`, `captures/`, `report.md` |

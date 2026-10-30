@@ -315,6 +315,9 @@ function installProbe() {
     /**
      * For every active mesh: the lights Babylon actually binds (mesh.lightSources, capped by the material's
      * maxSimultaneousLights) and how many of those cannot reach the mesh at all (point / spot beyond their range).
+     * Babylon's Light.canAffectMesh has no range test, so tighter mesh bounds never lower the bindings. The reach test
+     * clamps each light into the mesh's world box, so a mesh with scene-sized bounds (a skinned mesh, a track-wide
+     * mesh) always counts as in range: a low share on such a scene understates the waste.
      */
     state.lightAudit = () => {
         const scene = state.scene();
@@ -340,6 +343,75 @@ function installProbe() {
         }
         return { activeMeshes: meshes, lightsBoundPerMesh: +(bound / Math.max(1, meshes)).toFixed(2), boundButOutOfRangePct: +((outOfRange / Math.max(1, bound)) * 100).toFixed(1),
             shadowedBoundPerMesh: +(shadowed / Math.max(1, meshes)).toFixed(2), mostBound: Object.entries(names).sort((a, b) => b[1] - a[1]).slice(0, 6) };
+    };
+
+    /**
+     * Accounts for every main-pass draw: the active meshes grouped by the scene object that owns them (the child of the
+     * scene root they sit under), and every shape drawn more than once with what stops its copies from sharing one
+     * instanced draw. Also counts each owner's meshes in the shadow maps' caster lists. Per-pass totals say where the
+     * frame goes; this says which objects to fix, so no group of draws is skipped unexamined.
+     * @returns {{owners: object[], repeats: object[], mainDraws: number}} the draw accounting at the current view
+     */
+    state.drawOwners = () => {
+        const scene = state.scene();
+        const activeMeshes = scene.getActiveMeshes().data.slice(0, scene.getActiveMeshes().length);
+        const ownerOf = (node) => {
+            let current = node;
+            while (current.parent && current.parent.parent) current = current.parent;
+            return current.parent ? current.name : node.name;
+        };
+        const subMeshDraws = (mesh) => (mesh.subMeshes ? mesh.subMeshes.length : 1);
+        const owners = new Map();
+        const repeats = new Map();
+        const drawnSources = new Set();
+        let mainDraws = 0;
+        for (const mesh of activeMeshes) {
+            const source = mesh.isAnInstance ? mesh.sourceMesh : mesh;
+            // Instances draw in their source's single instanced call: count that call once.
+            const draws = mesh.isAnInstance ? (drawnSources.has(source) ? 0 : subMeshDraws(source)) : subMeshDraws(mesh);
+            drawnSources.add(source);
+            mainDraws += draws;
+            const ownerName = ownerOf(mesh);
+            if (!owners.has(ownerName)) owners.set(ownerName, { owner: ownerName, meshes: 0, draws: 0, skinned: 0, instances: 0, lightmapped: 0, geometries: new Set(), examples: [] });
+            const owner = owners.get(ownerName);
+            owner.meshes++;
+            owner.draws += draws;
+            if (source.skeleton) owner.skinned++;
+            if (mesh.isAnInstance) owner.instances++;
+            if (mesh.material && mesh.material.lightmapTexture) owner.lightmapped++;
+            if (source.geometry) owner.geometries.add(source.geometry.uniqueId);
+            if (owner.examples.length < 3) owner.examples.push(mesh.name);
+            if (!source.geometry) continue;
+            const repeatKey = source.geometry.uniqueId + "|" + (mesh.material ? mesh.material.uniqueId : "none");
+            if (!repeats.has(repeatKey)) repeats.set(repeatKey, { shape: source.name, owner: ownerName, copies: 0, draws: 0, skinned: 0, instances: 0, lightmapped: 0 });
+            const repeat = repeats.get(repeatKey);
+            repeat.copies++;
+            repeat.draws += draws;
+            if (source.skeleton) repeat.skinned++;
+            if (mesh.isAnInstance) repeat.instances++;
+            if (mesh.material && mesh.material.lightmapTexture) repeat.lightmapped++;
+        }
+        const shadowCasters = new Map();
+        for (const light of scene.lights) {
+            const generator = light.getShadowGenerator && light.getShadowGenerator();
+            const renderList = generator && generator.getShadowMap() ? generator.getShadowMap().renderList || [] : [];
+            for (const caster of renderList) shadowCasters.set(ownerOf(caster), (shadowCasters.get(ownerOf(caster)) || 0) + 1);
+        }
+        const blockerOf = (repeat) => {
+            if (repeat.skinned > 0) return "skinned: every copy is its own draw (Babylon cannot instance separately animated skinned meshes)";
+            if (repeat.lightmapped > 0) return "lightmapped: the exporter gives every lightmapped copy its own mesh";
+            if (repeat.instances < repeat.copies - 1) return "separate meshes of one shape: not exported as instances (material split by reflection probe or lightmap index?)";
+            return null;
+        };
+        return {
+            mainDraws,
+            owners: [...owners.values()].sort((first, second) => second.draws - first.draws).map((owner) => ({
+                owner: owner.owner, meshes: owner.meshes, draws: owner.draws, skinned: owner.skinned, instances: owner.instances, lightmapped: owner.lightmapped,
+                uniqueShapes: owner.geometries.size, shadowCasters: shadowCasters.get(owner.owner) || 0, examples: owner.examples,
+            })),
+            repeats: [...repeats.values()].filter((repeat) => repeat.copies > 1).sort((first, second) => second.draws - first.draws).slice(0, 25)
+                .map((repeat) => ({ ...repeat, blocker: blockerOf(repeat) })),
+        };
     };
 
     /**
@@ -518,6 +590,7 @@ async function main() {
                     process.stderr.write(`WARNING pin ${seconds}s drifted: target ${JSON.stringify(pinned)} actual ${JSON.stringify(poseBefore)} -> ${JSON.stringify(poseAfter)}\n`);
                 const cpu = flags.cpuprofile === "true" ? await cpuProfile(page, windowSeconds) : null;
                 const lightAudit = await page.evaluate(() => window.__btProfile.lightAudit());
+                const drawOwners = await page.evaluate(() => window.__btProfile.drawOwners());
                 const steps = [];
                 for (const key of toggles) {
                     const change = await page.evaluate((k) => window.__btProfile.toggle(k, false), key);
@@ -528,7 +601,7 @@ async function main() {
                     steps.push({ off: key, change, fps: off.fps, p50Ms: off.p50Ms, drawCalls: off.drawCalls, passes: off.passes, cpuRenderMs: off.cpuRenderMs, cpuFrameMs: off.cpuFrameMs });
                 }
                 const after = await measure(page, windowSeconds);
-                report.pins.push({ atSeconds: seconds, readyMs, pinned, actual: { before: poseBefore, after: poseAfter }, baseline, lightAudit, cpu, steps, baselineAgain: { fps: after.fps, p50Ms: after.p50Ms } });
+                report.pins.push({ atSeconds: seconds, readyMs, pinned, actual: { before: poseBefore, after: poseAfter }, baseline, lightAudit, drawOwners, cpu, steps, baselineAgain: { fps: after.fps, p50Ms: after.p50Ms } });
                 await page.close();
             }
         }
