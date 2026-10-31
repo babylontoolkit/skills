@@ -233,6 +233,8 @@ public static class BtCombine
             if (AssetDatabase.IsValidFolder(meshFolder)) AssetDatabase.DeleteAsset(meshFolder);
             string unskinnedFolder = UnskinnedMeshFolderFor(outputScene);
             if (AssetDatabase.IsValidFolder(unskinnedFolder)) AssetDatabase.DeleteAsset(unskinnedFolder);
+            string retargetedFolder = RetargetedClipFolderFor(outputScene);
+            if (AssetDatabase.IsValidFolder(retargetedFolder)) AssetDatabase.DeleteAsset(retargetedFolder);
             string manifest = Path.Combine(ReportFolderFor(outputScene), "combine-manifest.json");
             if (File.Exists(manifest)) File.Delete(manifest);
         }
@@ -242,7 +244,7 @@ public static class BtCombine
         return "opened=" + scene.path + " created=" + !existed + " reset=" + (existed && reset);
     }
 
-    /// <summary>Deletes a working copy, its merged and unskinned meshes, its baked lighting folder and its report folder.</summary>
+    /// <summary>Deletes a working copy, its merged and unskinned meshes, its retargeted clips, its baked lighting folder and its report folder.</summary>
     public static string RemoveCopy(string outputScene, string reopenScene)
     {
         if (!File.Exists(WorkingCopyMarker(outputScene))) throw new InvalidOperationException(outputScene + " is not a bt-optimize working copy; refusing to delete it.");
@@ -251,6 +253,7 @@ public static class BtCombine
         bool sceneDeleted = AssetDatabase.DeleteAsset(outputScene);
         bool meshesDeleted = AssetDatabase.DeleteAsset(MeshFolderFor(outputScene));
         AssetDatabase.DeleteAsset(UnskinnedMeshFolderFor(outputScene));
+        AssetDatabase.DeleteAsset(RetargetedClipFolderFor(outputScene));
         bool lightingDeleted = AssetDatabase.DeleteAsset(Path.ChangeExtension(outputScene, null).Replace('\\', '/'));
         string reportFolder = ReportFolderFor(outputScene);
         if (Directory.Exists(reportFolder)) Directory.Delete(reportFolder, true);
@@ -1618,6 +1621,15 @@ public static class BtCombine
     private static string UnskinnedMeshFolderFor(string scenePath)
     {
         return Path.GetDirectoryName(scenePath).Replace('\\', '/') + "/" + Path.GetFileNameWithoutExtension(scenePath) + "_UnskinnedMeshes";
+    }
+
+    /// <summary>
+    /// Folder for the clips and controllers BtOptimize.Tune copies with their SkinnedMeshRenderer curves retargeted to
+    /// MeshRenderer: &lt;scene folder&gt;/&lt;scene&gt;_RetargetedClips. Keep the name in step with BtOptimize.RetargetedClipFolder.
+    /// </summary>
+    private static string RetargetedClipFolderFor(string scenePath)
+    {
+        return Path.GetDirectoryName(scenePath).Replace('\\', '/') + "/" + Path.GetFileNameWithoutExtension(scenePath) + "_RetargetedClips";
     }
 
     /// <summary>Folder for a scene's reports: &lt;project&gt;/.agents/optimize/&lt;scene&gt;.</summary>

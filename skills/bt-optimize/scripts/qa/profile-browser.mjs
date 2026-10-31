@@ -345,37 +345,336 @@ function installProbe() {
             shadowedBoundPerMesh: +(shadowed / Math.max(1, meshes)).toFixed(2), mostBound: Object.entries(names).sort((a, b) => b[1] - a[1]).slice(0, 6) };
     };
 
+    /** Babylon classes whose render call draws for one scene object, mapped to the kind of object each draws for. */
+    const DRAW_OWNER_CLASSES = { Mesh: "mesh", ParticleSystem: "particles", GPUParticleSystem: "particles", SpriteManager: "sprites", Layer: "layer" };
+
+    /** Classes whose render call only hands the frame to other render calls, so they never name an unowned draw. */
+    const DISPATCHER_CLASSES = new Set(["Scene", "RenderingManager", "RenderingGroup", "SubMesh"]);
+
+    /** The owner name that collects main-pass draws no wrapped render call made. */
+    const UNOWNED = "(unowned)";
+
+    /** Position of Mesh.render's effectiveMeshReplacement argument (the instance drawn as a regular mesh, if any). */
+    const MESH_RENDER_EFFECTIVE_MESH_ARGUMENT = 2;
+
+    /** Longest drawOwners waits for the scene to render the frame it records, in milliseconds. */
+    const DRAW_OWNER_FRAME_TIMEOUT_MS = 10000;
+
     /**
-     * Accounts for every main-pass draw: the active meshes grouped by the scene object that owns them (the child of the
-     * scene root they sit under), and every shape drawn more than once with what stops its copies from sharing one
-     * instanced draw. Also counts each owner's meshes in the shadow maps' caster lists. Per-pass totals say where the
-     * frame goes; this says which objects to fix, so no group of draws is skipped unexamined.
-     * @returns {{owners: object[], repeats: object[], mainDraws: number}} the draw accounting at the current view
+     * Stack frames of the draw counter's own path (this probe, the engine's draw calls, WebGPU's internal _draw),
+     * skipped when naming the code behind an unowned draw.
      */
-    state.drawOwners = () => {
+    const DRAW_COUNTER_FRAME = /countDraws|chargeDraws|describeDrawCaller|addCount|_reportDrawCall|drawElementsType|drawArraysType|\._draw \(|^Error/;
+
+    /**
+     * The scene object that owns a node: the child of the scene root it sits under (a root node owns itself).
+     * @param {any} node - a mesh, transform node or particle emitter
+     * @returns {string} the owner's name
+     */
+    state.ownerOf = (node) => {
+        let current = node;
+        while (current.parent && current.parent.parent) current = current.parent;
+        return current.parent ? current.name : node.name;
+    };
+
+    /**
+     * Names the code that drew outside every wrapped render call: the first stack frame past the draw counter's path.
+     * @returns {string} "(no render call) <function and script position>"
+     */
+    const describeDrawCaller = () => {
+        const stackLines = (new Error().stack || "").split("\n").map((line) => line.trim().replace(/^at /, ""));
+        const caller = stackLines.find((line) => line.length > 0 && !DRAW_COUNTER_FRAME.test(line));
+        return caller ? "(no render call) " + caller : "(no render call)";
+    };
+
+    /**
+     * Charges draws the engine just counted to the frame being recorded: to the innermost owning render call on the
+     * call stack, or else to "(unowned)" under the innermost render call's class (or, with none, the calling code).
+     * Draws outside the main draw phase, or while no frame is armed, are not charged.
+     * @param {number} added - how much the engine's draw counter just went up
+     */
+    const chargeDraws = (added) => {
+        const frame = state.drawOwnerFrame;
+        if (!frame || !frame.inDrawPhase || added <= 0) return;
+        const owningCall = frame.callStack.findLast((call) => call.renderer !== undefined);
+        if (owningCall) {
+            owningCall.draws += added;
+            return;
+        }
+        const sourceCall = frame.callStack.findLast((call) => call.source !== undefined);
+        const source = sourceCall ? sourceCall.source : describeDrawCaller();
+        frame.unownedSources.set(source, (frame.unownedSources.get(source) || 0) + added);
+    };
+
+    /**
+     * The node a render call draws for, which decides its owner: a mesh's effective mesh (an instance that acts as a
+     * regular mesh, else the mesh), a particle system's emitter when it is a node, nothing for sprites and layers.
+     * @param {any} renderer - the object whose render was called
+     * @param {string} kind - its DRAW_OWNER_CLASSES kind
+     * @param {any[]} renderArguments - the render call's arguments (Mesh.render's third is the effective mesh)
+     * @returns {any|null} the node, or null when the renderer is not attached to one
+     */
+    const drawnNodeOf = (renderer, kind, renderArguments) => {
+        if (kind === "mesh") return renderArguments[MESH_RENDER_EFFECTIVE_MESH_ARGUMENT] || renderer;
+        if (kind === "particles" && renderer.emitter instanceof BABYLON.Node) return renderer.emitter;
+        return null;
+    };
+
+    /**
+     * The recorded frame's draw record for one renderer, created on its first render call.
+     * @returns {{kind: string, renderer: any, drawnNode: any, draws: number, calls: number}} the record
+     */
+    const rendererRecord = (frame, renderer, kind, renderArguments) => {
+        if (!frame.renderers.has(renderer)) {
+            frame.renderers.set(renderer, { kind, renderer, drawnNode: drawnNodeOf(renderer, kind, renderArguments), draws: 0, calls: 0 });
+        }
+        return frame.renderers.get(renderer);
+    };
+
+    /**
+     * Calls a wrapped function with a context on the recorded frame's call stack, so draws it makes are charged to
+     * that context (an owning renderer's record, or a named source), and takes the context off again afterwards.
+     * @returns {any} what the original function returned
+     */
+    const callInContext = (frame, context, original, receiver, callArguments) => {
+        frame.callStack.push(context);
+        try {
+            return original.apply(receiver, callArguments);
+        } finally {
+            frame.callStack.pop();
+        }
+    };
+
+    /**
+     * Wraps an owning class's render so each call inside a recorded draw phase sits on the frame's call stack,
+     * collecting the draws it makes.
+     * @param {object} prototype - the class prototype (marked __btDrawOwnerWrapped)
+     * @param {string} kind - the DRAW_OWNER_CLASSES kind of the objects it draws for
+     */
+    const wrapOwnerRender = (prototype, kind) => {
+        prototype.__btDrawOwnerWrapped = true;
+        const original = prototype.render;
+        prototype.render = function (...renderArguments) {
+            const frame = state.drawOwnerFrame;
+            if (!frame || !frame.inDrawPhase) return original.apply(this, renderArguments);
+            const record = rendererRecord(frame, this, kind, renderArguments);
+            record.calls++;
+            return callInContext(frame, record, original, this, renderArguments);
+        };
+    };
+
+    /**
+     * Wraps any other class's render so draws it makes outside an owning call are named by its class name.
+     * @param {object} prototype - the class prototype (marked __btDrawOwnerWrapped)
+     * @param {string} exportName - the class's BABYLON export name, used when an instance has no getClassName
+     */
+    const wrapSourceRender = (prototype, exportName) => {
+        prototype.__btDrawOwnerWrapped = true;
+        const original = prototype.render;
+        prototype.render = function (...renderArguments) {
+            const frame = state.drawOwnerFrame;
+            if (!frame || !frame.inDrawPhase) return original.apply(this, renderArguments);
+            const source = typeof this.getClassName === "function" ? this.getClassName() : exportName;
+            return callInContext(frame, { source }, original, this, renderArguments);
+        };
+    };
+
+    /**
+     * Whether a BABYLON export is a class with its own render method that may draw for no scene object
+     * (a bounding-box, edges, outline or lens-flare renderer, an effect layer…) and is not wrapped yet.
+     */
+    const isSourceClass = (exportName, value) => {
+        if (typeof value !== "function" || !value.prototype) return false;
+        if (DISPATCHER_CLASSES.has(exportName) || exportName.endsWith("Engine")) return false;
+        if (Object.hasOwn(value.prototype, "__btDrawOwnerWrapped")) return false;
+        const descriptor = Object.getOwnPropertyDescriptor(value.prototype, "render");
+        return descriptor !== undefined && typeof descriptor.value === "function" && descriptor.writable === true;
+    };
+
+    /** Wraps the owning classes' render calls, then every other BABYLON class's own render as a named source. */
+    const wrapRenderClasses = () => {
+        for (const [className, kind] of Object.entries(DRAW_OWNER_CLASSES)) {
+            const ownerClass = BABYLON[className];
+            if (!ownerClass || typeof ownerClass.prototype.render !== "function") continue;
+            if (Object.hasOwn(ownerClass.prototype, "__btDrawOwnerWrapped")) continue;
+            wrapOwnerRender(ownerClass.prototype, kind);
+        }
+        for (const exportName of Object.keys(BABYLON)) {
+            const value = BABYLON[exportName];
+            if (isSourceClass(exportName, value)) wrapSourceRender(value.prototype, exportName);
+        }
+    };
+
+    /**
+     * Wraps one scene stage step (a scene component's hook into the frame) as a source named by its component.
+     * @param {{component: any, action: Function}} step - the step (marked __btDrawOwnerWrapped)
+     */
+    const wrapStageStep = (step) => {
+        if (step.__btDrawOwnerWrapped || typeof step.action !== "function") return;
+        step.__btDrawOwnerWrapped = true;
+        const original = step.action;
+        const component = step.component;
+        const source = (component && component.name) || "SceneComponent";
+        step.action = function (...stepArguments) {
+            const frame = state.drawOwnerFrame;
+            if (!frame || !frame.inDrawPhase) return original.apply(this, stepArguments);
+            return callInContext(frame, { source }, original, this, stepArguments);
+        };
+    };
+
+    /**
+     * Wraps every step of the scene's stages (bounding boxes, effect layers, outlines, layers…) not wrapped yet. A
+     * scene component registers a bound copy of its method, so a prototype wrapper installed after the scene loaded
+     * never sees those calls: without this, a bounding-box draw would be unowned with no class to name it. A Stage is
+     * an array-like made by Stage.Create (Array.isArray is false), so stages are found by their registerStep method.
+     * @param {any} scene - the scene whose `_…Stage` lists to scan
+     */
+    const wrapSceneStages = (scene) => {
+        for (const key of Object.keys(scene)) {
+            const stage = scene[key];
+            if (!key.endsWith("Stage") || !stage || typeof stage.registerStep !== "function") continue;
+            for (let i = 0; i < stage.length; i++) wrapStageStep(stage[i]);
+        }
+    };
+
+    /**
+     * Wraps the engine's draw counter so every increment is charged to the recorded frame as it happens.
+     * @param {any} counter - engine._drawCalls (marked __btDrawOwnerWrapped)
+     */
+    const wrapDrawCounter = (counter) => {
+        counter.__btDrawOwnerWrapped = true;
+        const originalAddCount = counter.addCount;
+        counter.addCount = function countDraws(count, fetchResult) {
+            const before = this._current;
+            const result = originalAddCount.call(this, count, fetchResult);
+            chargeDraws(this._current - before);
+            return result;
+        };
+    };
+
+    /**
+     * Drives the armed frame through the scene: it starts at the next main draw phase, counts each phase's draws on
+     * the engine's counter (frameMainDraws, as passes.main measures it) and resolves at the end of that frame.
+     * @param {any} scene - the scene (marked __btDrawOwnerWrapped)
+     * @param {any} counter - engine._drawCalls
+     */
+    const watchDrawPhases = (scene, counter) => {
+        scene.__btDrawOwnerWrapped = true;
+        scene.onBeforeDrawPhaseObservable.add(() => {
+            const frame = state.drawOwnerFrame;
+            if (!frame) return;
+            frame.started = true;
+            frame.inDrawPhase = true;
+            frame.phaseStart = counter._current;
+        });
+        scene.onAfterDrawPhaseObservable.add(() => {
+            const frame = state.drawOwnerFrame;
+            if (!frame || !frame.inDrawPhase) return;
+            frame.inDrawPhase = false;
+            frame.frameMainDraws += counter._current - frame.phaseStart;
+        });
+        scene.getEngine().onEndFrameObservable.add(() => {
+            const frame = state.drawOwnerFrame;
+            if (!frame || !frame.started) return;
+            state.drawOwnerFrame = null;
+            frame.resolve(frame);
+        });
+    };
+
+    /**
+     * Installs the draw-ownership wrappers once per page: the render calls, the engine's draw counter and the
+     * scene's draw-phase observers. Scene stage steps registered since the last call are wrapped on every call.
+     * They record nothing until a frame is armed.
+     * @returns {boolean} false when the engine has no draw counter to measure
+     */
+    state.installDrawOwnerWrappers = () => {
+        const scene = state.scene();
+        const counter = scene.getEngine()._drawCalls;
+        if (!counter) return false;
+        if (!Object.hasOwn(BABYLON.Mesh.prototype, "__btDrawOwnerWrapped")) wrapRenderClasses();
+        if (!counter.__btDrawOwnerWrapped) wrapDrawCounter(counter);
+        if (!scene.__btDrawOwnerWrapped) watchDrawPhases(scene, counter);
+        wrapSceneStages(scene);
+        return true;
+    };
+
+    /**
+     * Arms state.drawOwnerFrame and resolves with it once the next frame's main draw phase has rendered.
+     * @returns {Promise<{frameMainDraws: number, renderers: Map<any, object>, unownedSources: Map<string, number>}>}
+     */
+    state.recordDrawOwnerFrame = () => new Promise((resolve, reject) => {
+        const frame = { started: false, inDrawPhase: false, phaseStart: 0, frameMainDraws: 0, renderers: new Map(), unownedSources: new Map(), callStack: [], resolve };
+        state.drawOwnerFrame = frame;
+        setTimeout(() => {
+            if (state.drawOwnerFrame !== frame) return;
+            state.drawOwnerFrame = null;
+            reject(new Error(`drawOwners: no frame rendered within ${DRAW_OWNER_FRAME_TIMEOUT_MS} ms`));
+        }, DRAW_OWNER_FRAME_TIMEOUT_MS);
+    });
+
+    /**
+     * The owner a renderer's measured draws go to. A mesh's go to the owner of the first active mesh drawn through it
+     * (the source itself or its first visible instance, the rule the active-mesh census uses); otherwise to the
+     * owner of the node it draws for, or to its own name.
+     */
+    const ownerOfRenderer = (record, firstOwnerBySource) => {
+        if (record.kind === "mesh" && firstOwnerBySource.has(record.renderer)) return firstOwnerBySource.get(record.renderer);
+        if (record.drawnNode) return state.ownerOf(record.drawnNode);
+        return record.renderer.name || record.renderer.getClassName();
+    };
+
+    /**
+     * Explains a mesh that made more draws than it has sub-meshes, or null when it made no more.
+     * @returns {string|null} e.g. "Tree_Mesh0: 2 draws from 1 sub-mesh in 2 render calls (a split instance batch)"
+     */
+    const extraDrawsNote = (record, subMeshCount) => {
+        if (record.kind !== "mesh" || record.draws <= subMeshCount) return null;
+        const instanced = record.renderer.instances && record.renderer.instances.length > 0;
+        const counts = `${record.renderer.name}: ${record.draws} draws from ${subMeshCount} sub-mesh(es) in ${record.calls} render calls`;
+        if (record.calls > subMeshCount) return counts + (instanced ? " (a split instance batch)" : " (rendered more than once)");
+        return counts + " (more than one draw per render call: outline, edges or a multi-pass material)";
+    };
+
+    /**
+     * Accounts for every main-pass draw by measuring it: during the next rendered frame each draw the engine counts in
+     * the main draw phase is charged to the render call that made it — a mesh, particle system, sprite manager or
+     * layer — and from there to the scene object that owns it (the child of the scene root it sits under). Draws no
+     * such call made go to "(unowned)", named by the class (or code) that made them. The active meshes give each
+     * owner's mesh census and every shape drawn more than once, with what stops its copies from sharing one instanced
+     * draw (inferred, as the repeats always were). Also counts each owner's meshes in the shadow maps' caster lists.
+     * Per-pass totals say where the frame goes; this says which objects to fix, so no group of draws is skipped
+     * unexamined.
+     * @returns {Promise<{owners: object[], repeats: object[], mainDraws: number, frameMainDraws: number}|null>} the draw
+     *   accounting at the current view, or null when the engine has no draw counter. `mainDraws` is the sum of every
+     *   owner's measured `draws` (including "(unowned)"); `frameMainDraws` is the same frame's main-phase draw counter
+     *   (what passes.main measures), so the two are equal when every draw is accounted for. Each owner is
+     *   {owner, meshes, draws, skinned, instances, lightmapped, uniqueShapes, shadowCasters, examples}, where
+     *   `examples` also notes any mesh that made more draws than its sub-meshes; the unowned entry is
+     *   {owner: "(unowned)", draws, sources: [class or calling-code names, most draws first]}.
+     */
+    state.drawOwners = async () => {
+        if (!state.installDrawOwnerWrappers()) return null;
+        const frame = await state.recordDrawOwnerFrame();
         const scene = state.scene();
         const activeMeshes = scene.getActiveMeshes().data.slice(0, scene.getActiveMeshes().length);
-        const ownerOf = (node) => {
-            let current = node;
-            while (current.parent && current.parent.parent) current = current.parent;
-            return current.parent ? current.name : node.name;
-        };
         const subMeshDraws = (mesh) => (mesh.subMeshes ? mesh.subMeshes.length : 1);
         const owners = new Map();
+        const ownerEntry = (ownerName) => {
+            if (!owners.has(ownerName)) owners.set(ownerName, { owner: ownerName, meshes: 0, draws: 0, skinned: 0, instances: 0, lightmapped: 0, geometries: new Set(), examples: [] });
+            return owners.get(ownerName);
+        };
         const repeats = new Map();
         const drawnSources = new Set();
-        let mainDraws = 0;
+        const firstOwnerBySource = new Map();
         for (const mesh of activeMeshes) {
             const source = mesh.isAnInstance ? mesh.sourceMesh : mesh;
-            // Instances draw in their source's single instanced call: count that call once.
-            const draws = mesh.isAnInstance ? (drawnSources.has(source) ? 0 : subMeshDraws(source)) : subMeshDraws(mesh);
+            // Instances draw in their source's single instanced call: the inferred repeat count takes that call once.
+            const inferredDraws = mesh.isAnInstance ? (drawnSources.has(source) ? 0 : subMeshDraws(source)) : subMeshDraws(mesh);
             drawnSources.add(source);
-            mainDraws += draws;
-            const ownerName = ownerOf(mesh);
-            if (!owners.has(ownerName)) owners.set(ownerName, { owner: ownerName, meshes: 0, draws: 0, skinned: 0, instances: 0, lightmapped: 0, geometries: new Set(), examples: [] });
-            const owner = owners.get(ownerName);
+            const ownerName = state.ownerOf(mesh);
+            if (!firstOwnerBySource.has(source)) firstOwnerBySource.set(source, ownerName);
+            const owner = ownerEntry(ownerName);
             owner.meshes++;
-            owner.draws += draws;
             if (source.skeleton) owner.skinned++;
             if (mesh.isAnInstance) owner.instances++;
             if (mesh.material && mesh.material.lightmapTexture) owner.lightmapped++;
@@ -386,16 +685,23 @@ function installProbe() {
             if (!repeats.has(repeatKey)) repeats.set(repeatKey, { shape: source.name, owner: ownerName, copies: 0, draws: 0, skinned: 0, instances: 0, lightmapped: 0 });
             const repeat = repeats.get(repeatKey);
             repeat.copies++;
-            repeat.draws += draws;
+            repeat.draws += inferredDraws;
             if (source.skeleton) repeat.skinned++;
             if (mesh.isAnInstance) repeat.instances++;
             if (mesh.material && mesh.material.lightmapTexture) repeat.lightmapped++;
+        }
+        for (const record of frame.renderers.values()) {
+            if (record.draws === 0) continue;
+            const owner = ownerEntry(ownerOfRenderer(record, firstOwnerBySource));
+            owner.draws += record.draws;
+            const note = extraDrawsNote(record, subMeshDraws(record.renderer));
+            if (note) owner.examples.push(note);
         }
         const shadowCasters = new Map();
         for (const light of scene.lights) {
             const generator = light.getShadowGenerator && light.getShadowGenerator();
             const renderList = generator && generator.getShadowMap() ? generator.getShadowMap().renderList || [] : [];
-            for (const caster of renderList) shadowCasters.set(ownerOf(caster), (shadowCasters.get(ownerOf(caster)) || 0) + 1);
+            for (const caster of renderList) shadowCasters.set(state.ownerOf(caster), (shadowCasters.get(state.ownerOf(caster)) || 0) + 1);
         }
         const blockerOf = (repeat) => {
             if (repeat.skinned > 0) return "skinned: every copy is its own draw (Babylon cannot instance separately animated skinned meshes)";
@@ -403,12 +709,17 @@ function installProbe() {
             if (repeat.instances < repeat.copies - 1) return "separate meshes of one shape: not exported as instances (material split by reflection probe or lightmap index?)";
             return null;
         };
+        const ownerRows = [...owners.values()].map((owner) => ({
+            owner: owner.owner, meshes: owner.meshes, draws: owner.draws, skinned: owner.skinned, instances: owner.instances, lightmapped: owner.lightmapped,
+            uniqueShapes: owner.geometries.size, shadowCasters: shadowCasters.get(owner.owner) || 0, examples: owner.examples,
+        }));
+        const unownedSources = [...frame.unownedSources.entries()].map(([source, draws]) => ({ source, draws })).sort((first, second) => second.draws - first.draws);
+        const unownedDraws = unownedSources.reduce((sum, entry) => sum + entry.draws, 0);
+        if (unownedDraws > 0) ownerRows.push({ owner: UNOWNED, draws: unownedDraws, sources: unownedSources.map((entry) => entry.source) });
         return {
-            mainDraws,
-            owners: [...owners.values()].sort((first, second) => second.draws - first.draws).map((owner) => ({
-                owner: owner.owner, meshes: owner.meshes, draws: owner.draws, skinned: owner.skinned, instances: owner.instances, lightmapped: owner.lightmapped,
-                uniqueShapes: owner.geometries.size, shadowCasters: shadowCasters.get(owner.owner) || 0, examples: owner.examples,
-            })),
+            mainDraws: ownerRows.reduce((sum, owner) => sum + owner.draws, 0),
+            frameMainDraws: frame.frameMainDraws,
+            owners: ownerRows.sort((first, second) => second.draws - first.draws),
             repeats: [...repeats.values()].filter((repeat) => repeat.copies > 1).sort((first, second) => second.draws - first.draws).slice(0, 25)
                 .map((repeat) => ({ ...repeat, blocker: blockerOf(repeat) })),
         };
@@ -590,6 +901,7 @@ async function main() {
                     process.stderr.write(`WARNING pin ${seconds}s drifted: target ${JSON.stringify(pinned)} actual ${JSON.stringify(poseBefore)} -> ${JSON.stringify(poseAfter)}\n`);
                 const cpu = flags.cpuprofile === "true" ? await cpuProfile(page, windowSeconds) : null;
                 const lightAudit = await page.evaluate(() => window.__btProfile.lightAudit());
+                // drawOwners is async: it measures the next rendered frame, and page.evaluate waits for that promise.
                 const drawOwners = await page.evaluate(() => window.__btProfile.drawOwners());
                 const steps = [];
                 for (const key of toggles) {
