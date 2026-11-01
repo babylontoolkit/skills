@@ -94,6 +94,7 @@ public static class BtOptimize
         SurveyRenderers(context, md, json);
         SurveySkinning(context, md, json);
         SurveyRepeats(context, md, json);
+        SurveyShadowCasters(context, md, json);
         SurveyPostProcessing(context, md, json);
         SurveyPipeline(md, json);
         SurveyExporter(context, md, json);
@@ -297,7 +298,98 @@ public static class BtOptimize
         int lightmapped = renderers.OfType<MeshRenderer>().Count(renderer => renderer.receiveGI == ReceiveGI.Lightmaps
             && GameObjectUtility.GetStaticEditorFlags(renderer.gameObject).HasFlag(StaticEditorFlags.ContributeGI));
         if (lightmapped > 0) blockers.Add("lightmapped ×" + lightmapped + " (each lightmapped copy is exported as its own mesh)");
+        int probeLit = renderers.OfType<MeshRenderer>().Count(renderer => renderer.lightProbeUsage != LightProbeUsage.Off && !(renderer.receiveGI == ReceiveGI.Lightmaps
+            && GameObjectUtility.GetStaticEditorFlags(renderer.gameObject).HasFlag(StaticEditorFlags.ContributeGI)));
+        if (probeLit > 0) blockers.Add("probe-lit ×" + probeLit + " (the toolkit loads each light-probe-lit node as its own mesh — SceneManager.DeinstanceProbeLitNodes; Tune turns probes off on repeats)");
         return blockers;
+    }
+
+    /// <summary>Share of a renderer's surface area that faces up or down within this cosine (about 37°) to count as horizontal.</summary>
+    private const float HorizontalNormalCosine = 0.8f;
+
+    /// <summary>A shadow caster whose surface is at least this share horizontal is listed as a prune candidate.</summary>
+    private const float FlatCasterShare = 0.9f;
+
+    /// <summary>How many prune candidates the survey lists.</summary>
+    private const int MaxCasterCandidates = 40;
+
+    /// <summary>
+    /// Shadow casters that are probably pure cost: unique (not repeated), shadow-casting renderers whose surface is almost
+    /// all horizontal — roads, ground, markings, water and grass planes, undersides. A flat surface's shadow falls only
+    /// on what lies right under it, yet a directional light draws it again in every cascade it touches. These are
+    /// candidates only: an overhanging lip or a deck above other geometry does cast a visible shadow, so each one is
+    /// pruned (PruneShadowCasters) only when Unity captures at the pinned poses show no change. The browser's
+    /// per-cascade dump (`profile-browser.mjs --casters true`) adds far backdrops and gives each caster's draws.
+    /// </summary>
+    private static void SurveyShadowCasters(Context context, StringBuilder md, Dictionary<string, object> json)
+    {
+        var rows = new List<object>();
+        md.AppendLine("## Shadow casters — flat surfaces to prune (verify each by capture)");
+        md.AppendLine();
+        // Skinned meshes Tune converts to plain meshes (often whole DAE / FBX levels) are ground too; really skinned ones are characters.
+        var casters = context.Renderers
+            .Where(renderer => renderer is MeshRenderer || (renderer is SkinnedMeshRenderer skinned && TuneConverts(ClassifySkinning(skinned, context).Kind)))
+            .Where(renderer => renderer.shadowCastingMode == ShadowCastingMode.On || renderer.shadowCastingMode == ShadowCastingMode.TwoSided)
+            .Where(renderer => !context.RepeatCounts.TryGetValue(RepeatKey(renderer), out var copies) || copies == 1)
+            .Select(renderer => new { renderer, surface = HorizontalSurface(renderer) })
+            .Where(entry => entry.surface.TotalArea > 0f && entry.surface.HorizontalArea / entry.surface.TotalArea >= FlatCasterShare)
+            .OrderByDescending(entry => entry.surface.TotalArea)
+            .Take(MaxCasterCandidates)
+            .ToList();
+        int shadowCasting = context.Renderers.Count(renderer => renderer.shadowCastingMode != ShadowCastingMode.Off);
+        md.AppendLine("Shadow-casting renderers: **" + shadowCasting + "**. Flat candidates (≥ " + (FlatCasterShare * 100f).ToString("0") + "% of the surface horizontal): **" + casters.Count + "**.");
+        md.AppendLine();
+        if (casters.Count == 0) { md.AppendLine("None."); md.AppendLine(); json["shadowCasterCandidates"] = rows; return; }
+        md.AppendLine("| Renderer | Area (m²) | Horizontal | Static |");
+        md.AppendLine("|---|---|---|---|");
+        foreach (var entry in casters)
+        {
+            string path = PathOf(entry.renderer.transform);
+            float share = entry.surface.HorizontalArea / entry.surface.TotalArea;
+            bool isStatic = GameObjectUtility.GetStaticEditorFlags(entry.renderer.gameObject) != 0;
+            md.AppendLine("| " + path + " | " + entry.surface.TotalArea.ToString("0") + " | " + (share * 100f).ToString("0") + "% | " + (isStatic ? "yes" : "no") + " |");
+            rows.Add(new Dictionary<string, object> { { "path", path }, { "area", entry.surface.TotalArea }, { "horizontalShare", share }, { "static", isStatic } });
+        }
+        md.AppendLine();
+        context.Summary.AppendLine("shadowCasters=" + shadowCasting + " flatCandidates=" + casters.Count);
+        json["shadowCasterCandidates"] = rows;
+    }
+
+    /// <summary>A renderer's world-space surface area, and how much of it faces up or down (see HorizontalNormalCosine).</summary>
+    private struct SurfaceArea
+    {
+        public float TotalArea, HorizontalArea;
+    }
+
+    /// <summary>Measures the renderer's triangles in world space (a skinned mesh as its bones draw it now).</summary>
+    private static SurfaceArea HorizontalSurface(Renderer renderer)
+    {
+        var area = new SurfaceArea();
+        // Editor scripts read a mesh's vertices whatever its Read/Write import setting (the unskin step relies on it too).
+        var mesh = MeshOf(renderer);
+        if (mesh == null) return area;
+        Vector3[] localVertices;
+        if (renderer is SkinnedMeshRenderer skinned)
+        {
+            // BakeMesh writes the skinned shape in the renderer's space, without its scale (useScale false).
+            var posed = new Mesh();
+            skinned.BakeMesh(posed, false);
+            localVertices = posed.vertices;
+            UnityEngine.Object.DestroyImmediate(posed);
+        }
+        else localVertices = mesh.vertices;
+        var toWorld = renderer is SkinnedMeshRenderer ? Matrix4x4.TRS(renderer.transform.position, renderer.transform.rotation, Vector3.one) : renderer.transform.localToWorldMatrix;
+        var vertices = localVertices.Select(vertex => toWorld.MultiplyPoint3x4(vertex)).ToArray();
+        var triangles = mesh.triangles;
+        for (int i = 0; i + 2 < triangles.Length; i += 3)
+        {
+            var cross = Vector3.Cross(vertices[triangles[i + 1]] - vertices[triangles[i]], vertices[triangles[i + 2]] - vertices[triangles[i]]);
+            float triangleArea = cross.magnitude * 0.5f;
+            if (triangleArea <= 0f) continue;
+            area.TotalArea += triangleArea;
+            if (Mathf.Abs(cross.normalized.y) >= HorizontalNormalCosine) area.HorizontalArea += triangleArea;
+        }
+        return area;
     }
 
     /// <summary>Every Volume and its active overrides, plus every camera's anti-aliasing and post-processing flags.</summary>
@@ -344,6 +436,10 @@ public static class BtOptimize
                 + " HDR=" + camera.allowHDR + " MSAA=" + camera.allowMSAA + " far=" + camera.farClipPlane);
             cameras.Add(new Dictionary<string, object> { { "path", PathOf(camera.transform) }, { "enabled", camera.isActiveAndEnabled }, { "antialiasing", aa }, { "antialiasingQuality", aaQuality }, { "postProcessing", post }, { "far", camera.farClipPlane } });
         }
+        int postCameras = cameras.Cast<Dictionary<string, object>>().Count(camera => (bool)camera["enabled"] && (string)camera["postProcessing"] == "True");
+        md.AppendLine();
+        md.AppendLine("Enabled cameras with post-processing: **" + postCameras + "**" + (postCameras > 1
+            ? " — each builds its own post chain in the browser; check the profile census's post passes, and turn post off on a camera that is not the one the player sees" : "") + ".");
         md.AppendLine();
         json["volumes"] = volumes;
         json["cameras"] = cameras;
@@ -445,7 +541,7 @@ public static class BtOptimize
         /// <summary>
         /// Also bake lights that cast realtime shadows. Off by default: a shadowed key light reaches past geometry its
         /// shadow map ignores (single-sided back faces, the near plane around its fixture) and the lightmapper does not —
-        /// baked, Garden's room lights stayed trapped and the rooms went dark. Kept lights lose only their realtime shadows.
+        /// baked, a measured scene's room lights stayed trapped and the rooms went dark. Kept lights lose only their realtime shadows.
         /// </summary>
         public bool bakeShadowedLights = false;
         /// <summary>Light names (or prefixes ending in *) that stay as they are.</summary>
@@ -470,12 +566,27 @@ public static class BtOptimize
         /// light. Off by default, because merging needs the newly lightmapped props.
         /// </summary>
         public bool keepSourceGI = false;
+        /// <summary>
+        /// Clear every static flag on objects that move in the browser although they are marked static: a clip or a
+        /// Timeline moves them (or an ancestor), or a physics body or navigation agent does. The exporter freezes a static
+        /// object's world matrix, so a static spinning prop would stand still (and a lightmap baked in one place is wrong
+        /// once it moves); they become probe-lit.
+        /// </summary>
+        public bool unfreezeAnimated = true;
         /// <summary>Mark renderers static when nothing in the browser can move them.</summary>
         public bool markStatic = true;
         /// <summary>Switch static, probe-lit renderers that have lightmap UVs (and no vertex animation) to lightmaps.</summary>
         public bool lightmapProbeLit = true;
         /// <summary>Deactivate motion blur overrides whose intensity is 0 in the profiles this scene uses (a no-op in Unity).</summary>
         public bool fixZeroMotionBlur = true;
+        /// <summary>
+        /// A character that really deforms (bones a clip moves) and appears this many times or more (Animators whose
+        /// skinned renderers draw the same meshes) becomes a vertex-animation (VAT) crowd: the toolkit's
+        /// AnimatorControlRig in UseVertexAnimations mode, its materials copied onto the toolkit's vertex-animation shader,
+        /// its renderers at world scale 1 with Light Probes Off. The exporter bakes the clips to vertex animation textures
+        /// and the browser draws the copies instanced, each keeping its own Animator state. 0 turns the rule off.
+        /// </summary>
+        public int vatCrowdsFrom = 4;
         /// <summary>Object names (or prefixes ending in *) whose subtrees Tune never touches.</summary>
         public string[] exclude = new string[0];
         /// <summary>Plan only: report every change without making it (works on any scene, including the source).</summary>
@@ -510,10 +621,12 @@ public static class BtOptimize
             // The converted objects now have MeshRenderers: gather the scene again so the static and lightmap steps see them.
             if (converted > 0 && !options.dryRun) context = new Context(scene, sourceGIContributors);
         }
+        if (options.unfreezeAnimated) UnfreezeAnimated(context, options, changes, kept);
         if (options.bakeLights || options.pointSpotShadowsOff) TuneLights(context, options, changes, kept);
         if (options.markStatic) MarkStatic(context, options, changes, kept);
         if (options.lightmapProbeLit) LightmapProbeLit(context, options, changes, kept);
         if (options.instanceRepeatsFrom > 0) InstanceRepeats(context, options, changes, kept);
+        if (options.vatCrowdsFrom > 0) VatCrowds(context, options, changes, kept);
         if (options.fixZeroMotionBlur) FixZeroMotionBlur(context, changes, options.dryRun);
         // A dry run changed no flags, so its copy count is the one the planned changes would leave.
         int copyGIContributors = options.dryRun ? context.PlannedGIContributors.Count : GIContributorPaths(scene.GetRootGameObjects()).Count;
@@ -578,13 +691,15 @@ public static class BtOptimize
             if (IsExcluded(renderer.transform, options.exclude)) { kept.Add(new Change { Kind = "skinned", Path = path, Why = "--exclude" }); continue; }
             var verdict = ClassifySkinning(renderer, context);
             int copies = context.RepeatCounts.TryGetValue(RepeatKey(renderer), out var count) ? count : 1;
-            string copiesNote = copies > 1 ? " — " + copies + " copies" : "";
+            // A baked pose is shared only by copies with the same shape, so the source mesh's copy count says nothing about it.
+            bool bakesShape = verdict.Kind == SkinRigidScriptHost || verdict.Kind == SkinFrozenPose;
+            string copiesNote = copies > 1 && !bakesShape ? " — " + copies + " copies" : "";
             if (!TuneConverts(verdict.Kind))
             {
                 kept.Add(new Change { Kind = "skinned", Path = path, Why = verdict.Kind + ": " + verdict.Why + copiesNote + "; next: " + NextStepForSkinning(verdict.Kind, copies) });
                 continue;
             }
-            bool bakesPose = verdict.Kind == SkinRigidScriptHost || verdict.Kind == SkinFrozenPose;
+            bool bakesPose = bakesShape;
             string howPlaced;
             var mesh = bakesPose
                 ? BakedPoseMesh(renderer, bakedFolder, bakedMeshes, !options.dryRun, out howPlaced)
@@ -600,6 +715,7 @@ public static class BtOptimize
             if (options.dryRun)
             {
                 context.PlannedUnskinned.Add(renderer);
+                context.PlannedMeshKeys[renderer] = PlannedMeshKey(renderer, mesh, verdict, bakesPose, context);
                 continue;
             }
             var gameObject = renderer.gameObject;
@@ -608,12 +724,31 @@ public static class BtOptimize
         }
         if (options.dryRun)
         {
+            RecountPlannedRepeats(context);
             DiscardUnsavedMeshes(bakedMeshes.Values);
             return converted;
         }
         RetargetAnimators(curveAnimators.Distinct().ToList(), clipFolder);
         if (bakedMeshes.Count > 0 || curveAnimators.Count > 0) AssetDatabase.SaveAssets();
         return converted;
+    }
+
+    /// <summary>
+    /// Which mesh a renderer a dry run plans to convert will draw: its baked pose (copies with the same shape share one
+    /// mesh), its own mesh (one-bone props, or an object moved onto its bind pose), or one offset-baked mesh per distinct
+    /// bind-pose offset. Copies only share an instanced draw when this key matches, so the dry run counts them by it.
+    /// </summary>
+    private static string PlannedMeshKey(SkinnedMeshRenderer renderer, Mesh plannedMesh, SkinningVerdict verdict, bool bakesPose, Context context)
+    {
+        if (bakesPose || !verdict.OffsetBaked || CanReseatObject(renderer, context)) return plannedMesh.GetHashCode().ToString();
+        return renderer.sharedMesh.GetHashCode() + "|" + OffsetKey(verdict.MeshToObject);
+    }
+
+    /// <summary>A dry run's repeat counts once the planned conversions draw their planned meshes (see PlannedMeshKey).</summary>
+    private static void RecountPlannedRepeats(Context context)
+    {
+        context.RepeatCounts.Clear();
+        foreach (var group in context.Renderers.GroupBy(renderer => RepeatKeyOf(renderer, context))) context.RepeatCounts[group.Key] = group.Count();
     }
 
     /// <summary>True for the skinning verdicts UnskinRigid converts to a plain mesh.</summary>
@@ -766,7 +901,7 @@ public static class BtOptimize
     /// <summary>
     /// A light inside its own fixture (a lantern shell around the bulb) is lit fine in real time — the shadow map's near
     /// plane clips the shell — but the lightmapper traces from the bulb with no near plane, so a shadow-casting shell
-    /// traps a baked light (Garden: lit floor under each lantern, dark walls and ceiling). The fixture's own renderers
+    /// traps a baked light (lit floor under each lantern, dark walls and ceiling). The fixture's own renderers
     /// whose bounds hold the light stop casting shadows.
     /// </summary>
     private static void FreeFromFixture(Light light, TuneOptions options, List<Change> changes)
@@ -850,6 +985,7 @@ public static class BtOptimize
         {
             var flags = GameObjectUtility.GetStaticEditorFlags(renderer.gameObject);
             if (!flags.HasFlag(StaticEditorFlags.BatchingStatic) && !flags.HasFlag(StaticEditorFlags.ContributeGI)) continue;
+            if (context.PlannedNonStatic.Contains(renderer.gameObject)) continue;
             var lod = renderer.GetComponentInParent<LODGroup>();
             int level = lod != null ? LodLevelOf(lod, renderer) : -1;
             if (level > 0) continue;
@@ -922,13 +1058,281 @@ public static class BtOptimize
             changes.Add(new Change { Kind = "Light probes off (instancing)", Path = path,
                 Before = "Light Probes " + renderer.lightProbeUsage + ", Receive GI " + receive + (meshRenderer == null ? " (once unskinned)" : ""),
                 After = "Light Probes Off, Receive GI LightProbes, Reflection Probes " + renderer.reflectionProbeUsage,
-                Why = context.RepeatCounts[RepeatKey(renderer)] + " copies share one instanced draw only with light probes off: the toolkit de-instances probe-lit nodes"
+                Why = context.RepeatCounts[RepeatKeyOf(renderer, context)] + " copies share one instanced draw only with light probes off: the toolkit de-instances probe-lit nodes"
                     + " (SceneManager.DeinstanceProbeLitNodes); the copies light from the scene's ambient instead of the nearest probe" });
             if (options.dryRun || meshRenderer == null) continue;
             meshRenderer.lightProbeUsage = LightProbeUsage.Off;
             meshRenderer.receiveGI = ReceiveGI.LightProbes;
             EditorUtility.SetDirty(meshRenderer);
         }
+    }
+
+    /// <summary>
+    /// Clears every static flag on an object that is marked static but moves in the browser: a clip or Timeline moves it
+    /// or an ancestor, or a physics body or navigation agent does (see BrowserMoverOf). The exporter freezes a static
+    /// object's world matrix, so a static spinning, bobbing or popping prop would stand still; and a lightmap baked in one
+    /// place is wrong once the object moves, so its renderer becomes probe-lit. Runs before the static and lightmap
+    /// steps, which then leave these objects alone.
+    /// </summary>
+    private static void UnfreezeAnimated(Context context, TuneOptions options, List<Change> changes, List<Change> kept)
+    {
+        foreach (var transform in context.Roots.SelectMany(root => root.GetComponentsInChildren<Transform>(true)))
+        {
+            var gameObject = transform.gameObject;
+            var flags = GameObjectUtility.GetStaticEditorFlags(gameObject);
+            if (flags == 0) continue;
+            string mover = BrowserMoverOf(transform, context);
+            if (mover == null) continue;
+            string path = PathOf(transform);
+            if (IsExcluded(transform, options.exclude)) { kept.Add(new Change { Kind = "static, but moves", Path = path, Why = "--exclude; " + mover }); continue; }
+            var meshRenderer = gameObject.GetComponent<MeshRenderer>();
+            bool wasLightmapped = meshRenderer != null && meshRenderer.receiveGI == ReceiveGI.Lightmaps;
+            context.PlannedNonStatic.Add(gameObject);
+            context.PlannedGIContributors.Remove(path);
+            changes.Add(new Change { Kind = "Static cleared (moves in the browser)", Path = path, Before = "static (" + flags + ")" + (wasLightmapped ? ", Lightmaps" : ""),
+                After = "not static" + (meshRenderer != null ? ", LightProbes" : ""),
+                Why = mover + ": the exporter freezes a static object's world matrix, so it would stand still in the browser"
+                    + (wasLightmapped ? "; a lightmap baked in one place is wrong once it moves" : "") });
+            if (options.dryRun) continue;
+            GameObjectUtility.SetStaticEditorFlags(gameObject, 0);
+            if (meshRenderer != null)
+            {
+                meshRenderer.receiveGI = ReceiveGI.LightProbes;
+                EditorUtility.SetDirty(meshRenderer);
+            }
+            EditorUtility.SetDirty(gameObject);
+        }
+    }
+
+    /// <summary>
+    /// What moves the object in the browser — a clip or Timeline on it or an ancestor (Context.AnimatedTransforms), or a
+    /// Rigidbody, CharacterController or NavMeshAgent on it or an ancestor — or null. Narrower than WebDriverOf on
+    /// purpose: an Animator on a level root that only animates one light does not move the rest of the level.
+    /// </summary>
+    private static string BrowserMoverOf(Transform transform, Context context)
+    {
+        for (var node = transform; node != null; node = node.parent)
+        {
+            string where = node == transform ? "" : "'" + node.name + "' above it: ";
+            if (context.AnimatedTransforms.TryGetValue(node, out var animator)) return where + "moved by " + animator;
+            foreach (var component in node.GetComponents<Component>())
+                if (component is Rigidbody || component is CharacterController || component is UnityEngine.AI.NavMeshAgent)
+                    return where + "moved by its " + component.GetType().Name;
+        }
+        return null;
+    }
+
+    /// <summary>The toolkit component that switches a rig to vertex animation textures (CanvasTools.dll).</summary>
+    private const string AnimatorControlRigTypeName = "AnimatorControlRig";
+
+    /// <summary>The AnimatorControlRig.animationMode value that exports baked vertex animation textures.</summary>
+    private const string VertexAnimationModeName = "UseVertexAnimations";
+
+    /// <summary>The toolkit shader a vertex-animated renderer's materials must use (AnimatorControlRigEditor.VAT_SHADER_NAME).</summary>
+    private const string VertexAnimationShaderName = "Babylon/Custom/Vertex Animation Shader";
+
+    /// <summary>Colour properties a VAT material copy takes its tint from, in order of preference (URP / HDRP, then Built-in).</summary>
+    private static readonly string[] VatColorSources = { "_BaseColor", "_Color" };
+
+    /// <summary>Texture properties copied onto a VAT material: source names in order of preference, and the VAT shader's name.</summary>
+    private static readonly (string[] Sources, string Target)[] VatTextureProperties = {
+        (new[] { "_BaseMap", "_BaseColorMap", "_MainTex" }, "_MainTex"), (new[] { "_BumpMap", "_NormalMap" }, "_BumpMap") };
+
+    /// <summary>Float properties copied onto a VAT material: source names in order of preference, and the VAT shader's name.</summary>
+    private static readonly (string[] Sources, string Target)[] VatFloatProperties = {
+        (new[] { "_Smoothness", "_Glossiness" }, "_Glossiness"), (new[] { "_Metallic" }, "_Metallic"), (new[] { "_BumpScale", "_NormalScale" }, "_BumpScale") };
+
+    /// <summary>World scale counts as 1 within this tolerance.</summary>
+    private const float UnitScaleTolerance = 0.0001f;
+
+    /// <summary>One animated character: an Animator and the skinned renderers it drives (not those under a nested Animator).</summary>
+    private sealed class Character
+    {
+        public readonly Animator Animator;
+        public readonly SkinnedMeshRenderer[] Renderers;
+        /// <summary>The meshes the character draws, as one key: characters with equal keys are copies of one character.</summary>
+        public readonly string MeshKey;
+
+        public Character(Animator animator, SkinnedMeshRenderer[] renderers)
+        {
+            Animator = animator;
+            Renderers = renderers;
+            MeshKey = string.Join(",", renderers.Select(renderer => renderer.sharedMesh != null ? renderer.sharedMesh.GetHashCode() : 0).OrderBy(hash => hash));
+        }
+    }
+
+    /// <summary>
+    /// Makes every crowd of a really deforming character (vatCrowdsFrom copies or more: Animators whose skinned renderers
+    /// draw the same meshes) a vertex-animation crowd. Skinned copies can never share an instanced draw, and each is
+    /// skinned every frame; with the toolkit's AnimatorControlRig in UseVertexAnimations mode the exporter bakes each
+    /// controller's clips to vertex animation textures and the browser draws the copies as instances — one draw per
+    /// material in view — each keeping its own Animator state. Its materials are copied onto the toolkit's
+    /// vertex-animation shader (one copy per source material, shared by every copy), its renderers get world scale 1
+    /// (the baker writes world-size positions and the browser applies the renderer node's scale again; Unity draws a
+    /// skinned mesh from its bones, so it looks the same) and Light Probes Off (the toolkit de-instances probe-lit nodes).
+    /// Runs after the renderer steps; characters with blend shapes, cloth, transparent materials or a renderer that is
+    /// also a bone or parent are reported, not converted.
+    /// </summary>
+    private static void VatCrowds(Context context, TuneOptions options, List<Change> changes, List<Change> kept)
+    {
+        var drawn = new HashSet<Renderer>(context.Renderers);
+        var plannedUnskinned = new HashSet<SkinnedMeshRenderer>(context.PlannedUnskinned);
+        var characters = context.All<Animator>()
+            .Where(animator => animator.isActiveAndEnabled && animator.runtimeAnimatorController != null)
+            .Select(animator => new Character(animator, animator.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                .Where(skinned => drawn.Contains(skinned) && !plannedUnskinned.Contains(skinned) && skinned.GetComponentInParent<Animator>() == animator)
+                .ToArray()))
+            .Where(character => character.Renderers.Length > 0)
+            .ToList();
+        var rigType = AnimatorControlRigType();
+        var vatShader = Shader.Find(VertexAnimationShaderName);
+        string folder = VatCrowdFolder(context.Scene);
+        var vatMaterials = new Dictionary<Material, Material>();
+        foreach (var crowd in characters.GroupBy(character => character.MeshKey).Where(group => group.Count() >= options.vatCrowdsFrom))
+        {
+            var members = new List<Character>();
+            foreach (var character in crowd)
+            {
+                if (IsExcluded(character.Animator.transform, options.exclude)) kept.Add(new Change { Kind = "deforming crowd", Path = PathOf(character.Animator.transform), Why = "--exclude" });
+                else if (!IsVertexAnimated(character.Animator, rigType)) members.Add(character);
+            }
+            if (members.Count == 0) continue;
+            string blocker = rigType == null ? "this toolkit build has no " + AnimatorControlRigTypeName + " (update CanvasTools.dll)"
+                : vatShader == null ? "shader '" + VertexAnimationShaderName + "' not found (update the toolkit editor package)"
+                : members.Select(VatBlocker).FirstOrDefault(reason => reason != null);
+            string copies = crowd.Count() + " copies of one deforming character";
+            if (blocker != null)
+            {
+                foreach (var member in members) kept.Add(new Change { Kind = "deforming crowd", Path = PathOf(member.Animator.transform), Why = copies + "; not made a VAT crowd: " + blocker });
+                continue;
+            }
+            foreach (var member in members)
+            {
+                changes.Add(new Change { Kind = "VAT crowd", Path = PathOf(member.Animator.transform),
+                    Before = member.Renderers.Length + " SkinnedMeshRenderer (skinned every frame, one draw per copy per pass)",
+                    After = AnimatorControlRigTypeName + " " + VertexAnimationModeName + ", VAT materials in " + folder + ", renderer world scale 1, Light Probes Off",
+                    Why = copies + " (controller " + member.Animator.runtimeAnimatorController.name + "): skinned copies never instance; baked to vertex animation"
+                        + " textures they draw instanced, one draw per material in view, each keeping its own Animator state. The Editor draws the VAT shader"
+                        + " magenta in URP / HDRP: judge the crowd in the browser" });
+                if (options.dryRun) continue;
+                ConfigureVertexAnimationRig(member.Animator, rigType, member.Renderers);
+                foreach (var skinned in member.Renderers)
+                {
+                    skinned.sharedMaterials = skinned.sharedMaterials.Select(material => VatMaterial(material, vatShader, folder, vatMaterials)).ToArray();
+                    SetUnitWorldScale(skinned.transform);
+                    skinned.lightProbeUsage = LightProbeUsage.Off;
+                    EditorUtility.SetDirty(skinned);
+                }
+            }
+        }
+        if (!options.dryRun && vatMaterials.Count > 0) AssetDatabase.SaveAssets();
+    }
+
+    /// <summary>Why a character cannot become a VAT crowd member automatically, or null.</summary>
+    private static string VatBlocker(Character character)
+    {
+        foreach (var skinned in character.Renderers)
+        {
+            string name = "'" + skinned.name + "'";
+            if (skinned.sharedMesh == null) return name + " has no mesh";
+            if (skinned.sharedMesh.blendShapeCount > 0) return name + " has blend shapes (vertex animation textures bake bones only)";
+            if (skinned.GetComponent<Cloth>() != null) return name + " has Cloth";
+            if (IsTransparent(skinned)) return name + " is transparent (the VAT shader is opaque)";
+            if (skinned.transform.childCount > 0 || character.Renderers.Any(other => other.bones.Contains(skinned.transform)))
+                return name + " is also a bone or a parent: setting its world scale to 1 would move what hangs under it — set up the AnimatorControlRig by hand";
+            var parentScale = skinned.transform.parent != null ? skinned.transform.parent.lossyScale : Vector3.one;
+            if (Mathf.Abs(parentScale.x - parentScale.y) > UnitScaleTolerance * parentScale.x || Mathf.Abs(parentScale.x - parentScale.z) > UnitScaleTolerance * parentScale.x)
+                return name + " sits under a non-uniform scale: its world scale cannot be set to 1 — set up the AnimatorControlRig by hand";
+            if (skinned.sharedMaterials.Any(material => material != null && material.shader.name != VertexAnimationShaderName && !VatTextureProperties[0].Sources.Any(material.HasProperty)))
+                return name + " uses a material with no base colour texture property Tune knows (" + string.Join(", ", VatTextureProperties[0].Sources) + ")";
+        }
+        return null;
+    }
+
+    /// <summary>The toolkit's AnimatorControlRig type, found by name in the loaded assemblies, or null when this toolkit build has none.</summary>
+    private static Type AnimatorControlRigType()
+    {
+        return AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType(AnimatorControlRigTypeName, false))
+            .FirstOrDefault(type => type != null && type.GetField("animationMode") != null && type.GetField("meshRenderers") != null);
+    }
+
+    /// <summary>True when the animator already has an AnimatorControlRig in vertex-animation mode.</summary>
+    private static bool IsVertexAnimated(Animator animator, Type rigType)
+    {
+        var rig = rigType != null ? animator.GetComponent(rigType) : null;
+        return rig != null && rigType.GetField("animationMode").GetValue(rig).ToString() == VertexAnimationModeName;
+    }
+
+    /// <summary>Adds (or reuses) the animator's AnimatorControlRig and sets it to vertex animations over the renderers.</summary>
+    private static void ConfigureVertexAnimationRig(Animator animator, Type rigType, SkinnedMeshRenderer[] skinnedRenderers)
+    {
+        var rig = animator.GetComponent(rigType);
+        if (rig == null) rig = animator.gameObject.AddComponent(rigType);
+        var modeField = rigType.GetField("animationMode");
+        modeField.SetValue(rig, Enum.Parse(modeField.FieldType, VertexAnimationModeName));
+        rigType.GetField("meshRenderers").SetValue(rig, skinnedRenderers);
+        EditorUtility.SetDirty(rig);
+    }
+
+    /// <summary>
+    /// The vertex-animation copy of a material (tint, base colour and normal maps with their tiling, smoothness, metallic,
+    /// normal strength), saved in the folder as &lt;material&gt;_VAT.mat and updated in place on a re-run so its GUID stays
+    /// stable. Every copy of the character shares it. A material already on the vertex-animation shader is returned as it is.
+    /// </summary>
+    private static Material VatMaterial(Material source, Shader vatShader, string folder, Dictionary<Material, Material> vatMaterials)
+    {
+        if (source == null || source.shader == vatShader) return source;
+        if (vatMaterials.TryGetValue(source, out var existing)) return existing;
+        var vat = new Material(vatShader) { name = source.name + "_VAT", enableInstancing = true };
+        string colorSource = VatColorSources.FirstOrDefault(source.HasProperty);
+        if (colorSource != null && vat.HasProperty("_Color")) vat.SetColor("_Color", source.GetColor(colorSource));
+        foreach (var (sources, target) in VatTextureProperties)
+        {
+            string from = sources.FirstOrDefault(source.HasProperty);
+            if (from == null || !vat.HasProperty(target)) continue;
+            vat.SetTexture(target, source.GetTexture(from));
+            vat.SetTextureScale(target, source.GetTextureScale(from));
+            vat.SetTextureOffset(target, source.GetTextureOffset(from));
+        }
+        foreach (var (sources, target) in VatFloatProperties)
+        {
+            string from = sources.FirstOrDefault(source.HasProperty);
+            if (from != null && vat.HasProperty(target)) vat.SetFloat(target, source.GetFloat(from));
+        }
+        if (vat.HasProperty("_BumpMap") && vat.GetTexture("_BumpMap") != null) vat.EnableKeyword("_NORMALMAP");
+        EnsureFolder(folder);
+        string assetPath = folder + "/" + vat.name + ".mat";
+        var previous = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
+        if (previous == null) AssetDatabase.CreateAsset(vat, assetPath);
+        else
+        {
+            EditorUtility.CopySerialized(vat, previous);
+            UnityEngine.Object.DestroyImmediate(vat);
+            vat = previous;
+        }
+        vatMaterials[source] = vat;
+        return vat;
+    }
+
+    /// <summary>Sets the object's local scale so its world scale is 1 (its parents are scaled uniformly; see VatBlocker).</summary>
+    private static void SetUnitWorldScale(Transform transform)
+    {
+        float parentScale = transform.parent != null ? transform.parent.lossyScale.x : 1f;
+        transform.localScale = Vector3.one / parentScale;
+    }
+
+    /// <summary>True when the object's world scale is 1 on every axis, within UnitScaleTolerance.</summary>
+    private static bool HasUnitWorldScale(Transform transform)
+    {
+        var scale = transform.lossyScale;
+        return Mathf.Abs(scale.x - 1f) < UnitScaleTolerance && Mathf.Abs(scale.y - 1f) < UnitScaleTolerance && Mathf.Abs(scale.z - 1f) < UnitScaleTolerance;
+    }
+
+    /// <summary>Folder for the VAT material copies: &lt;scene folder&gt;/&lt;scene&gt;_VatCrowd (BtCombine.PrepareCopy reset and RemoveCopy delete it).</summary>
+    private static string VatCrowdFolder(Scene scene)
+    {
+        return Path.GetDirectoryName(scene.path).Replace('\\', '/') + "/" + scene.name + "_VatCrowd";
     }
 
     /// <summary>
@@ -1002,11 +1406,309 @@ public static class BtOptimize
             }
     }
 
+    // ------------------------------------------------------------------------------------------------------------
+    // Shadow casters — pruned per object, from the browser's per-cascade caster dump, proven by capture
+    // ------------------------------------------------------------------------------------------------------------
+
+    /// <summary>The file PruneShadowCasters keeps in the working copy's report folder: what it pruned and each renderer's original mode.</summary>
+    private const string PrunedCastersFileName = "pruned-casters.json";
+
+    /// <summary>Settings for PruneShadowCasters.</summary>
+    [Serializable]
+    public class CasterOptions
+    {
+        /// <summary>
+        /// The complete prune list: renderers (object names or hierarchy paths) that stop casting shadows. A renderer an
+        /// earlier run pruned that this list no longer names gets its original Cast Shadows mode back.
+        /// </summary>
+        public string[] paths = new string[0];
+        /// <summary>Report what would change without changing it.</summary>
+        public bool dryRun = false;
+    }
+
+    /// <summary>What PruneShadowCasters last pruned: hierarchy paths and, at the same index, each one's original Cast Shadows mode.</summary>
+    [Serializable]
+    private class PrunedCasterRecord
+    {
+        public string[] paths = new string[0];
+        public string[] modes = new string[0];
+    }
+
+    /// <summary>
+    /// Sets Cast Shadows Off on every renderer in the prune list (Receive Shadows stays as it is) and gives every renderer
+    /// an earlier run pruned that the list no longer names its original mode back, so the list can be edited and re-run
+    /// at any time. The list comes from the browser's per-cascade caster dump (`profile-browser.mjs --casters true`) and
+    /// survey.md's flat-surface candidates, and each entry stays only if the Unity captures at the pinned poses show no
+    /// visible shadow change. Cast Shadows also drives the lightmapper's occlusion, so bake after pruning. Works only on a
+    /// bt-optimize working copy; saves the scene and writes pruned-casters.json.
+    /// </summary>
+    /// <param name="optionsJson">A CasterOptions object as JSON, e.g. {"paths":["Level/Road","Ground*"]}.</param>
+    /// <returns>A summary: renderers pruned, renderers restored, names that matched nothing.</returns>
+    public static string PruneShadowCasters(string optionsJson)
+    {
+        var options = string.IsNullOrWhiteSpace(optionsJson) ? new CasterOptions() : JsonUtility.FromJson<CasterOptions>(optionsJson);
+        var scene = SceneManager.GetActiveScene();
+        string folder = ReportFolder(scene);
+        if (!File.Exists(Path.Combine(folder, "working-copy.txt")))
+            throw new InvalidOperationException(scene.path + " is not a bt-optimize working copy. Run BtCombine.PrepareCopy first; PruneShadowCasters never edits a source scene.");
+        var renderers = new Context(scene).Renderers;
+        string recordPath = Path.Combine(folder, PrunedCastersFileName);
+        var previous = ReadPrunedCasters(recordPath);
+        var originalModes = new Dictionary<string, string>();
+        for (int i = 0; i < previous.paths.Length && i < previous.modes.Length; i++) originalModes[previous.paths[i]] = previous.modes[i];
+
+        var pruned = new Dictionary<string, string>();
+        var unmatched = new List<string>();
+        int changed = 0;
+        foreach (string nameOrPath in options.paths)
+        {
+            var matches = renderers.Where(renderer => MatchesName(renderer.name, new[] { nameOrPath }) || PathOf(renderer.transform) == nameOrPath).ToList();
+            if (matches.Count == 0) { unmatched.Add(nameOrPath); continue; }
+            foreach (var renderer in matches)
+            {
+                string path = PathOf(renderer.transform);
+                pruned[path] = originalModes.TryGetValue(path, out var original) ? original : renderer.shadowCastingMode.ToString();
+                if (renderer.shadowCastingMode == ShadowCastingMode.Off) continue;
+                changed++;
+                if (options.dryRun) continue;
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                EditorUtility.SetDirty(renderer);
+            }
+        }
+        int restored = 0;
+        foreach (var entry in originalModes.Where(entry => !pruned.ContainsKey(entry.Key)))
+            foreach (var renderer in renderers.Where(renderer => PathOf(renderer.transform) == entry.Key && renderer.shadowCastingMode == ShadowCastingMode.Off))
+            {
+                restored++;
+                if (options.dryRun) continue;
+                renderer.shadowCastingMode = (ShadowCastingMode)Enum.Parse(typeof(ShadowCastingMode), entry.Value);
+                EditorUtility.SetDirty(renderer);
+            }
+        if (!options.dryRun)
+        {
+            File.WriteAllText(recordPath, JsonUtility.ToJson(new PrunedCasterRecord { paths = pruned.Keys.ToArray(), modes = pruned.Values.ToArray() }, true));
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+        }
+        return (options.dryRun ? "dry run — nothing changed\n" : "") + "pruned=" + pruned.Count + " (newly off " + changed + ") restored=" + restored
+            + "\nunmatched=" + string.Join(", ", unmatched) + "\nneedsBake=" + (changed + restored > 0);
+    }
+
+    /// <summary>
+    /// Reads the prune record. A plain JSON array of paths (written by a hand-made prune step before this one existed) is
+    /// read as renderers that cast On in the source.
+    /// </summary>
+    private static PrunedCasterRecord ReadPrunedCasters(string recordPath)
+    {
+        if (!File.Exists(recordPath)) return new PrunedCasterRecord();
+        string text = File.ReadAllText(recordPath).Trim();
+        if (!text.StartsWith("[", StringComparison.Ordinal)) return JsonUtility.FromJson<PrunedCasterRecord>(text);
+        var paths = System.Text.RegularExpressions.Regex.Matches(text, "\"((?:[^\"\\\\]|\\\\.)*)\"")
+            .Cast<System.Text.RegularExpressions.Match>().Select(match => System.Text.RegularExpressions.Regex.Unescape(match.Groups[1].Value)).ToArray();
+        return new PrunedCasterRecord { paths = paths, modes = paths.Select(path => ShadowCastingMode.On.ToString()).ToArray() };
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Verify — the working copy against its source and the Tune rules
+    // ------------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Checks the active working copy against its source (the scene named in working-copy.txt) and the Tune rules, and
+    /// writes verify.md / verify.json. Problems: unsaved changes; a pose camera left in the scene; a camera whose enabled
+    /// state differs from the source (a capture step that disabled the main camera and was saved ships a game with no
+    /// post-processing); lighting settings that differ from the source; rigid skinned meshes Tune converts that are
+    /// still skinned; repeated meshes (instanceRepeatsFrom copies or more) that are lightmapped or probe-lit; static
+    /// objects that move in the browser; VAT crowd members missing their materials, unit scale or probes-off; pruned
+    /// shadow casters casting again; with keepSourceGI, GI contributors the source does not have. Changes nothing.
+    /// </summary>
+    /// <param name="optionsJson">The TuneOptions the copy was tuned with (thresholds and exclusions), or empty for the defaults.</param>
+    /// <returns>"problems=N" and one line per problem.</returns>
+    public static string Verify(string optionsJson)
+    {
+        var options = string.IsNullOrWhiteSpace(optionsJson) ? new TuneOptions() : JsonUtility.FromJson<TuneOptions>(optionsJson);
+        var scene = SceneManager.GetActiveScene();
+        string folder = ReportFolder(scene);
+        string recordPath = Path.Combine(folder, "working-copy.txt");
+        if (!File.Exists(recordPath)) throw new InvalidOperationException(scene.path + " is not a bt-optimize working copy (no " + recordPath + ").");
+        string sourcePath = File.ReadAllText(recordPath).Trim();
+        var context = new Context(scene);
+        var problems = new List<string>();
+        var checks = new Dictionary<string, object>();
+
+        if (scene.isDirty) problems.Add("the scene has unsaved changes — save it before exporting");
+        if (scene.GetRootGameObjects().Any(root => root.name == PoseCameraName)) problems.Add(PoseCameraName + " is in the scene — reopen the scene before exporting (it would export as a camera)");
+
+        var copyCameras = CameraStates(scene);
+        var copyLighting = ReadLighting(scene);
+        var source = ReadFromScene(sourcePath, scene, sourceScene => new { cameras = CameraStates(sourceScene), lighting = ReadLighting(sourceScene), contributors = GIContributorPaths(sourceScene.GetRootGameObjects()) });
+        foreach (var camera in source.cameras)
+        {
+            if (!copyCameras.TryGetValue(camera.Key, out bool enabled)) problems.Add("camera " + camera.Key + " is missing from the copy");
+            else if (enabled != camera.Value) problems.Add("camera " + camera.Key + " is " + (enabled ? "enabled" : "disabled") + " in the copy but " + (camera.Value ? "enabled" : "disabled") + " in the source");
+        }
+        foreach (var setting in source.lighting.Where(setting => !copyLighting.TryGetValue(setting.Key, out var value) || value != setting.Value))
+            problems.Add("lighting " + setting.Key + ": copy " + (copyLighting.TryGetValue(setting.Key, out var copyValue) ? copyValue : "missing") + ", source " + setting.Value);
+        checks["lighting"] = copyLighting.ToDictionary(pair => pair.Key, pair => (object)pair.Value);
+
+        var rigidLeft = context.Renderers.OfType<SkinnedMeshRenderer>().Where(renderer => !IsExcluded(renderer.transform, options.exclude))
+            .Where(renderer => options.unskinRigid && TuneConverts(ClassifySkinning(renderer, context).Kind)).Select(renderer => PathOf(renderer.transform)).ToList();
+        problems.AddRange(rigidLeft.Select(path => "still skinned although it needs no skinning: " + path));
+        checks["rigidSkinnedLeft"] = rigidLeft.Count;
+        checks["skinnedLeft"] = context.Renderers.OfType<SkinnedMeshRenderer>().Count();
+
+        var repeats = options.instanceRepeatsFrom <= 0 ? new List<Renderer>() : context.Renderers.OfType<MeshRenderer>().Cast<Renderer>()
+            .Where(renderer => !IsExcluded(renderer.transform, options.exclude) && IsRepeatedForInstancing(renderer, context, options)).ToList();
+        var lightmappedRepeats = repeats.Where(renderer => ((MeshRenderer)renderer).receiveGI == ReceiveGI.Lightmaps
+            && GameObjectUtility.GetStaticEditorFlags(renderer.gameObject).HasFlag(StaticEditorFlags.ContributeGI)).Select(renderer => PathOf(renderer.transform)).ToList();
+        var probeLitRepeats = repeats.Where(renderer => renderer.lightProbeUsage != LightProbeUsage.Off).Select(renderer => PathOf(renderer.transform)).Except(lightmappedRepeats).ToList();
+        problems.AddRange(lightmappedRepeats.Select(path => "repeated mesh is lightmapped (its copies cannot instance): " + path));
+        problems.AddRange(probeLitRepeats.Select(path => "repeated mesh is probe-lit (the toolkit de-instances it): " + path));
+        checks["repeatRenderers"] = repeats.Count;
+
+        if (options.unfreezeAnimated)
+        {
+            var staticMovers = context.Roots.SelectMany(root => root.GetComponentsInChildren<Transform>(true))
+                .Where(transform => GameObjectUtility.GetStaticEditorFlags(transform.gameObject) != 0 && !IsExcluded(transform, options.exclude))
+                .Select(transform => new { transform, mover = BrowserMoverOf(transform, context) }).Where(entry => entry.mover != null)
+                .Select(entry => PathOf(entry.transform) + " (" + entry.mover + ")").ToList();
+            problems.AddRange(staticMovers.Select(entry => "static but moves in the browser: " + entry));
+            checks["staticMovers"] = staticMovers.Count;
+        }
+
+        var rigType = AnimatorControlRigType();
+        var vatAnimators = rigType == null ? new List<Animator>() : context.All<Animator>().Where(animator => IsVertexAnimated(animator, rigType)).ToList();
+        foreach (var animator in vatAnimators)
+            foreach (var skinned in animator.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(skinned => skinned.GetComponentInParent<Animator>() == animator))
+            {
+                string path = PathOf(skinned.transform);
+                if (skinned.sharedMaterials.Any(material => material == null || material.shader.name != VertexAnimationShaderName)) problems.Add("VAT crowd member has a material not on " + VertexAnimationShaderName + ": " + path);
+                if (!HasUnitWorldScale(skinned.transform)) problems.Add("VAT crowd member's renderer is not at world scale 1 (it would draw at the wrong size): " + path);
+                if (skinned.lightProbeUsage != LightProbeUsage.Off) problems.Add("VAT crowd member is probe-lit (its copies would not instance): " + path);
+            }
+        checks["vatCrowdMembers"] = vatAnimators.Count;
+
+        string prunedPath = Path.Combine(folder, PrunedCastersFileName);
+        if (File.Exists(prunedPath))
+        {
+            var record = ReadPrunedCasters(prunedPath);
+            foreach (string path in record.paths)
+            {
+                var renderer = context.Renderers.FirstOrDefault(candidate => PathOf(candidate.transform) == path);
+                if (renderer == null) problems.Add("pruned shadow caster is missing: " + path);
+                else if (renderer.shadowCastingMode != ShadowCastingMode.Off) problems.Add("pruned shadow caster casts again: " + path);
+            }
+            checks["prunedCasters"] = record.paths.Length;
+        }
+
+        var copyContributors = GIContributorPaths(scene.GetRootGameObjects());
+        var newContributors = copyContributors.Except(source.contributors).ToList();
+        if (options.keepSourceGI) problems.AddRange(newContributors.Select(path => "--keep-gi: contributes GI but did not in the source: " + path));
+        checks["giContributors"] = new Dictionary<string, object> { { "source", source.contributors.Count }, { "copy", copyContributors.Count }, { "new", newContributors.Count } };
+
+        var md = new StringBuilder("# bt-optimize verify — " + scene.path + "\n\nSource: `" + sourcePath + "`\n\n**Problems: " + problems.Count + "**\n\n");
+        foreach (var problem in problems) md.AppendLine("- " + problem);
+        md.AppendLine("\n## Checks\n");
+        foreach (var check in checks) md.AppendLine("- " + check.Key + ": " + FormatValue(check.Value is Dictionary<string, object> dictionary ? string.Join(", ", dictionary.Select(pair => pair.Key + "=" + pair.Value)) : check.Value));
+        File.WriteAllText(Path.Combine(folder, "verify.md"), md.ToString());
+        File.WriteAllText(Path.Combine(folder, "verify.json"), ToJson(new Dictionary<string, object> { { "scene", scene.path }, { "source", sourcePath },
+            { "problems", problems.Cast<object>().ToList() }, { "checks", checks } }, 0));
+        return "problems=" + problems.Count + "\n" + string.Join("\n", problems.Take(40)) + (problems.Count > 40 ? "\n… (all in verify.md)" : "");
+    }
+
+    /// <summary>
+    /// Reads something from another scene: an open one is read as it is; otherwise it is opened additively, made the
+    /// active scene while it is read (RenderSettings and lighting settings belong to the active scene), and closed unsaved.
+    /// </summary>
+    private static T ReadFromScene<T>(string scenePath, Scene returnTo, Func<Scene, T> read)
+    {
+        var open = SceneManager.GetSceneByPath(scenePath);
+        bool opened = !open.isLoaded;
+        var scene = opened ? EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive) : open;
+        try
+        {
+            SceneManager.SetActiveScene(scene);
+            return read(scene);
+        }
+        finally
+        {
+            SceneManager.SetActiveScene(returnTo);
+            if (opened) EditorSceneManager.CloseScene(scene, true);
+        }
+    }
+
+    /// <summary>Every camera's hierarchy path and whether it renders (enabled on an active object).</summary>
+    private static Dictionary<string, bool> CameraStates(Scene scene)
+    {
+        var states = new Dictionary<string, bool>();
+        foreach (var camera in scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true)).Where(camera => camera.name != PoseCameraName))
+            states[PathOf(camera.transform)] = camera.enabled && camera.gameObject.activeInHierarchy;
+        return states;
+    }
+
+    /// <summary>
+    /// The scene's lighting setup as text, for comparing a copy with its source: the Lighting Settings (mixed mode,
+    /// indirect intensity, albedo boost, lightmapper, resolution), ambient and reflection settings, skybox, fog, and the
+    /// main directional light's mode and shadows. The scene must be the active scene.
+    /// </summary>
+    private static Dictionary<string, string> ReadLighting(Scene scene)
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var values = new Dictionary<string, string>();
+        LightingSettings settings = null;
+        try { settings = Lightmapping.lightingSettings; } catch (Exception) { /* the scene has no Lighting Settings asset */ }
+        if (settings != null)
+        {
+            values["mixedBakeMode"] = settings.mixedBakeMode.ToString();
+            values["indirectScale"] = settings.indirectScale.ToString("0.###", culture);
+            values["albedoBoost"] = settings.albedoBoost.ToString("0.###", culture);
+            values["lightmapper"] = settings.lightmapper.ToString();
+            values["lightmapResolution"] = settings.lightmapResolution.ToString("0.###", culture);
+        }
+        values["ambientMode"] = RenderSettings.ambientMode.ToString();
+        values["ambientColor"] = RenderSettings.ambientLight.ToString("F3");
+        values["ambientIntensity"] = RenderSettings.ambientIntensity.ToString("0.###", culture);
+        values["reflectionIntensity"] = RenderSettings.reflectionIntensity.ToString("0.###", culture);
+        values["skybox"] = RenderSettings.skybox != null ? RenderSettings.skybox.name : "none";
+        values["fog"] = RenderSettings.fog + " " + RenderSettings.fogMode + " " + RenderSettings.fogColor.ToString("F3");
+        var sun = RenderSettings.sun != null && RenderSettings.sun.gameObject.scene == scene ? RenderSettings.sun
+            : scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Light>(true))
+                .Where(light => light.isActiveAndEnabled && light.type == LightType.Directional).OrderByDescending(light => light.intensity).FirstOrDefault();
+        values["sun"] = sun != null ? sun.name + " " + sun.lightmapBakeType + " shadows " + sun.shadows + " intensity " + sun.intensity.ToString("0.###", culture) : "none";
+        return values;
+    }
+
+    /// <summary>A bake that has not written its LightingData this many seconds after it was started, and is not running, has stopped.</summary>
+    private const long BakeStartGraceSeconds = 120;
+
+    /// <summary>
+    /// Where a bake started at the given time stands, for `wait.mjs cmd` to poll: "baking" while the lightmapper runs,
+    /// "done" once it has stopped and the active scene's LightingData asset was written at or after the start, "stopped"
+    /// when it is not running and wrote nothing more than BakeStartGraceSeconds after the start, "waiting" otherwise.
+    /// `lighting_bake_status` alone can report "completed" before the bake has started.
+    /// </summary>
+    /// <param name="startedUnixSeconds">When bake_lighting was called, in Unix seconds (`date +%s`).</param>
+    public static string BakeState(string startedUnixSeconds)
+    {
+        long started = long.Parse(startedUnixSeconds, System.Globalization.CultureInfo.InvariantCulture);
+        if (Lightmapping.isRunning) return "baking";
+        var data = Lightmapping.lightingDataAsset;
+        string path = data != null ? AssetDatabase.GetAssetPath(data) : "";
+        long written = path.Length > 0 && File.Exists(path) ? new DateTimeOffset(File.GetLastWriteTimeUtc(path)).ToUnixTimeSeconds() : 0;
+        if (written >= started) return "done";
+        return DateTimeOffset.UtcNow.ToUnixTimeSeconds() - started > BakeStartGraceSeconds ? "stopped" : "waiting";
+    }
+
+    /// <summary>The name of the capture camera PoseView places.</summary>
+    private const string PoseCameraName = "BtOptimizePoseCamera";
+
     /// <summary>
     /// Opens the scene (discarding nothing: refuses when the open scene has unsaved changes) and places a capture camera
     /// named "BtOptimizePoseCamera" at a pose recorded by the browser profiler (toolkit scenes keep Unity's coordinates),
     /// copying the main camera's settings and URP data so post-processing matches. Capture it with
-    /// `capture_game_view --camera BtOptimizePoseCamera`. The camera is never saved: reopening the scene removes it.
+    /// `capture_game_view --camera BtOptimizePoseCamera`. It never touches the scene's own cameras (a disabled main camera
+    /// that got saved once shipped a game with no post-processing): the pose camera renders above them by depth and is
+    /// flagged DontSaveInEditor, so it is never written to the scene. Reopen the scene before exporting — the exporter
+    /// would otherwise see it as one more camera.
     /// </summary>
     public static string PoseView(string scenePath, float px, float py, float pz, float qx, float qy, float qz, float qw, float verticalFovRadians)
     {
@@ -1014,15 +1716,15 @@ public static class BtOptimize
         if (active.path != scenePath)
         {
             // The only unsaved change PoseView allows itself to discard is its own pose camera.
-            bool onlyPoseCamera = active.GetRootGameObjects().Any(root => root.name == "BtOptimizePoseCamera");
+            bool onlyPoseCamera = active.GetRootGameObjects().Any(root => root.name == PoseCameraName);
             if (active.isDirty && !onlyPoseCamera) throw new InvalidOperationException("'" + active.path + "' has unsaved changes; save or discard them first.");
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
         }
         var scene = SceneManager.GetActiveScene();
-        var existing = scene.GetRootGameObjects().FirstOrDefault(root => root.name == "BtOptimizePoseCamera");
+        var existing = scene.GetRootGameObjects().FirstOrDefault(root => root.name == PoseCameraName);
         if (existing != null) UnityEngine.Object.DestroyImmediate(existing);
         var main = Camera.main;
-        var go = new GameObject("BtOptimizePoseCamera");
+        var go = new GameObject(PoseCameraName) { hideFlags = HideFlags.DontSaveInEditor };
         var camera = go.AddComponent<Camera>();
         if (main != null)
         {
@@ -1033,8 +1735,11 @@ public static class BtOptimize
                 var data = go.GetComponent(mainData.GetType()) ?? go.AddComponent(mainData.GetType());
                 EditorUtility.CopySerialized(mainData, data);
             }
-            main.enabled = false;
         }
+        // Render above every scene camera instead of disabling any of them: the scene's cameras are never changed.
+        var sceneCameras = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true)).Where(other => other != camera).ToList();
+        camera.depth = sceneCameras.Count > 0 ? sceneCameras.Max(other => other.depth) + 1f : camera.depth;
+        foreach (var component in go.GetComponents<Component>()) component.hideFlags = HideFlags.DontSaveInEditor;
         go.transform.SetPositionAndRotation(new Vector3(px, py, pz), new Quaternion(qx, qy, qz, qw));
         camera.fieldOfView = verticalFovRadians * Mathf.Rad2Deg;
         camera.enabled = true;
@@ -1126,8 +1831,8 @@ public static class BtOptimize
     /// <summary>
     /// Why the renderer is not a visible, lightmappable surface, or null. Only shaders with a lightmapper Meta pass
     /// (URP Lit / Simple Lit / Unlit, Built-in Standard, Shader Graph Lit / Unlit…) describe a surface to the bake.
-    /// Stencil masks, depth-only and other utility shaders have none — marked Contribute GI, Garden's invisible
-    /// `Room1Screens` stencil mesh (Custom/StencilOnly, wrapping a whole room) became a solid box in the bake and the
+    /// Stencil masks, depth-only and other utility shaders have none — marked Contribute GI, an invisible stencil mesh
+    /// (Custom/StencilOnly, wrapping a whole room) became a solid box in the bake and the
     /// room went dark.
     /// </summary>
     private static string NotAVisibleSurface(Renderer renderer)
@@ -1355,8 +2060,7 @@ public static class BtOptimize
     /// </summary>
     private static Mesh BakeOffsetMesh(Mesh source, Matrix4x4 meshToObject, string folder, Dictionary<string, Mesh> bakedMeshes)
     {
-        string offsetKey = string.Join(",", Enumerable.Range(0, 16).Select(index => Math.Round(meshToObject[index], SharedMeshKeyDecimals).ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        string cacheKey = source.GetHashCode() + "|" + offsetKey;
+        string cacheKey = source.GetHashCode() + "|" + OffsetKey(meshToObject);
         if (bakedMeshes.TryGetValue(cacheKey, out var existing)) return existing;
         var baked = UnityEngine.Object.Instantiate(source);
         baked.name = source.name + "_Unskinned_" + bakedMeshes.Count;
@@ -1379,6 +2083,12 @@ public static class BtOptimize
         CreateMeshAsset(baked, folder);
         bakedMeshes[cacheKey] = baked;
         return baked;
+    }
+
+    /// <summary>A bind-pose offset matrix as text, rounded to SharedMeshKeyDecimals: copies with equal keys share one baked mesh.</summary>
+    private static string OffsetKey(Matrix4x4 meshToObject)
+    {
+        return string.Join(",", Enumerable.Range(0, 16).Select(index => Math.Round(meshToObject[index], SharedMeshKeyDecimals).ToString(System.Globalization.CultureInfo.InvariantCulture)));
     }
 
     /// <summary>
@@ -1704,7 +2414,17 @@ public static class BtOptimize
     /// <summary>True when the renderer's mesh and materials repeat often enough that its copies should share an instanced draw.</summary>
     private static bool IsRepeatedForInstancing(Renderer renderer, Context context, TuneOptions options)
     {
-        return options.instanceRepeatsFrom > 0 && context.RepeatCounts.TryGetValue(RepeatKey(renderer), out var copies) && copies >= options.instanceRepeatsFrom;
+        return options.instanceRepeatsFrom > 0 && context.RepeatCounts.TryGetValue(RepeatKeyOf(renderer, context), out var copies) && copies >= options.instanceRepeatsFrom;
+    }
+
+    /// <summary>
+    /// RepeatKey, except that a skinned renderer a dry run plans to convert is keyed by the mesh it will draw
+    /// (see PlannedMeshKey) rather than the skinned mesh it draws now.
+    /// </summary>
+    private static string RepeatKeyOf(Renderer renderer, Context context)
+    {
+        if (!(renderer is SkinnedMeshRenderer skinned) || !context.PlannedMeshKeys.TryGetValue(skinned, out var plannedMesh)) return RepeatKey(renderer);
+        return "planned " + plannedMesh + "|" + string.Join(",", renderer.sharedMaterials.Select(material => material != null ? material.GetHashCode() : 0));
     }
 
     /// <summary>
@@ -1774,6 +2494,10 @@ public static class BtOptimize
         public readonly HashSet<string> PlannedGIContributors;
         /// <summary>Skinned renderers a dry run plans to convert: later steps treat them as the MeshRenderers they become.</summary>
         public readonly List<SkinnedMeshRenderer> PlannedUnskinned = new List<SkinnedMeshRenderer>();
+        /// <summary>For each renderer a dry run plans to convert, the identity of the mesh it will draw (see PlannedMeshKey).</summary>
+        public readonly Dictionary<SkinnedMeshRenderer, string> PlannedMeshKeys = new Dictionary<SkinnedMeshRenderer, string>();
+        /// <summary>Objects whose static flags Tune clears (UnfreezeAnimated); a dry run's later steps treat them as non-static.</summary>
+        public readonly HashSet<GameObject> PlannedNonStatic = new HashSet<GameObject>();
         public readonly StringBuilder Summary = new StringBuilder();
 
         /// <param name="scene">The scene to gather.</param>

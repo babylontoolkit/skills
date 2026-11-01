@@ -235,8 +235,14 @@ public static class BtCombine
             if (AssetDatabase.IsValidFolder(unskinnedFolder)) AssetDatabase.DeleteAsset(unskinnedFolder);
             string retargetedFolder = RetargetedClipFolderFor(outputScene);
             if (AssetDatabase.IsValidFolder(retargetedFolder)) AssetDatabase.DeleteAsset(retargetedFolder);
-            string manifest = Path.Combine(ReportFolderFor(outputScene), "combine-manifest.json");
-            if (File.Exists(manifest)) File.Delete(manifest);
+            string vatCrowdFolder = VatCrowdFolderFor(outputScene);
+            if (AssetDatabase.IsValidFolder(vatCrowdFolder)) AssetDatabase.DeleteAsset(vatCrowdFolder);
+            // The fresh copy casts shadows as the source does, so a previous prune record no longer describes it.
+            foreach (string record in new[] { "combine-manifest.json", "pruned-casters.json" })
+            {
+                string recordPath = Path.Combine(ReportFolderFor(outputScene), record);
+                if (File.Exists(recordPath)) File.Delete(recordPath);
+            }
         }
         var scene = EditorSceneManager.OpenScene(outputScene, OpenSceneMode.Single);
         Directory.CreateDirectory(ReportFolderFor(outputScene));
@@ -254,6 +260,7 @@ public static class BtCombine
         bool meshesDeleted = AssetDatabase.DeleteAsset(MeshFolderFor(outputScene));
         AssetDatabase.DeleteAsset(UnskinnedMeshFolderFor(outputScene));
         AssetDatabase.DeleteAsset(RetargetedClipFolderFor(outputScene));
+        AssetDatabase.DeleteAsset(VatCrowdFolderFor(outputScene));
         bool lightingDeleted = AssetDatabase.DeleteAsset(Path.ChangeExtension(outputScene, null).Replace('\\', '/'));
         string reportFolder = ReportFolderFor(outputScene);
         if (Directory.Exists(reportFolder)) Directory.Delete(reportFolder, true);
@@ -1630,6 +1637,15 @@ public static class BtCombine
     private static string RetargetedClipFolderFor(string scenePath)
     {
         return Path.GetDirectoryName(scenePath).Replace('\\', '/') + "/" + Path.GetFileNameWithoutExtension(scenePath) + "_RetargetedClips";
+    }
+
+    /// <summary>
+    /// Folder for the vertex-animation material copies BtOptimize.Tune makes for a VAT crowd: &lt;scene folder&gt;/&lt;scene&gt;_VatCrowd.
+    /// Keep the name in step with BtOptimize.VatCrowdFolder.
+    /// </summary>
+    private static string VatCrowdFolderFor(string scenePath)
+    {
+        return Path.GetDirectoryName(scenePath).Replace('\\', '/') + "/" + Path.GetFileNameWithoutExtension(scenePath) + "_VatCrowd";
     }
 
     /// <summary>Folder for a scene's reports: &lt;project&gt;/.agents/optimize/&lt;scene&gt;.</summary>

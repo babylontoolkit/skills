@@ -9,6 +9,7 @@
  *   node profile-browser.mjs --scene level.gltf --pin 20,35 --toggles dpr,taa,motionblur,bloom,post,shadows,lights
  *   node profile-browser.mjs --scene optimized.gltf --poses ./before-pinned.json --toggles none   (same views as an earlier run)
  *   [--headed true] [--dpr 2] [--window 3] [--settle 4] [--shots ./shots] [--cpuprofile true] [--toggles none]
+ *   [--casters true]   (with --pin / --poses: each pin also records every shadow map's casters per cascade, `shadowCasters`)
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -726,6 +727,53 @@ function installProbe() {
     };
 
     /**
+     * Records, over the next rendered frame, which meshes every shadow generator draws and in which cascade, by wrapping
+     * each generator's per-sub-mesh shadow render. Shadow maps are often the largest pass once repeats instance, and a
+     * caster whose shadow lands on nothing the camera sees (roads, flat ground, water, far backdrops) is pure cost — this
+     * names them, with their draws per cascade, so they can be pruned and proven by capture.
+     * @returns {Promise<{lights: {light: string, cascades: number, draws: number, casters: {mesh: string, owner: string, perCascade: number[], draws: number}[]}[]}>}
+     */
+    state.shadowCasters = () => new Promise((resolve, reject) => {
+        const scene = state.scene();
+        const generators = scene.lights
+            .map((light) => ({ light, generator: light.getShadowGenerator && light.getShadowGenerator() }))
+            .filter((entry) => entry.generator && typeof entry.generator._renderSubMeshForShadowMap === "function");
+        const records = generators.map(({ light, generator }) => ({ light: light.name, generator, cascades: generator.numCascades || 1, casters: new Map() }));
+        let recording = false;
+        const originals = records.map((record) => {
+            const original = record.generator._renderSubMeshForShadowMap;
+            record.generator._renderSubMeshForShadowMap = function (subMesh, ...rest) {
+                if (recording) {
+                    const mesh = subMesh.getMesh();
+                    if (!record.casters.has(mesh)) record.casters.set(mesh, new Array(record.cascades).fill(0));
+                    const cascade = Math.min(record.cascades - 1, Math.max(0, record.generator._currentLayer || 0));
+                    record.casters.get(mesh)[cascade]++;
+                }
+                return original.call(this, subMesh, ...rest);
+            };
+            return original;
+        });
+        const restore = () => records.forEach((record, index) => { record.generator._renderSubMeshForShadowMap = originals[index]; });
+        const timeout = setTimeout(() => { restore(); reject(new Error(`shadowCasters: no frame rendered within ${DRAW_OWNER_FRAME_TIMEOUT_MS} ms`)); }, DRAW_OWNER_FRAME_TIMEOUT_MS);
+        scene.onBeforeRenderObservable.addOnce(() => {
+            recording = true;
+            scene.onAfterRenderObservable.addOnce(() => {
+                recording = false;
+                clearTimeout(timeout);
+                restore();
+                resolve({
+                    lights: records.map((record) => {
+                        const casters = [...record.casters.entries()].map(([mesh, perCascade]) => ({
+                            mesh: mesh.name, owner: state.ownerOf(mesh), perCascade, draws: perCascade.reduce((sum, count) => sum + count, 0),
+                        })).sort((first, second) => second.draws - first.draws);
+                        return { light: record.light, cascades: record.cascades, draws: casters.reduce((sum, caster) => sum + caster.draws, 0), casters };
+                    }),
+                });
+            });
+        });
+    });
+
+    /**
      * Switches one runtime cost off (on = false) or back on (on = true).
      * Keys: dpr, taa, motionblur, bloom, post (every camera post-process), shadows, lights (every point / spot light).
      * @returns {string} what changed
@@ -903,6 +951,7 @@ async function main() {
                 const lightAudit = await page.evaluate(() => window.__btProfile.lightAudit());
                 // drawOwners is async: it measures the next rendered frame, and page.evaluate waits for that promise.
                 const drawOwners = await page.evaluate(() => window.__btProfile.drawOwners());
+                const shadowCasters = flags.casters === "true" ? await page.evaluate(() => window.__btProfile.shadowCasters()) : null;
                 const steps = [];
                 for (const key of toggles) {
                     const change = await page.evaluate((k) => window.__btProfile.toggle(k, false), key);
@@ -913,7 +962,7 @@ async function main() {
                     steps.push({ off: key, change, fps: off.fps, p50Ms: off.p50Ms, drawCalls: off.drawCalls, passes: off.passes, cpuRenderMs: off.cpuRenderMs, cpuFrameMs: off.cpuFrameMs });
                 }
                 const after = await measure(page, windowSeconds);
-                report.pins.push({ atSeconds: seconds, readyMs, pinned, actual: { before: poseBefore, after: poseAfter }, baseline, lightAudit, drawOwners, cpu, steps, baselineAgain: { fps: after.fps, p50Ms: after.p50Ms } });
+                report.pins.push({ atSeconds: seconds, readyMs, pinned, actual: { before: poseBefore, after: poseAfter }, baseline, lightAudit, drawOwners, shadowCasters, cpu, steps, baselineAgain: { fps: after.fps, p50Ms: after.p50Ms } });
                 await page.close();
             }
         }
