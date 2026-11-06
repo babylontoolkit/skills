@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.2.12)
+# Babylon Toolkit Desktop Agent (1.2.14)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -72,7 +72,9 @@ copy at all, the skills and persona keep the GitHub addresses and agents read th
 The persona names the local folder and keeps GitHub as the fallback for any file that is missing.
 Claude Code asks before reading outside the project, so a global install adds one read-only rule —
 `Read(~/.claude/toolkit/reference/**)` — to `~/.claude/settings.json` (uninstall removes it, and only if
-the installer added it). It also adds a Claude Code `PreToolUse` hook on `Bash` that blocks a `sleep N` of 3 seconds
+the installer added it). A global Claude Code install also trusts the toolkit's Unity bridge commands with
+`Bash(unity command bt_*)`, so `bt_status`, `bt_build_project`, `bt_export_level`, `bt_devserver_start` and the rest
+run without a prompt — and are not refused as a "deploy" in auto mode. Uninstall removes it the same way. It also adds a Claude Code `PreToolUse` hook on `Bash` that blocks a `sleep N` of 3 seconds
 or more — inside `until` / `while` loops too — and points the agent at the Agent Reference's `wait.mjs`, which waits
 for a port, URL, file, log line or command output instead; uninstall removes only that hook. `bt-agent doctor` checks that every local link resolves and says when GitHub has a
 newer Reference.

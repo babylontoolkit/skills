@@ -10,6 +10,10 @@
  *   node profile-browser.mjs --scene optimized.gltf --poses ./before-pinned.json --toggles none   (same views as an earlier run)
  *   [--headed true] [--dpr 2] [--window 3] [--settle 4] [--shots ./shots] [--cpuprofile true] [--toggles none]
  *   [--casters true]   (with --pin / --poses: each pin also records every shadow map's casters per cascade, `shadowCasters`)
+ *   [--hold 40:24,60:44 | --hold true]   (with --pin / --poses: holds the scene's Timeline still at each pin — pin seconds :
+ *       director seconds, or `true` for wherever the director is when the pin lands; a pose file's `heldTimeline` is used
+ *       for any pin the list does not name. Each pin records `heldTimeline` (null when the scene has no director) and
+ *       fails when the director strays more than HOLD_TOLERANCE_SECONDS during the measure window.)
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -24,6 +28,9 @@ const DEFAULT_WINDOW_SECONDS = 3;
 
 /** How long to wait for the scene to finish loading, in milliseconds. */
 const READY_TIMEOUT_MS = 600000;
+
+/** How far a held Timeline may stray during a pin's measure window before that pin fails, in seconds. */
+const HOLD_TOLERANCE_SECONDS = 0.05;
 
 /**
  * Reads `--name value` pairs from the command line.
@@ -254,6 +261,40 @@ function installProbe() {
         if (pose.fov != null) state.lockLens(camera, { fov: pose.fov, fovMode: pose.fovMode, minZ: pose.minZ, maxZ: pose.maxZ });
         camera.computeWorldMatrix(true);
         return pose;
+    };
+
+    /**
+     * Holds the scene's Timeline still: pauses its PlayableDirector, moves it to the given time and poses every track
+     * there, so the sun's angle, the active light and the shot on screen stop changing while a pin is measured.
+     * @param {number|null} timelineSeconds - director time to hold, in seconds; null holds the director's current time
+     * @returns {number|null} the held director time in seconds, or null (and nothing done) when the scene has no director
+     */
+    state.holdTimeline = (timelineSeconds) => {
+        const director = state.director();
+        if (!director) return null;
+        director.pause();
+        if (timelineSeconds != null) director.time = timelineSeconds;
+        director.evaluate();
+        return director.time;
+    };
+
+    /**
+     * The scene's Timeline director, when it has one.
+     * @returns {object|null} the toolkit PlayableDirector, or null when the scene has none (or the runtime has no Timeline)
+     */
+    state.director = () => {
+        const directorClass = window.TOOLKIT && TOOLKIT.PlayableDirector;
+        if (!directorClass || typeof directorClass.Find !== "function") return null;
+        return directorClass.Find(state.scene()) || null;
+    };
+
+    /**
+     * The director's current time, to prove a held Timeline did not move.
+     * @returns {number|null} seconds, or null when the scene has no director
+     */
+    state.directorTime = () => {
+        const director = state.director();
+        return director ? director.time : null;
     };
 
     /**
@@ -876,6 +917,63 @@ async function cpuProfile(page, seconds) {
     return { totalMs: Math.round(totalMs), top };
 }
 
+/**
+ * Reads `--hold` into a per-pin plan. `--hold true` holds every pin where the director is when the pin lands;
+ * `--hold 40:24,60:44` holds the named pins at those director seconds; a pose file's `heldTimeline` fills any pin the
+ * flag does not name (so replaying a held run's output holds the same moments). `--hold false` turns holding off.
+ * @param {string|undefined} holdFlag - the raw `--hold` value
+ * @param {{atSeconds: number, heldTimeline?: number|null}[]|null} poses - the `--poses` entries, when given
+ * @returns {{timeFor: (pinSeconds: number) => {hold: boolean, timelineSeconds: number|null}}} the plan
+ * @throws {Error} when a `--hold` entry is not `pin:seconds`
+ */
+function parseHoldPlan(holdFlag, poses) {
+    const holdAll = holdFlag === "true";
+    const holdOff = holdFlag === "false";
+    const explicitTimes = new Map();
+    if (holdFlag && !holdAll && !holdOff) {
+        for (const entry of holdFlag.split(",").filter(Boolean)) {
+            const [pinSeconds, timelineSeconds] = entry.split(":").map(Number);
+            if (!Number.isFinite(pinSeconds) || !Number.isFinite(timelineSeconds)) throw new Error(`--hold entry "${entry}" is not pin:seconds (e.g. --hold 40:24,60:44)`);
+            explicitTimes.set(pinSeconds, timelineSeconds);
+        }
+    }
+    const poseFileTimes = new Map((poses || []).filter((entry) => entry.heldTimeline != null).map((entry) => [entry.atSeconds, entry.heldTimeline]));
+    return {
+        timeFor(pinSeconds) {
+            if (holdOff) return { hold: false, timelineSeconds: null };
+            if (explicitTimes.has(pinSeconds)) return { hold: true, timelineSeconds: explicitTimes.get(pinSeconds) };
+            if (poseFileTimes.has(pinSeconds)) return { hold: true, timelineSeconds: poseFileTimes.get(pinSeconds) };
+            return { hold: holdAll, timelineSeconds: null };
+        },
+    };
+}
+
+/**
+ * Holds the page's Timeline at a time (or where it is, for null).
+ * @param {object} page - the puppeteer page
+ * @param {number|null} timelineSeconds - director seconds to hold, or null for the current time
+ * @returns {Promise<number|null>} the held time, or null when the scene has no director
+ */
+async function holdTimeline(page, timelineSeconds) {
+    const held = await page.evaluate((seconds) => window.__btProfile.holdTimeline(seconds), timelineSeconds);
+    return held == null ? null : +held.toFixed(4);
+}
+
+/**
+ * Re-reads the director after a measure window and refuses the window when the held Timeline moved, mirroring the
+ * look tests' held shots: a moved Timeline means the sun, the light or the shot changed while the frame was measured.
+ * @param {object} page - the puppeteer page
+ * @param {number|null} heldTimeline - the held time, or null when the scene has no director
+ * @returns {Promise<{timeAfterWindow: number|null, driftSeconds: number, error?: string}>} the check
+ */
+async function checkHold(page, heldTimeline) {
+    const timeAfterWindow = await page.evaluate(() => window.__btProfile.directorTime());
+    if (heldTimeline == null || timeAfterWindow == null) return { timeAfterWindow, driftSeconds: 0 };
+    const driftSeconds = +Math.abs(timeAfterWindow - heldTimeline).toFixed(4);
+    if (driftSeconds <= HOLD_TOLERANCE_SECONDS) return { timeAfterWindow, driftSeconds };
+    return { timeAfterWindow, driftSeconds, error: `Timeline drifted: held ${heldTimeline} s, ${timeAfterWindow} s after the window` };
+}
+
 /** Records one measurement window on the page. */
 async function measure(page, windowSeconds) {
     await page.evaluate(() => window.__btProfile.start());
@@ -895,8 +993,10 @@ async function main() {
     const scene = flags.scene;
     if (!scene) throw new Error("Pass --scene <exported scene file>, e.g. --scene level.gltf");
     const times = (flags.times || DEFAULT_TIMES).split(",").map(Number).sort((first, second) => first - second);
-    const poses = flags.poses ? JSON.parse(fs.readFileSync(path.resolve(flags.poses), "utf8")).pins.map((pin) => ({ atSeconds: pin.atSeconds, pose: pin.pinned })) : null;
+    const poses = flags.poses ? JSON.parse(fs.readFileSync(path.resolve(flags.poses), "utf8")).pins.map((pin) => ({ atSeconds: pin.atSeconds, pose: pin.pinned, heldTimeline: pin.heldTimeline })) : null;
     const pins = poses ? poses.map((entry) => entry.atSeconds) : (flags.pin || "").split(",").filter(Boolean).map(Number);
+    const holdPlan = parseHoldPlan(flags.hold, poses);
+    let failedPins = 0;
     const toggles = (flags.toggles || "dpr,taa,motionblur,bloom,post,shadows,lights").split(",").filter((key) => key && key !== "none");
     const windowSeconds = Number(flags.window || DEFAULT_WINDOW_SECONDS);
     const settleSeconds = Number(flags.settle || 4);
@@ -938,11 +1038,20 @@ async function main() {
                 await sleep(seconds);
                 // With --poses, the camera goes to the exact pose an earlier run pinned, so two exports are measured from one view.
                 const pinned = poses ? await page.evaluate((pose) => window.__btProfile.pose(pose), poses[index].pose) : await page.evaluate(() => window.__btProfile.pin());
+                const holdRequest = holdPlan.timeFor(seconds);
+                let heldTimeline = holdRequest.hold ? await holdTimeline(page, holdRequest.timelineSeconds) : undefined;
                 await settle(page, settleSeconds);
+                // Settling waits on whenReadyAsync, which can let a director resume, so the hold is applied again.
+                if (holdRequest.hold) heldTimeline = await holdTimeline(page, heldTimeline);
                 if (shots) await page.screenshot({ path: path.join(shots, `${tag}_pin${seconds}s.png`) });
                 const poseBefore = await page.evaluate(() => window.__btProfile.actualPose());
                 const baseline = await measure(page, windowSeconds);
                 const poseAfter = await page.evaluate(() => window.__btProfile.actualPose());
+                const holdCheck = holdRequest.hold ? await checkHold(page, heldTimeline) : null;
+                if (holdCheck && holdCheck.error) {
+                    failedPins++;
+                    process.stderr.write(`FAILED pin ${seconds}s: ${holdCheck.error}\n`);
+                }
                 const target = pinned.position || pinned;
                 const drift = Math.max(...[poseBefore, poseAfter].map((actual) => Math.hypot(actual.position[0] - target[0], actual.position[1] - target[1], actual.position[2] - target[2])));
                 if (drift > 0.05 || (pinned.fov != null && Math.abs(poseAfter.fov - pinned.fov) > 1e-3) || poseBefore.camera !== poseAfter.camera)
@@ -962,7 +1071,7 @@ async function main() {
                     steps.push({ off: key, change, fps: off.fps, p50Ms: off.p50Ms, drawCalls: off.drawCalls, passes: off.passes, cpuRenderMs: off.cpuRenderMs, cpuFrameMs: off.cpuFrameMs });
                 }
                 const after = await measure(page, windowSeconds);
-                report.pins.push({ atSeconds: seconds, readyMs, pinned, actual: { before: poseBefore, after: poseAfter }, baseline, lightAudit, drawOwners, shadowCasters, cpu, steps, baselineAgain: { fps: after.fps, p50Ms: after.p50Ms } });
+                report.pins.push({ atSeconds: seconds, readyMs, pinned, heldTimeline, holdCheck, actual: { before: poseBefore, after: poseAfter }, baseline, lightAudit, drawOwners, shadowCasters, cpu, steps, baselineAgain: { fps: after.fps, p50Ms: after.p50Ms } });
                 await page.close();
             }
         }
@@ -970,6 +1079,7 @@ async function main() {
         const text = JSON.stringify(report, null, 2);
         if (flags.out) fs.writeFileSync(path.resolve(flags.out), text);
         process.stdout.write(text + "\n");
+        if (failedPins > 0) throw new Error(`${failedPins} pin(s) failed: the held Timeline moved during the measure window`);
     } finally {
         await browser.close();
     }

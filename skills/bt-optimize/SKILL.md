@@ -43,7 +43,7 @@ scripts task by task. The work and its proof are the same either way.
 - **Merge controls:** `--cell:` area patch in meters (15), `--spread:` meters a merge may extend past its largest piece (3), `--atlas-share:` largest share of one lightmap atlas per merged mesh (0.45), `--no-shadergraphs` (do not merge Shader Graph materials even when they pass the scan), `--no-lods` (leave LOD groups alone), `--shaders:` extra custom shaders known to be pivot-independent.
 - **Project-wide exporter settings (opt in — they change every scene's export):** `--textures:ktx2` (KTX2 / UASTC textures: ~4–8× less GPU memory, slower export), `--resolution:css` (render at CSS pixels instead of device pixels on desktop: ¼ of the pixels on a 2× screen — only helps a GPU-bound scene).
 - **`--no-bake` / `--no-export` / `--no-browser`** — skip those phases; the report says what stayed unverified.
-- **`--pins:`** — seconds after the scene is ready at which the profiler pins the camera (default `40,60`; pick moments inside the scene's own flythrough / spawn view). **`--times:`** — timeline sample moments.
+- **`--pins:`** — seconds after the scene is ready at which the profiler pins the camera (default `40,60`; pick moments inside the scene's own flythrough / spawn view). Each pin also **holds the scene's Timeline** at the director time it reached (the profiler's `--hold`, Phase 1), so the sun, the active light and the shot stay put while it is measured. **`--times:`** — timeline sample moments.
 
 ---
 
@@ -201,9 +201,11 @@ The exported source scene must be current: find `<exportRoot>/scenes/<source>.gl
 mkdir -p "$PROJ/.agents/optimize/$SRC_NAME/profile"
 node "$QA/profile-browser.mjs" --scene <source>.gltf --times 10,20,30,45,60,75,90 --window 4 \
   --out "$PROJ/.agents/optimize/$SRC_NAME/profile/before-timeline.json"
-node "$QA/profile-browser.mjs" --scene <source>.gltf --pin 40,60,75 --toggles none --window 5 --settle 8 --cpuprofile true --casters true \
+node "$QA/profile-browser.mjs" --scene <source>.gltf --pin 40,60,75 --hold true --toggles none --window 5 --settle 8 --cpuprofile true --casters true \
   --shots "$PROJ/.agents/optimize/$SRC_NAME/profile/shots" --out "$PROJ/.agents/optimize/$SRC_NAME/profile/before-pinned.json"
 ```
+
+**Hold the Timeline at every pin — `--hold`.** A pinned camera holds the *view*, but a scene with a Timeline keeps playing around it: the sun turns, a second sun switches on, shots cut and fade, and each of those changes the shadow maps, the light count and the draws. `--hold true` pauses the scene's `PlayableDirector` where it is when the pin lands, sets its time and evaluates every track there, re-applies the hold after the settle, and records it as the pin's `heldTimeline` (seconds; `null` when the scene has no director — the run still measures). `--hold 40:24,60:44,75:52` holds each named pin at a fixed director time instead (pin seconds : director seconds) — use it to measure two exports at the same moment of the Timeline. After the measure window the director is read again: a pin whose Timeline moved more than 0.05 s **fails** (`holdCheck.error`, `FAILED pin …` on stderr, exit 1), because its numbers mix two moments. With `--poses`, a pose file's own `heldTimeline` (the output of a held run) holds any pin `--hold` does not name, so replaying `before-pinned.json` measures the same views at the same Timeline moments; `--hold false` turns all holding off.
 
 When an earlier run (or a plan's `tests/poses-pinned.json`) already pinned this scene, replay those poses with `--poses <file>` instead of `--pin`, so every run of the scene is measured from the same views.
 
@@ -246,19 +248,21 @@ bake() {   # never trust lighting_bake_status alone: it can say "completed" befo
   local started; started=$(date +%s)
   unity command bake_lighting --confirm true --project-path "$PROJ"
   node "$WAIT" cmd "unity command run_script --file AgentScripts/bt-optimize/BtOptimize.cs --entry BtOptimize.BakeState --args '[\"$started\"]' --project-path '$PROJ' --format json" \
-    --match '"result": *"done"' --fail '"result": *"stopped"' --interval 15 --timeout 5400 || return 1
+    --match '"result": *"done' --fail '"result": *"(stopped|empty)' --interval 15 --timeout 5400 || return 1
   unity command save_all --project-path "$PROJ"      # the bake assigns new LightingData; exports refuse a dirty scene
 }
-bake
+bake                                                 # BakeState prints "done lightmaps=N probes=M lightmapped=R probeGroups=G data=<LightingData>"
 bt_run BtCombine CorrectDensity '[]'                 # after a merge: merged meshes get ~84-89% of their sources' texels; raise Scale In Lightmap
 # corrected=N with N > 0 → bake once more
 bt_run BtCombine Verify '[]'                         # after a merge: must end with problems=0
 bt_run BtOptimize Verify "$(arg "$TUNE")"            # always: must end with problems=0 (verify.md lists each problem)
 ```
 
+**An empty bake fails, never passes.** A bake that fails part-way still writes its LightingData, so its write time proves nothing. `BakeState` answers `empty` when the finished bake has no lightmaps although the scene has lightmapped renderers (Contribute GI static, Receive GI Lightmaps, or a GI-contributing terrain), or no light probes although it has a `LightProbeGroup` with probes — and `bake()` fails on it. `Verify` adds the second check: every renderer or terrain whose `lightmapIndex` names a lightmap the loaded bake does not have (an empty or stale LightingData, or one from another scene) is a problem.
+
 ## Phase 5 — Unity side-by-side (browser poses, then LOD0 **and** LOD1)
 
-**First, the browser's pinned poses in Unity**, source and working copy. `PoseView` puts a capture camera named `BtOptimizePoseCamera` at a pose recorded by the profiler (position, rotation, vertical FOV; toolkit scenes keep Unity's coordinates), copying the main camera's URP data so post-processing matches. It renders above the scene's cameras by depth and never touches them, and it is never saved (DontSaveInEditor) — but it lives in the open scene until the scene is reopened, so **reopen the scene before exporting** (the last line below does). VAT crowd members draw magenta in URP / HDRP Unity captures — compare them in the browser. Comparing these with the browser shots of the same poses tells you which side of the export a difference is on:
+**First, the browser's pinned poses in Unity**, source and working copy. `PoseView` puts a capture camera named `BtOptimizePoseCamera` at a pose recorded by the profiler (position, rotation, vertical FOV; toolkit scenes keep Unity's coordinates), copying the main camera's URP data so post-processing matches. It renders above the scene's cameras by depth and never touches them, and it is never saved (DontSaveInEditor) — but it lives in the open scene until the scene is reopened, so **reopen the scene before exporting** (Phase 6's `open_scene` does). A DontSaveInEditor object survives `OpenScene`, so `PoseView` first destroys **every** pose camera the Editor holds (`Resources.FindObjectsOfTypeAll`, any scene or none, never an asset) — on entry and again after it opens the scene — so capturing two scenes in a row leaves exactly one pose camera, in the scene asked for. `Verify` and the camera comparison use the same lookup. VAT crowd members draw magenta in URP / HDRP Unity captures — compare them in the browser. Comparing these with the browser shots of the same poses tells you which side of the export a difference is on:
 
 ```bash
 python3 -c "import json; [print(p['atSeconds'],*p['pinned']['position'],*p['pinned']['rotation'],p['pinned']['fov']) for p in json.load(open('$PROJ/.agents/optimize/$SRC_NAME/profile/before-pinned.json'))['pins']]" > /tmp/poses.txt
@@ -316,9 +320,10 @@ unity command open_scene --path "$OUT" --project-path "$PROJ"                   
 bt_run BtOptimize Verify "$(arg "$TUNE")"                                                # problems=0 before every export
 unity command bt_export_level --scene "$OUT" --project-path "$PROJ" --timeout 3600     # record the duration
 unity command bt_devserver_start --project-path "$PROJ"
-node "$QA/gltf-stats.mjs" <source.gltf> <optimized.gltf>
+node "$QA/gltf-stats.mjs" <source.gltf> <optimized.gltf>            # .gz.gltf too (gunzipped by magic bytes); buffers on disk and uncompressed
 node "$QA/profile-browser.mjs" --scene <optimized>.gltf --times 10,20,30,45,60,75,90 --window 4 --out "$REPORT/profile/after-timeline.json"
 node "$QA/profile-browser.mjs" --scene <optimized>.gltf --poses "$PROJ/.agents/optimize/$SRC_NAME/profile/before-pinned.json" --toggles none --window 5 --settle 8 --cpuprofile true \
+  --casters true \
   --shots "$REPORT/profile/shots" --out "$REPORT/profile/after-pinned.json"
 node "$QA/compare-profiles.mjs" --label Original,Optimized "$PROJ/.agents/optimize/$SRC_NAME/profile/before-pinned.json" "$REPORT/profile/after-pinned.json"
 node "$QA/compare-profiles.mjs" --label Original,Optimized "$PROJ/.agents/optimize/$SRC_NAME/profile/before-timeline.json" "$REPORT/profile/after-timeline.json"
@@ -391,3 +396,8 @@ Reply in plain language with images, and write `$REPORT/report.md`. Both open wi
 | The game lost its post-processing / looks flat after the run | A camera was saved disabled: `Verify` compares every camera with the source; re-enable it, reopen, re-export |
 | A pruned caster's shadow is missing in a capture | Take it off the prune list, re-run `PruneShadowCasters` (it restores the original mode), re-bake |
 | `BakeState` keeps returning `stopped` | The bake never started or failed: `console --level error`, then `bake_lighting` again |
+| `BakeState` returns `empty` (`lightmaps=0` or `probes=0`) | The bake finished but wrote nothing: `console --level error` — an unsupported denoiser (OptiX on Apple silicon: set the Lighting Settings' denoisers to OpenImageDenoise, AO included), a GPU lightmapper that ran out of memory (lower the lightmap size or use the CPU lightmapper), or no lightmapped renderers left after a merge; fix it and bake again. Never export an empty bake |
+| `Verify`: "lightmapped renderer points past the baked lightmaps" | The scene's LightingData is empty, stale or another scene's — bake again (`bake()`), then Verify |
+| `FAILED pin …: Timeline drifted` from `profile-browser` | Something resumed the director during the window (a seek or a script): re-run that pin; when it repeats, hold a time outside the moment that resumes it |
+| `gltf-stats`: `Unexpected token` on a `.gz.gltf` | An old copy of the tool: copy `scripts/qa/*` into `.agents/optimize/.qa-tools/` again (gzipped exports are read since this version) |
+| Two `BtOptimizePoseCamera`s, or a capture of the wrong scene | An old `BtOptimize.cs`: copy `scripts/*.cs` into `AgentScripts/bt-optimize/` again; `PoseView` now destroys every earlier pose camera |

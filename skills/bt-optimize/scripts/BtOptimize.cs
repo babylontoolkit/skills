@@ -1514,7 +1514,8 @@ public static class BtOptimize
 
     /// <summary>
     /// Checks the active working copy against its source (the scene named in working-copy.txt) and the Tune rules, and
-    /// writes verify.md / verify.json. Problems: unsaved changes; a pose camera left in the scene; a camera whose enabled
+    /// writes verify.md / verify.json. Problems: unsaved changes; a pose camera left in the scene; a lightmapped renderer
+    /// whose lightmap index names a lightmap the bake does not have (an empty or stale LightingData); a camera whose enabled
     /// state differs from the source (a capture step that disabled the main camera and was saved ships a game with no
     /// post-processing); lighting settings that differ from the source; rigid skinned meshes Tune converts that are
     /// still skinned; repeated meshes (instanceRepeatsFrom copies or more) that are lightmapped or probe-lit; static
@@ -1536,7 +1537,12 @@ public static class BtOptimize
         var checks = new Dictionary<string, object>();
 
         if (scene.isDirty) problems.Add("the scene has unsaved changes — save it before exporting");
-        if (scene.GetRootGameObjects().Any(root => root.name == PoseCameraName)) problems.Add(PoseCameraName + " is in the scene — reopen the scene before exporting (it would export as a camera)");
+        if (FindPoseCameras().Any(camera => camera.gameObject.scene == scene)) problems.Add(PoseCameraName + " is in the scene — reopen the scene before exporting (it would export as a camera)");
+
+        // Read before the source is opened additively: loading it merges its lightmaps into LightmapSettings.
+        var badLightmapIndices = LightmapIndexOutOfRange(scene);
+        problems.AddRange(badLightmapIndices.Select(entry => "lightmapped renderer points past the baked lightmaps — re-bake: " + entry));
+        checks["lightmaps"] = new Dictionary<string, object> { { "baked", LightmapSettings.lightmaps.Length }, { "indexOutOfRange", badLightmapIndices.Count } };
 
         var copyCameras = CameraStates(scene);
         var copyLighting = ReadLighting(scene);
@@ -1640,9 +1646,29 @@ public static class BtOptimize
     private static Dictionary<string, bool> CameraStates(Scene scene)
     {
         var states = new Dictionary<string, bool>();
-        foreach (var camera in scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true)).Where(camera => camera.name != PoseCameraName))
+        foreach (var camera in scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true)).Where(camera => !IsPoseCamera(camera)))
             states[PathOf(camera.transform)] = camera.enabled && camera.gameObject.activeInHierarchy;
         return states;
+    }
+
+    /// <summary>Unity's lightmap index for "not lightmapped, but contributes to GI" (static objects baked into probes only).</summary>
+    private const int LightmapIndexNotLightmappedGI = 0xFFFE;
+
+    /// <summary>
+    /// Every renderer and terrain in the scene whose lightmap index names a lightmap the loaded bake does not have — a
+    /// LightingData that is empty, stale or from another scene. Each entry is "path index=N of M". The scene must be the
+    /// only loaded scene with lightmaps (an additive scene's lightmaps shift the indices).
+    /// </summary>
+    private static List<string> LightmapIndexOutOfRange(Scene scene)
+    {
+        int lightmapCount = LightmapSettings.lightmaps.Length;
+        bool OutOfRange(int index) => index >= 0 && index < LightmapIndexNotLightmappedGI && index >= lightmapCount;
+        var roots = scene.GetRootGameObjects();
+        var renderers = roots.SelectMany(root => root.GetComponentsInChildren<Renderer>(true))
+            .Where(renderer => OutOfRange(renderer.lightmapIndex)).Select(renderer => PathOf(renderer.transform) + " index=" + renderer.lightmapIndex + " of " + lightmapCount);
+        var terrains = roots.SelectMany(root => root.GetComponentsInChildren<Terrain>(true))
+            .Where(terrain => OutOfRange(terrain.lightmapIndex)).Select(terrain => PathOf(terrain.transform) + " index=" + terrain.lightmapIndex + " of " + lightmapCount);
+        return renderers.Concat(terrains).ToList();
     }
 
     /// <summary>
@@ -1681,10 +1707,14 @@ public static class BtOptimize
     private const long BakeStartGraceSeconds = 120;
 
     /// <summary>
-    /// Where a bake started at the given time stands, for `wait.mjs cmd` to poll: "baking" while the lightmapper runs,
-    /// "done" once it has stopped and the active scene's LightingData asset was written at or after the start, "stopped"
-    /// when it is not running and wrote nothing more than BakeStartGraceSeconds after the start, "waiting" otherwise.
-    /// `lighting_bake_status` alone can report "completed" before the bake has started.
+    /// Where a bake started at the given time stands, for `wait.mjs cmd` to poll: "baking" while the lightmapper runs;
+    /// once it has stopped and the active scene's LightingData asset was written at or after the start, "done" — or
+    /// "empty" when that bake wrote no lightmaps although the scene has lightmapped renderers, or no light probes although
+    /// it has a LightProbeGroup (a failed bake still writes its LightingData, so the write time alone proves nothing);
+    /// "stopped" when it is not running and wrote nothing more than BakeStartGraceSeconds after the start; "waiting"
+    /// otherwise. "done" and "empty" are followed by the counts (`done lightmaps=12 probes=2400 lightmapped=380
+    /// probeGroups=1 data=Assets/…/LightingData.asset`). `lighting_bake_status` alone can report "completed" before the
+    /// bake has started.
     /// </summary>
     /// <param name="startedUnixSeconds">When bake_lighting was called, in Unix seconds (`date +%s`).</param>
     public static string BakeState(string startedUnixSeconds)
@@ -1694,12 +1724,57 @@ public static class BtOptimize
         var data = Lightmapping.lightingDataAsset;
         string path = data != null ? AssetDatabase.GetAssetPath(data) : "";
         long written = path.Length > 0 && File.Exists(path) ? new DateTimeOffset(File.GetLastWriteTimeUtc(path)).ToUnixTimeSeconds() : 0;
-        if (written >= started) return "done";
-        return DateTimeOffset.UtcNow.ToUnixTimeSeconds() - started > BakeStartGraceSeconds ? "stopped" : "waiting";
+        if (written < started) return DateTimeOffset.UtcNow.ToUnixTimeSeconds() - started > BakeStartGraceSeconds ? "stopped" : "waiting";
+
+        var scene = SceneManager.GetActiveScene();
+        int lightmaps = LightmapSettings.lightmaps.Length;
+        int probes = LightmapSettings.lightProbes != null ? LightmapSettings.lightProbes.count : 0;
+        int lightmapped = CountLightmappedRenderers(scene);
+        int probeGroups = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<LightProbeGroup>(false))
+            .Count(group => group.enabled && group.probePositions.Length > 0);
+        bool empty = (lightmapped > 0 && lightmaps == 0) || (probeGroups > 0 && probes == 0);
+        return (empty ? "empty" : "done") + " lightmaps=" + lightmaps + " probes=" + probes + " lightmapped=" + lightmapped
+            + " probeGroups=" + probeGroups + " data=" + (path.Length > 0 ? path : "none");
+    }
+
+    /// <summary>
+    /// How many active renderers and terrains in the scene the lightmapper bakes into lightmaps: Contribute GI static,
+    /// and (for mesh renderers) Receive GI set to Lightmaps.
+    /// </summary>
+    private static int CountLightmappedRenderers(Scene scene)
+    {
+        var roots = scene.GetRootGameObjects();
+        bool ContributesGI(GameObject gameObject) => GameObjectUtility.GetStaticEditorFlags(gameObject).HasFlag(StaticEditorFlags.ContributeGI);
+        int meshRenderers = roots.SelectMany(root => root.GetComponentsInChildren<MeshRenderer>(false))
+            .Count(renderer => renderer.enabled && renderer.receiveGI == ReceiveGI.Lightmaps && ContributesGI(renderer.gameObject));
+        int terrains = roots.SelectMany(root => root.GetComponentsInChildren<Terrain>(false)).Count(terrain => terrain.enabled && ContributesGI(terrain.gameObject));
+        return meshRenderers + terrains;
     }
 
     /// <summary>The name of the capture camera PoseView places.</summary>
     private const string PoseCameraName = "BtOptimizePoseCamera";
+
+    /// <summary>
+    /// Whether a camera is a PoseView capture camera: named PoseCameraName and living in the Editor, not an asset (a
+    /// prefab that happens to use the name is never touched).
+    /// </summary>
+    private static bool IsPoseCamera(Camera camera) => camera != null && camera.name == PoseCameraName && !EditorUtility.IsPersistent(camera);
+
+    /// <summary>
+    /// Every PoseView capture camera the Editor holds — in the active scene, in another loaded scene, or orphaned outside
+    /// any scene. The camera is DontSaveInEditor, and such an object survives OpenScene(Single), so a lookup through the
+    /// active scene's roots alone misses the one left by an earlier scene.
+    /// </summary>
+    private static List<Camera> FindPoseCameras() => Resources.FindObjectsOfTypeAll<Camera>().Where(IsPoseCamera).ToList();
+
+    /// <summary>Destroys every PoseView capture camera (see FindPoseCameras), so the next capture renders through exactly one.</summary>
+    /// <returns>How many were destroyed.</returns>
+    private static int DestroyPoseCameras()
+    {
+        var cameras = FindPoseCameras();
+        foreach (var camera in cameras) UnityEngine.Object.DestroyImmediate(camera.gameObject);
+        return cameras.Count;
+    }
 
     /// <summary>
     /// Opens the scene (discarding nothing: refuses when the open scene has unsaved changes) and places a capture camera
@@ -1708,21 +1783,22 @@ public static class BtOptimize
     /// `capture_game_view --camera BtOptimizePoseCamera`. It never touches the scene's own cameras (a disabled main camera
     /// that got saved once shipped a game with no post-processing): the pose camera renders above them by depth and is
     /// flagged DontSaveInEditor, so it is never written to the scene. Reopen the scene before exporting — the exporter
-    /// would otherwise see it as one more camera.
+    /// would otherwise see it as one more camera. Every earlier pose camera is destroyed first, wherever it is (one left
+    /// by another scene survives OpenScene), so exactly one renders the capture.
     /// </summary>
     public static string PoseView(string scenePath, float px, float py, float pz, float qx, float qy, float qz, float qw, float verticalFovRadians)
     {
         var active = SceneManager.GetActiveScene();
+        // The only unsaved change PoseView allows itself to discard is its own pose camera.
+        bool onlyPoseCamera = FindPoseCameras().Any(camera => camera.gameObject.scene == active);
+        DestroyPoseCameras();
         if (active.path != scenePath)
         {
-            // The only unsaved change PoseView allows itself to discard is its own pose camera.
-            bool onlyPoseCamera = active.GetRootGameObjects().Any(root => root.name == PoseCameraName);
             if (active.isDirty && !onlyPoseCamera) throw new InvalidOperationException("'" + active.path + "' has unsaved changes; save or discard them first.");
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            DestroyPoseCameras();
         }
         var scene = SceneManager.GetActiveScene();
-        var existing = scene.GetRootGameObjects().FirstOrDefault(root => root.name == PoseCameraName);
-        if (existing != null) UnityEngine.Object.DestroyImmediate(existing);
         var main = Camera.main;
         var go = new GameObject(PoseCameraName) { hideFlags = HideFlags.DontSaveInEditor };
         var camera = go.AddComponent<Camera>();
@@ -1737,7 +1813,7 @@ public static class BtOptimize
             }
         }
         // Render above every scene camera instead of disabling any of them: the scene's cameras are never changed.
-        var sceneCameras = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true)).Where(other => other != camera).ToList();
+        var sceneCameras = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true)).Where(other => !IsPoseCamera(other)).ToList();
         camera.depth = sceneCameras.Count > 0 ? sceneCameras.Max(other => other.depth) + 1f : camera.depth;
         foreach (var component in go.GetComponents<Component>()) component.hideFlags = HideFlags.DontSaveInEditor;
         go.transform.SetPositionAndRotation(new Vector3(px, py, pz), new Quaternion(qx, qy, qz, qw));

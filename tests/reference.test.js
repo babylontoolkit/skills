@@ -9,7 +9,7 @@ const zlib = require('zlib');
 const { spawnSync } = require('child_process');
 
 const reference = require('../lib/reference');
-const { addAllowRule, removeAllowRule, hasAllowRule } = require('../lib/claude-settings');
+const { TOOLKIT_COMMAND_RULE, addAllowRule, removeAllowRule, hasAllowRule } = require('../lib/claude-settings');
 const { install, uninstall } = require('../lib/install');
 const { doctor } = require('../lib/doctor');
 const { LEGACY_SENTINEL } = require('../lib/persona');
@@ -224,10 +224,12 @@ test('global install adds the Claude Code allow rule; uninstall removes only a r
 
   run(`install({ ids: ['claude'], referenceFrom: ${JSON.stringify(from)} });`);
   assert.equal(hasAllowRule(settingsFile, reference.CLAUDE_READ_RULE), true);
+  assert.equal(hasAllowRule(settingsFile, TOOLKIT_COMMAND_RULE), true);
   assert.equal(fs.existsSync(path.join(home, '.claude', 'toolkit', 'reference', 'reference.md')), true);
   run(`install({ ids: ['claude'], referenceFrom: ${JSON.stringify(from)} });`);
   run(`uninstall({ ids: ['claude'] });`);
   assert.equal(hasAllowRule(settingsFile, reference.CLAUDE_READ_RULE), false);
+  assert.equal(hasAllowRule(settingsFile, TOOLKIT_COMMAND_RULE), false);
   assert.equal(fs.existsSync(path.join(home, '.claude', 'toolkit', 'reference')), false);
 
   // A rule the user already had is theirs: it stays after uninstall.
