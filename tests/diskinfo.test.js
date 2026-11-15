@@ -9,7 +9,7 @@ const { spawnSync } = require('child_process');
 const { Scanner } = require('../lib/diskinfo/scan');
 const { hogs, systemRoots, breakdowns, suggestions } = require('../lib/diskinfo/locations');
 const { buildReport, formatReport, human } = require('../lib/diskinfo/report');
-const { parseDiskInfoArgs } = require('../lib/diskinfo/cli');
+const { parseDiskInfoArgs, resolveFolder } = require('../lib/diskinfo/cli');
 
 const CLI = path.join(__dirname, '..', 'bin', 'bt-agent.js');
 
@@ -159,8 +159,54 @@ test('buildReport() + formatReport() over a fake home produce every section', as
   assert.ok(text.includes('npm cache'));
 });
 
+test('--folder scans only that folder and reports nothing outside it', async (t) => {
+  const home = scratch(t);
+  const folder = path.join(home, 'Projects');
+  fakeHome(folder);
+  write(path.join(home, '.npm', '_cacache', 'blob'), 60 * 1024 * 1024); // a hog outside the folder
+  write(path.join(folder, '.npm', '_cacache', 'blob'), 60 * 1024 * 1024); // the same path inside it is not the hog
+  write(path.join(home, 'Other', 'node_modules', 'x', 'i.js'), 8192);
+
+  const report = await buildReport({ ctx: { platform: 'linux', home, env: {} }, folder });
+
+  assert.equal(report.folder, folder);
+  assert.equal(report.roots.length, 1);
+  assert.equal(report.roots[0].path, folder);
+  assert.equal(report.other, null);
+  assert.equal(report.home.path, folder);
+  assert.deepEqual(report.home.children.map((c) => path.basename(c.path)).sort(), ['.npm', 'Documents', 'Downloads', 'web']);
+  assert.equal(report.nodeModules.count, 1);
+  assert.ok(report.nodeModules.top[0].path.startsWith(folder));
+  assert.ok(!report.hogs.some((h) => h.id === 'npm'), 'the home npm cache is outside the folder');
+  assert.ok(!report.suggestions.some((s) => s.includes('journalctl')), 'no system-wide tip for a folder scan');
+
+  const text = formatReport(report);
+  assert.ok(text.includes('(scanned folder)'));
+  assert.ok(text.includes('3. FOLDER'));
+});
+
+test('--folder keeps hogs that live inside the folder', async (t) => {
+  const home = scratch(t);
+  write(path.join(home, '.npm', '_cacache', 'blob'), 60 * 1024 * 1024);
+  const report = await buildReport({ ctx: { platform: 'linux', home, env: {} }, folder: home });
+  assert.ok(report.hogs.some((h) => h.id === 'npm'));
+});
+
+test('resolveFolder() expands, resolves and rejects missing folders and files', (t) => {
+  const dir = scratch(t);
+  write(path.join(dir, 'f.txt'), 10);
+  assert.equal(resolveFolder(dir), path.resolve(dir));
+  assert.equal(resolveFolder('~'), os.homedir());
+  assert.throws(() => resolveFolder(path.join(dir, 'missing')), /does not exist/);
+  assert.throws(() => resolveFolder(path.join(dir, 'f.txt')), /is not a folder/);
+});
+
 test('argument parsing', () => {
-  assert.deepEqual(parseDiskInfoArgs([]), { json: false, save: true, out: null, help: false });
+  assert.deepEqual(parseDiskInfoArgs([]), { json: false, save: true, out: null, folder: null, help: false });
+  assert.equal(parseDiskInfoArgs(['--folder', 'x']).folder, 'x');
+  assert.equal(parseDiskInfoArgs(['--folder=x']).folder, 'x');
+  assert.throws(() => parseDiskInfoArgs(['--folder']), /needs a folder/);
+  assert.throws(() => parseDiskInfoArgs(['--folder=']), /needs a folder/);
   assert.equal(parseDiskInfoArgs(['--out', 'r.txt']).out, 'r.txt');
   assert.equal(parseDiskInfoArgs(['--out=r.txt']).out, 'r.txt');
   assert.equal(parseDiskInfoArgs(['--no-save', '--json']).save, false);
@@ -172,6 +218,10 @@ test('bt-agent diskinfo --help is wired into the CLI', () => {
   const r = spawnSync(process.execPath, [CLI, 'diskinfo', '--help'], { encoding: 'utf8' });
   assert.equal(r.status, 0);
   assert.match(r.stdout, /bt-agent diskinfo/);
+  assert.match(r.stdout, /--folder <dir>/);
+  const bad = spawnSync(process.execPath, [CLI, 'diskinfo', '--folder', path.join(os.tmpdir(), 'bt-no-such-folder-xyz')], { encoding: 'utf8' });
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /does not exist/);
   const main = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' });
   assert.match(main.stdout, /diskinfo/);
 });

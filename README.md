@@ -1,4 +1,4 @@
-# Babylon Toolkit Desktop Agent (1.2.15)
+# Babylon Toolkit Desktop Agent (1.2.16)
 
 The desktop agent owns the entire pipeline end to end — frontend and UI design, gameplay code, shaders, generated art and audio, 3D models in headless Blender, whole game levels and prefabs in a terminal-driven Unity Editor, the interactive glTF export, the web build, the dev server, and visual QA by screenshotting both Unity and the running browser. 
 
@@ -84,6 +84,7 @@ newer Reference.
 ```bash
 bt-agent diskinfo                 # print the report and save Desktop/disk-report-YYYY-MM-DD-HHMM.txt
 bt-agent diskinfo --no-save       # print only
+bt-agent diskinfo --folder ~/Documents/Repos   # scan just this folder
 bt-agent diskinfo --out report.txt
 bt-agent diskinfo --json          # machine-readable
 ```
@@ -94,6 +95,10 @@ largest folders, known space hogs (Unity editors and caches, Xcode DerivedData a
 npm / Yarn / pnpm / pip / NuGet caches, Docker and WSL disks, VS Code's C++ cache, Steam, backups,
 Trash / Recycle Bin), every `node_modules`, the Unity `Library/` and Unreal `Intermediate/` folders
 that rebuild themselves, the largest files, and suggested cleanup commands. Nothing is deleted or run.
+
+`--folder <dir>` scans that one folder instead (`~` and relative paths work): its largest items,
+the known space hogs, `node_modules`, Unity / Unreal projects and big files inside it — nothing
+outside it is walked.
 
 ### Freeing ports
 
