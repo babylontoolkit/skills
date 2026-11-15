@@ -1472,7 +1472,7 @@
           hasTests(task)
             ? `<span class="count count-pass">${escapeHtml(tests.passed ?? 0)} passed</span>${Number(tests.failed) ? `<div class="count count-fail">${escapeHtml(tests.failed)} failed</div>` : ''}`
             : `<span class="cell-note" title="${escapeAttribute(tests.note || '')}">${tests.note ? escapeHtml(tests.note) : '—'}</span>`,
-          (tests.files || []).length ? tests.files.map(fileLink).join('<br>') : '—',
+          testFilesOf(tests).length ? testFilesOf(tests).map(fileLink).join('<br>') : '—',
           cases.length ? `${cases.length}${casesFailed ? `<div class="count count-fail">${casesFailed} failed</div>` : ''}` : '—',
           hasLiveCheck(task) ? `<span title="${escapeAttribute(liveCheckNote(task))}">Yes</span>` : '—',
         ];
@@ -1572,9 +1572,19 @@
       tests.passed != null ? `${escapeHtml(tests.passed)} passed` : '',
       tests.failed ? `${escapeHtml(tests.failed)} failed` : '',
     ].filter(Boolean).join(' · ');
-    const files = (tests.files || []).map(fileLink).join(' ');
+    const files = testFilesOf(tests).map(fileLink).join(' ');
     const note = tests.note ? formatInline(tests.note) : '';
     return [counts, files, note].filter(Boolean).join('<br>');
+  }
+
+  /**
+   * The test file paths of a task's tests record, read only when `files` is a list: a count or text written there
+   * by hand (the helper refuses and repairs it) must never stop the page drawing.
+   * @param {object} tests The task's `tests` record.
+   * @returns {string[]} Its path entries; empty when `files` is not a list.
+   */
+  function testFilesOf(tests) {
+    return Array.isArray(tests.files) ? tests.files.filter((entry) => typeof entry === 'string') : [];
   }
 
   /**

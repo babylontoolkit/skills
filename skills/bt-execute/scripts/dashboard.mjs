@@ -29,6 +29,10 @@
  * agents write `live` at each meaningful step (before anything slow, at each fix attempt), and `watch` — the
  * watchdog bt-execute launches in the background at run start — writes a heartbeat after 10 quiet minutes.
  *
+ * A task's `tests` keeps its documented shape: `task --set` refuses a `tests.files` that is not a list of path strings
+ * and a `passed` / `failed` that is not a number, and every write and `check` repairs one already in the file (the
+ * old value moves into `tests.note`), because a count written into `files` once stopped a dashboard drawing.
+ *
  * Snapshots go in only through `snapshot`. `task --set` and `check` refuse any snapshot entry the page cannot show —
  * an image under `path` (or `file`, `image`, …) instead of `src`, or a `src` that is not a file under the feature
  * folder — because such an entry renders as "No snapshot".
@@ -100,6 +104,13 @@ const MAXIMUM_SCAN_DEPTH = 5;
 const TASK_LIST_FIELDS = ['files', 'decisions', 'snapshots', 'updates'];
 /** Task fields that are an object or null. */
 const TASK_OBJECT_FIELDS = ['tests', 'details'];
+/** Counts inside a task's `tests` that must be numbers when present. */
+const TESTS_COUNT_FIELDS = ['passed', 'failed'];
+/** The `tests` shape from data-schema.md, quoted in every refusal so the writer can fix the entry in one go. */
+const TESTS_SHAPE_HELP = [
+  '"tests" is { "passed": <number>, "failed": <number>, "files": ["<test path from the project root>", …], "note": "<counts, suite names, commands>" } or null.',
+  '"files" holds paths only (the page links each one); a count, a suite name or a command goes in "note".',
+].join('\n');
 /** Statuses that mean a task is being worked on right now. */
 const ACTIVE_TASK_STATUSES = new Set(['in-progress', 'built', 'verifying']);
 /** Where a snapshot's image may come from. */
@@ -168,6 +179,7 @@ function writeData(path, prefix, data) {
   // Every dashboard write repairs snapshot entries first, so an image filed under `path` (or any key the page never
   // reads) can never reach the page as "No snapshot", whoever wrote it.
   if (data && Array.isArray(data.phases)) repairSnapshots(data);
+  if (data && Array.isArray(data.phases)) repairTaskTests(data);
   if (data && Array.isArray(data.decisions)) repairDecisions(data);
   if (data && Array.isArray(data.followUps)) repairFollowUps(data);
   const temporaryPath = `${path}.${process.pid}.tmp`;
@@ -479,6 +491,61 @@ function checkTaskShape(changes) {
     const value = changes[field];
     if (field in changes && value !== null && (typeof value !== 'object' || Array.isArray(value))) throw new Error(`"${field}" must be an object or null`);
   }
+  if (changes.tests) checkTestsShape(changes.tests);
+}
+
+/**
+ * Refuses a `tests` object the page cannot draw: a `files` that is not a list of path strings (a count written there
+ * once stopped a dashboard drawing), or a `passed` / `failed` that is present but not a number.
+ * @param {Record<string, any>} tests The task's `tests` object.
+ * @throws {Error} Naming the field and quoting the `tests` shape.
+ */
+function checkTestsShape(tests) {
+  const hasFiles = tests.files !== undefined;
+  if (hasFiles && !isPathList(tests.files)) {
+    throw new Error(`"tests.files" must be a list of path strings, not ${JSON.stringify(tests.files)}\n${TESTS_SHAPE_HELP}`);
+  }
+  for (const field of TESTS_COUNT_FIELDS) {
+    const count = tests[field];
+    if (count !== undefined && typeof count !== 'number') {
+      throw new Error(`"tests.${field}" must be a number, not ${JSON.stringify(count)}\n${TESTS_SHAPE_HELP}`);
+    }
+  }
+}
+
+/**
+ * Whether a value is a list whose every entry is a string — the only `tests.files` the page can link.
+ * @param {any} value The value to test.
+ * @returns {boolean} True for an array of strings (an empty array included).
+ */
+function isPathList(value) {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+/**
+ * Repairs every task's `tests.files` in place so the page can draw it: a value that is not a list of path strings
+ * moves into `tests.note` (`files: 46`), and `files` keeps only the string entries of a mixed list, else becomes `[]`.
+ * @param {any} dashboard The dashboard data.
+ * @returns {string[]} One line per repair made.
+ */
+function repairTaskTests(dashboard) {
+  const repairs = [];
+  for (const phase of dashboard.phases || []) {
+    for (const task of phase.tasks || []) {
+      const tests = task && task.tests;
+      if (!tests || typeof tests !== 'object' || Array.isArray(tests)) continue;
+      if (tests.files === undefined || isPathList(tests.files)) continue;
+      const oldFiles = tests.files;
+      const keptPaths = Array.isArray(oldFiles) ? oldFiles.filter((entry) => typeof entry === 'string') : [];
+      const movedValue = Array.isArray(oldFiles) ? oldFiles.filter((entry) => typeof entry !== 'string') : oldFiles;
+      const movedText = `files: ${typeof movedValue === 'string' ? movedValue : JSON.stringify(movedValue)}`;
+      const existingNote = typeof tests.note === 'string' ? tests.note.trim() : '';
+      tests.note = existingNote ? `${existingNote}; ${movedText}` : movedText;
+      tests.files = keptPaths;
+      repairs.push(`${task.id}.tests.files: ${JSON.stringify(oldFiles)} is not a list of paths → moved into tests.note, files ${JSON.stringify(keptPaths)}`);
+    }
+  }
+  return repairs;
 }
 
 /**
@@ -1377,16 +1444,20 @@ function checkData(folder) {
   const { prefix, data } = readData(dashboardPath);
   if (existsSync(livePath)) readData(livePath);
   const repairs = repairSnapshots(data);
+  const testsRepairs = repairTaskTests(data);
   const decisionRepairs = repairDecisions(data);
   const followUpRepairs = repairFollowUps(data);
   const hasFollowUps = Array.isArray(data.followUps) && data.followUps.length > 0;
   const linkedFollowUps = hasFollowUps && linkFollowUpsDocument(folder, data);
   const linkedFromPlan = linkCitedFollowUps(folder, data);
   const sourceMoved = syncAddressedFollowUps(folder, data);
-  if (repairs.length || decisionRepairs.length || followUpRepairs.length || linkedFollowUps || linkedFromPlan || sourceMoved) writeData(dashboardPath, prefix, data);
+  if (repairs.length || testsRepairs.length || decisionRepairs.length || followUpRepairs.length || linkedFollowUps || linkedFromPlan || sourceMoved) writeData(dashboardPath, prefix, data);
   if (hasFollowUps) writeFollowUpsDocument(folder, data);
   if (repairs.length) {
     console.log(`repaired ${repairs.length} snapshot entr${repairs.length === 1 ? 'y' : 'ies'} the page could not show:\n  ${repairs.join('\n  ')}`);
+  }
+  if (testsRepairs.length) {
+    console.log(`repaired ${testsRepairs.length} task test record${testsRepairs.length === 1 ? '' : 's'} the page could not draw:\n  ${testsRepairs.join('\n  ')}`);
   }
   if (decisionRepairs.length) {
     console.log(`repaired ${decisionRepairs.length} decision${decisionRepairs.length === 1 ? '' : 's'} written as plain text:\n  ${decisionRepairs.join('\n  ')}`);
@@ -1502,14 +1573,14 @@ async function watch(folder, argumentList) {
 }
 
 /**
- * Watchdog repair: a snapshot or decision an agent wrote around the helper (a hand edit, its own script) is repaired
+ * Watchdog repair: a snapshot, task test record or decision an agent wrote around the helper (a hand edit, its own script) is repaired
  * within a minute, re-read just before the write so nothing the agent wrote meanwhile is lost.
  * @param {string} dashboardPath The dashboard data file.
  */
 function repairWrittenSnapshots(dashboardPath) {
   try {
     const { prefix, data } = readData(dashboardPath);
-    const repairs = [...repairSnapshots(data), ...repairDecisions(data)];
+    const repairs = [...repairSnapshots(data), ...repairTaskTests(data), ...repairDecisions(data)];
     if (!repairs.length) return;
     writeData(dashboardPath, prefix, data);
     console.log(`watchdog: repaired ${repairs.length} entr${repairs.length === 1 ? 'y' : 'ies'} — ${repairs.join('; ')}`);
